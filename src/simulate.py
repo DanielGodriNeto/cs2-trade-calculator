@@ -252,6 +252,16 @@ class SimulationRecord:
     # 0.5 (oddsmath's own "no inputs" neutral fallback) purely for backward compat when reading
     # back OLDER simulations.jsonl lines logged before this field existed -- never actually used
     # for a freshly simulated record, which always sets this explicitly below.
+    ml_predicted_roi_pct: float | None = None  # this son's OWN sim_learning.py model's
+    # pre-simulation prediction for this exact candidate (see sim_learning.predict_expected_roi),
+    # set by sim_loop.run_round() right after simulate() returns -- same "one place that actually
+    # knows" pattern as the `agent` field above, since this module stays agent-agnostic and has
+    # no model_dir/sims_file of its own. None if no model was trained yet at draw time, or for
+    # any record logged before this field existed. Lets ranking.py compare the model's guess
+    # against the exact formula-computed expected_roi_pct as an independent trust signal (see
+    # ranking._ml_agreement_bonus) -- close agreement is a real confidence boost that a purely
+    # cost-basis/dead-skin-based score can't see, without ever overriding the authoritative
+    # formula math itself.
 
 
 @dataclass

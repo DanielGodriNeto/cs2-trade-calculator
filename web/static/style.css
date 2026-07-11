@@ -52,6 +52,32 @@ header h1 { margin-bottom: 2px; color: var(--accent); }
 .topbar-stats-secondary { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.95em; }
 #stat-catalogued { color: var(--text); font-weight: 600; }
 
+/* Mirrors #status-value (Calculator-page-only) so scan status/errors are visible from every
+   page -- see topbar-scan-status in index.html / renderStatus() in app.js. */
+.topbar-scan-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--muted);
+  font-weight: 600;
+}
+.topbar-scan-status:hover { border-color: var(--accent); }
+#topbar-scan-status-value.running { color: var(--accent); }
+#topbar-scan-status-value.idle { color: var(--profit); }
+#topbar-scan-status-value.stopped { color: var(--muted); }
+#topbar-scan-status-value.paused { color: var(--restricted); }
+#topbar-scan-status-value.error {
+  color: var(--loss);
+}
+.topbar-scan-status:has(#topbar-scan-status-value.error) {
+  border-color: var(--loss);
+  background: rgba(220, 80, 80, 0.12);
+}
+
 [data-view] { display: block; }
 [data-view][hidden] { display: none; }
 

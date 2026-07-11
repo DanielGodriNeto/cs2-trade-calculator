@@ -333,6 +333,18 @@ def rate_limit_watchdog(state: ScanState):
             state.wake_event.set()
 
 
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+    """Like ThreadingHTTPServer, but doesn't dump a traceback to the console
+    every time a browser tab cancels an in-flight poll (ConnectionAbortedError /
+    ConnectionResetError) -- that's normal client behavior, not a server bug."""
+
+    def handle_error(self, request, client_address):
+        exc_type = sys.exc_info()[0]
+        if exc_type is not None and issubclass(exc_type, (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopState,
                   price_scan_state: price_scan_mod.PriceScanState,
                   sim_population: list,
@@ -1314,7 +1326,7 @@ def main():
     threading.Thread(target=backup_engine_mod.worker_loop, args=(backup_worker,),
                       daemon=True).start()
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", PORT),
+    httpd = QuietThreadingHTTPServer(("127.0.0.1", PORT),
                                  make_handler(state, retrain_state, price_scan_state,
                                               sim_population, verify_queue_state, convergence_watcher,
                                               round_robin, pattern_scan_state, backup_worker))

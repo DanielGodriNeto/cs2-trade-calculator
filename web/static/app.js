@@ -357,6 +357,9 @@ async function pollStatus() {
     renderOverview();
   } catch (e) {
     document.getElementById("status-value").textContent = "disconnected";
+    const topbarVal = document.getElementById("topbar-scan-status-value");
+    topbarVal.className = "error";
+    topbarVal.textContent = "disconnected";
   }
 }
 
@@ -2548,6 +2551,16 @@ function renderStatus(s) {
   } else {
     val.textContent = s.status;
   }
+  // Mirrored into the always-visible sticky topbar (not just this Calculator-only status bar)
+  // so a background scan erroring out, or just running, is never invisible from ML Lab/Results/
+  // Rare Patterns -- see topbar-scan-status in index.html.
+  const topbarVal = document.getElementById("topbar-scan-status-value");
+  const topbarLink = document.getElementById("topbar-scan-status");
+  topbarVal.className = s.status;
+  topbarVal.textContent = s.status === "error" ? `error: ${s.error}` : (val.textContent || s.status);
+  topbarLink.title = s.status === "error"
+    ? `Scan error: ${s.error} -- click to open the Trade-Up Calculator page`
+    : "Trade-Up Calculator scan status -- shown here on every page so a background scan (or an error in it) is never invisible just because you're on ML Lab/Results/Rare Patterns";
   document.getElementById("last-run").textContent = fmtTime(s.last_run);
   document.getElementById("tradeup-count").textContent = `(${s.tradeup_count})`;
   document.getElementById("anomaly-count").textContent = `(${s.anomaly_count})`;

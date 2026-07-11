@@ -911,6 +911,20 @@ score for badly-flagged entries -- this is directional ranking pressure away fro
 ROI, not a hard veto, matching the spec's own percentage-weighted formula rather than an absolute
 guarantee. The raw `expected_roi_pct` stays visible as its own column either way.
 
+The confidence factor also folds in a small, capped bonus (`src/ranking.py`'s
+`_ml_agreement_bonus`, up to 10 of the 100 points) for how closely the discovering agent's own
+`sim_learning.py` model *anticipated* this exact candidate's ROI before it was even simulated
+(`SimulationRecord.ml_predicted_roi_pct`, set by `sim_loop.run_round()` right after `simulate()`
+returns, whenever that agent already had a trained model at draw time). Previously a trained
+sim-population model only ever influenced *which* candidates got sampled in the first place
+(`random_trade.py`'s guided search) -- it had no say at all in how much the final ranking trusts
+a result once found. Close agreement between the model's pre-simulation guess and the exact
+formula-computed ROI is treated as a real, independent trust signal; a large residual doesn't
+mean the entry itself is wrong (the exact math is always authoritative) -- just that this
+particular find is the kind of thing the model doesn't understand well yet. Entries from before
+this field existed, or drawn while an agent had no trained model yet, get no bonus and no
+penalty either way.
+
 ### Automatic de-duplication: one row per unique trade-up
 
 An agent re-simulates the exact same skin/wear/count combination over and over (each run gets a
