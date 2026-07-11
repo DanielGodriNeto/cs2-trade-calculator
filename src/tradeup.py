@@ -23,6 +23,8 @@ from . import marketplaces as marketplaces_mod
 from . import oddsmath as oddsmath_mod
 from . import rules_engine as rules_engine_mod
 from . import tradability as tradability_mod
+from . import user_overrides as user_overrides_mod
+from . import wear_anomaly as wear_anomaly_mod
 from .steam_prices import get_price, market_hash_name
 
 STEAM_SELL_FEE = 0.13  # Steam Market cut on a sale; commonly cited as 13-15%, varies by price tier
@@ -50,6 +52,10 @@ class PossibleDrop:
     # float could actually land given the inputs' wear-bracket RANGES (not just midpoints),
     # via oddsmath.wear_probabilities_for_output. `wear` above stays the single most likely
     # priced wear; this shows the honest spread (e.g. FT 72% / MW 28%).
+    wear_anomaly: dict | None = None  # wear_anomaly.check_output_price() details when this
+    # drop's price failed the wear-order sanity check (a BETTER condition of the same skin
+    # was cheaper -- see wear_anomaly.py). When set, price/profit_after_fee/max_input_price
+    # are None: the price existed but was a proven-bad data point, excluded from revenue.
 
 
 @dataclass
@@ -131,6 +137,11 @@ def _price_at_matched_wear(skin: dict, matched_wear: str, stattrak: bool, curren
     identical) inputs -- see the module APPROXIMATION NOTE for why."""
     actual_wear = _closest_available_wear(skin["wears"], matched_wear)
     name = market_hash_name(skin["name"], actual_wear, stattrak)
+    # An actively flagged wear-order inversion (a better condition of this skin verified
+    # cheaper -- see wear_anomaly.py) means this price is a known-bad data point: treat it
+    # as unpriceable so no strategy search builds revenue on it while the mark is active.
+    if wear_anomaly_mod.is_flagged(name, currency):
+        return None
     price = get_price(name, currency, abort_check)
     if not price:
         return None
@@ -148,6 +159,8 @@ def _price_and_volume_at_matched_wear(skin: dict, matched_wear: str, stattrak: b
     consumed by price_report.py's low-volume/unconfirmed flag)."""
     actual_wear = _closest_available_wear(skin["wears"], matched_wear)
     name = market_hash_name(skin["name"], actual_wear, stattrak)
+    if wear_anomaly_mod.is_flagged(name, currency):  # same known-bad-price skip as above
+        return None
     price = get_price(name, currency, abort_check)
     if not price:
         return None
@@ -208,6 +221,15 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
         # an input would just burn lookups on a contract that can't exist. Whole souvenir-only
         # collections (e.g. Cobblestone) drop out here with zero requests spent.
         inputs = [s for s in inputs if tradability_mod.skin_is_obtainable(s)]
+        # User's permanent skin blacklist (user_overrides.py): blacklisted skins never enter as
+        # inputs, and a rarity step whose OUTPUT pool contains one is skipped outright -- the
+        # contract can't be done without a chance of landing on the blacklisted skin, so no
+        # honest cost/revenue row can be built around it.
+        blacklisted = user_overrides_mod.blacklisted_skins()
+        if blacklisted:
+            inputs = [s for s in inputs if s["name"] not in blacklisted]
+            if any(s["name"] in blacklisted for s in outputs):
+                continue
         if not inputs:
             continue
         if stattrak:
@@ -274,6 +296,28 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
                                      wear_probs=oddsmath_mod.wear_probabilities_for_output(skin, avg_norm_samples))
             revenues.append(price_val)
             priced += 1
+
+        # Wear-order sanity check, only when this result would come out positive (a losing
+        # result never gets recommended, so it isn't worth even the cheap check): verify each
+        # priced output against its own BETTER conditions. A Field-Tested copy "worth" more
+        # than its own Factory New is a bad data point (souvenir conflation, a troll listing
+        # -- see wear_anomaly.py), not real revenue; drop it from the revenue average so a
+        # fake ROI dies here instead of reaching the results list, and let the registry keep
+        # it excluded everywhere (including the strategy searches below) for the next 24h.
+        # Prices come from the bulk mirror already in memory, so this costs no extra requests.
+        if revenues and cost and (sum(revenues) / len(revenues)) * (1 - STEAM_SELL_FEE) >= cost:
+            for out_skin, drop in zip(outputs, drops):
+                if drop.price is None or (abort_check and abort_check()):
+                    continue
+                anomaly = wear_anomaly_mod.check_output_price(
+                    out_skin, drop.wear, drop.price, stattrak, currency, abort_check)
+                if anomaly:
+                    drop.wear_anomaly = anomaly
+                    drop.price = None
+                    drop.profit_after_fee = None
+                    drop.max_input_price = None
+            revenues = [d.price for d in drops if d.price is not None]
+            priced = len(revenues)
 
         if not revenues:
             continue

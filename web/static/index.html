@@ -30,10 +30,17 @@
     <span><span id="stat-cached">0</span> from cache</span>
     <span title="Adaptive delay between requests -- widens automatically after 429s, narrows back down after a run of successes">Spacing: <span id="stat-interval">1.5</span>s</span>
   </div>
+  <div class="topbar-stats topbar-stats-secondary" id="topbar-patterns-stats">
+    <span class="health-headline health-idle" id="patterns-health-headline">Rare Patterns scanner: checking&hellip;</span>
+    <span title="Queries the Rare Patterns scanner has sent to CSFloat's public API (separate from the Steam price cache above)">CSFloat: <span id="pat-stat-csfloat-queries">0</span> queries</span>
+    <span title="Queries the Rare Patterns scanner has sent to the Steam Market for listing/inspect data (separate from the Steam price cache above)">Steam Market: <span id="pat-stat-steam-queries">0</span> queries</span>
+    <span title="Listings matched against the pattern knowledge base so far this session"><span id="pat-stat-matches">0</span> matches</span>
+  </div>
   <div class="vpn-warning" id="vpn-warning" style="display:none;">
     <span id="vpn-warning-text"></span>
     <button id="retry-now-btn">Retry now</button>
   </div>
+  <button id="reset-all-data-btn" class="danger" title="Wipes every regenerable cache/registry app-wide: the ML sim population, rare-pattern scan results, the Steam price cache, and the invalid-skin/mispriced-skin/wear-anomaly/dead-skin registries. Never touches your real logged trade history, the real ROI model, or your permanent skin blacklist/price overrides. Cannot be undone.">Reset all data</button>
 </div>
 
 <div data-view="ml-lab" id="view-ml-lab">
@@ -389,6 +396,15 @@
   </table>
   <div id="mispriced-skins-empty" class="empty-state"></div>
 
+  <h3>Wear-order anomalies (better condition priced cheaper)</h3>
+  <p class="disclaimer">A skin's price should never <em>rise</em> as its condition gets worse &mdash; a Field-Tested copy "worth" more than its own Factory New means the higher price is a bad data point (a lone troll listing, or a souvenir-only wear conflated under the plain name), not real revenue. Every positive-ROI scan result now verifies its output prices against their own better wears for free (same bulk price dump, no extra requests); a failed check drops that price from the trade-up's expected revenue and excludes the skin+wear from all scans and strategy searches while the mark is active. Marks expire after 24h and clear immediately when a re-check finds the wear ladder back in order (see <code>src/wear_anomaly.py</code>).</p>
+  <button id="wear-anomalies-clear-btn" type="button">Erase wear-anomaly marks</button>
+  <table id="wear-anomalies-table">
+    <thead><tr><th>Skin</th><th>Flagged price</th><th>Better wear (cheaper)</th><th>Inversion %</th><th>State</th><th>Marked</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="wear-anomalies-empty" class="empty-state"></div>
+
   <h3>Market Reliability Engine</h3>
   <p class="disclaimer">Unifies the dead-skin score, verified mispriced-skin gap, and a rolling price-history Z-score into one Healthy/Suspicious/Excluded state per skin (see <code>src/market_reliability.py</code>). <strong>Excluded</strong> skins are removed from ML training, ranking's reward score, and a son's best-known list -- never a permanent ban: every skin is re-evaluated from current signals on each recheck, and a manual override always wins over the computed state.</p>
   <table id="market-reliability-table">
@@ -405,6 +421,52 @@
     <tbody></tbody>
   </table>
   <div id="invalid-skins-empty" class="empty-state"></div>
+
+  <h3>Skin blacklist (permanent)</h3>
+  <p class="disclaimer">Unlike every self-healing registry above, this list <strong>never expires or re-checks</strong> -- it changes only when you add or remove entries (see <code>src/user_overrides.py</code>). A blacklisted skin is banned everywhere, as an input <em>and</em> as a possible output: agents stop proposing trade-ups with it, the scans skip it, the manual builder rejects it, and every existing trade-up opportunity containing it is removed immediately. Use it for skins whose price data you've personally confirmed is garbage.</p>
+  <form id="skin-blacklist-form" autocomplete="off">
+    <label class="wide" style="position:relative;">Skin name
+      <input type="text" id="bl-skin" placeholder="Start typing a skin name...">
+      <div id="bl-suggestions" class="suggestions" style="display:none;"></div>
+    </label>
+    <label class="wide">Note (optional)
+      <input type="text" id="bl-note" placeholder="why, e.g. bogus mirror price">
+    </label>
+    <button type="submit">Blacklist skin</button>
+  </form>
+  <div id="skin-blacklist-msg" class="empty-state" style="display:none;"></div>
+  <table id="skin-blacklist-table">
+    <thead><tr><th>Skin</th><th>Note</th><th>Added</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="skin-blacklist-empty" class="empty-state"></div>
+
+  <h3>Manual price overrides</h3>
+  <p class="disclaimer">Set your own price for a specific skin+wear -- it <strong>wins over every other source</strong> (price cache, bulk mirror, live fetches) until you remove it, and every existing trade-up opportunity containing the skin has its cost/revenue/profit/<strong>ROI recomputed</strong> with your number, so a Min-ROI filter catches bugged trade-ups immediately. Rows repriced this way carry a "repriced" badge in the opportunities table. Permanent like the blacklist: only you change it (see <code>src/user_overrides.py</code>).</p>
+  <form id="price-override-form" autocomplete="off">
+    <label class="wide" style="position:relative;">Skin name
+      <input type="text" id="po-skin" placeholder="Start typing a skin name...">
+      <div id="po-suggestions" class="suggestions" style="display:none;"></div>
+    </label>
+    <label>Wear
+      <select id="po-wear">
+        <option>Factory New</option><option>Minimal Wear</option><option selected>Field-Tested</option>
+        <option>Well-Worn</option><option>Battle-Scarred</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="po-stattrak"> StatTrak</label>
+    <label>Price
+      <input type="number" id="po-price" min="0.01" step="0.01" placeholder="e.g. 1500.00">
+    </label>
+    <label>Currency <select id="po-currency"></select></label>
+    <button type="submit">Set price</button>
+  </form>
+  <div id="price-override-msg" class="empty-state" style="display:none;"></div>
+  <table id="price-overrides-table">
+    <thead><tr><th>Market name</th><th>Price</th><th>Currency</th><th>Added</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="price-overrides-empty" class="empty-state"></div>
 </section>
 
 <section id="price-history-section">
@@ -737,7 +799,7 @@
 
 <section id="patterns-section">
   <h2>Rare Pattern Opportunities <span class="muted-inline">(Collector Arbitrage -- independent from the trade-up optimizer)</span></h2>
-  <p class="disclaimer">Scans marketplace listings for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;) at ordinary market price. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation cross-checks the base skin's consensus price across Steam/Skinport/Buff163; a base price fewer than 2 sources confirm has its confidence demoted automatically. <strong>CSFloat is the only marketplace whose public listings carry float + paint seed</strong>, and it requires a free API key (<code>CSFLOAT_API_KEY</code>) -- the scanner status below says so plainly if it can't scan. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
+  <p class="disclaimer">Scans marketplace listings for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;). <strong>Every matched listing is shown here, profitable or not</strong> -- nothing is hidden behind a hardcoded profit bar; use the filters and "Sort by" below (expected profit, price, confidence&hellip;) to find the ones worth buying. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation is <strong>Steam-first</strong>: the base price a pattern's premium multiplies is the skin's own Steam median-sale price when it exists, and only falls back to the Steam/Skinport/Buff163 consensus (with confidence demoted) when Steam has no sale evidence. Two per-listing sources are scanned: <strong>the Steam Market itself</strong> (each listing's inspect link is resolved to float + paint seed via CSFloat's public inspect endpoint -- no key needed; Steam's aggressive rate limits put this source on a visible cooldown when hit) and <strong>CSFloat listings</strong> (float + seed directly, needs a free <code>CSFLOAT_API_KEY</code>) -- the scanner status below says plainly when either source can't scan. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
 
   <div class="learning-panel">
     <h3>Marketplace scanner</h3>
@@ -762,7 +824,7 @@
       </select>
     </label>
     <label>Marketplace
-      <select id="pat-marketplace"><option value="">any</option><option value="csfloat">CSFloat</option></select>
+      <select id="pat-marketplace"><option value="">any</option><option value="steam">Steam Market</option><option value="csfloat">CSFloat</option></select>
     </label>
     <label>Min expected profit <input type="number" id="pat-min-profit" step="1" placeholder="any"></label>
     <label>Min confidence
@@ -777,7 +839,8 @@
       <select id="pat-sort">
         <option value="score">Best opportunity</option>
         <option value="profit">Expected profit</option>
-        <option value="premium">Collector premium</option>
+        <option value="price">Price (cheapest first)</option>
+        <option value="premium">Est. collector value</option>
         <option value="confidence">Confidence</option>
         <option value="newest">Newly listed</option>
       </select>

@@ -59,12 +59,18 @@ def _normalize(value: float, lo: float, hi: float) -> float:
     return max(0.0, min(1.0, (value - lo) / (hi - lo)))
 
 
-def _effective_roi(entry: dict) -> float:
+def effective_roi(entry: dict) -> float:
     """Prefers a Stage-2-VERIFIED ROI (verify_queue.py / the manual "Verify prices"
     button) over the plain cache-priced estimate, when one exists -- the whole point of
-    verification is that it's the more trustworthy number once it's available."""
+    verification is that it's the more trustworthy number once it's available. Public (not
+    just this module's internal use) so sim_loop.py's checkpoint admission/ordering can rank
+    "best" by the same verified-aware number this module's own composite score already uses,
+    instead of the raw simulated estimate alone."""
     verified = entry.get("verified_roi_pct")
     return verified if verified is not None else entry.get("expected_roi_pct", 0.0)
+
+
+_effective_roi = effective_roi  # internal alias -- every call site below predates the rename
 
 
 def _profit_amount(entry: dict) -> float:

@@ -60,11 +60,13 @@ import threading
 from pathlib import Path
 import time
 
+from . import bulk_prices as bulk_prices_mod
 from . import dead_skin as dead_skin_mod
 from . import invalid_skins as invalid_skins_mod
 from . import mispriced_skins as mispriced_skins_mod
 from . import oddsmath
 from . import thirdparty_prices as thirdparty_prices_mod
+from . import user_overrides as user_overrides_mod
 from .steam_prices import get_cached_price, get_price, market_hash_name
 from .tradeup import STEAM_SELL_FEE
 
@@ -81,7 +83,7 @@ def _cheapest_thirdparty(tp: dict) -> float | None:
 
 
 def _price(skin_name: str, wear: str, stattrak: bool, currency: int, abort_check,
-           live_fetch: bool) -> tuple[dict | None, str]:
+           live_fetch: bool, allow_thirdparty: bool = True) -> tuple[dict | None, str]:
     """Prices one skin+wear+StatTrak, trying every source in turn before giving up:
     get_cached_price() first; on a genuine miss ("missing", never "stale" -- a stale price is
     still usable), a real live get_price() call (which also writes back into the same cache, so
@@ -89,6 +91,17 @@ def _price(skin_name: str, wear: str, stattrak: bool, currency: int, abort_check
     fallback (thirdparty_prices.get_thirdparty_price -> Skinport/CSFloat) used as an actual
     price source, not just corroboration -- returned as a synthesized data dict with freshness
     "thirdparty" (volume None, plus the raw per-source prices under "thirdparty").
+
+    allow_thirdparty=False turns that final fallback OFF -- the OUTPUT-pricing rule. Revenue in
+    this tool is always "sell on Steam, minus the Steam fee", so an output's price must be
+    backed by actual Steam sale evidence. A skin with NO Steam price in any of the mirror's
+    24h-90d windows but big Skinport/Buff163 listings is exactly the trap this closes: e.g.
+    "AWP | Gungnir" trades ABOVE Steam's price cap, so it has no Steam sales at all, while the
+    third-party feeds list it at $6k-12k -- pricing it as revenue produced absurd fake ROI
+    (the 2026-07 incident that motivated this flag). Inputs keep the fallback (buying on a
+    third-party market and trading the item in is real), outputs never get it. With the
+    fallback off, a Steam miss is also never recorded in invalid_skins -- that registry means
+    "no price on ANY source", which this path deliberately didn't check.
 
     If NO source has a price, the skin is recorded in invalid_skins.py (so candidate generation
     stops proposing trade-ups built out of it -- see random_trade.py) and (None, "missing") is
@@ -143,6 +156,10 @@ def _price(skin_name: str, wear: str, stattrak: bool, currency: int, abort_check
     if not live_fetch:
         # We never actually exhausted the live sources -- a plain cache miss here just means this
         # skin isn't warmed yet, NOT that it's priceless. Don't brand it invalid on that basis.
+        return None, "missing"
+    if not allow_thirdparty:
+        # Output-pricing rule (see docstring): no Steam price = no honest Steam revenue. Not
+        # marked invalid either -- the third-party sources were never consulted on this path.
         return None, "missing"
     # Steam came up empty -- try third-party sites as a genuine price fallback
     tp = _thirdparty_prices(skin_name, wear, stattrak, currency, abort_check)
@@ -273,6 +290,24 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
     isn't a smaller version of the same trade, it's just not a valid trade; or (b) every input
     priced fine but nothing on the output side has a usable price, so there's no revenue to
     compute at all."""
+    # User skin blacklist (user_overrides.py) -- a HARD gate, checked before any pricing is
+    # spent: a contract touching a blacklisted skin on EITHER side can never be honestly
+    # valued (the user has personally branded its data garbage), so whatever generator
+    # produced this candidate (random draw, mutation, evolution parent, manual builder), it
+    # dies here as an InvalidSimulation rather than reaching any best list.
+    blacklisted = user_overrides_mod.blacklisted_skins()
+    if blacklisted:
+        touched = {u["skin"]["name"] for leg in candidate.legs for u in leg.units} | \
+                  {s["name"] for leg in candidate.legs for s in leg.outputs}
+        if touched & blacklisted:
+            return InvalidSimulation(
+                id=_new_id("invalid"), simulated_at=time.time(),
+                from_rarity=candidate.from_rarity_name, to_rarity=candidate.to_rarity_name,
+                stattrak=candidate.stattrak, reason="blacklisted_skin",
+                n_priced_input_units=0,
+                n_required_input_units=sum(u["count"] for leg in candidate.legs for u in leg.units),
+                primary_collection=candidate.legs[0].collection if candidate.legs else "")
+
     groups = []        # (priced_count, n_outputs) per leg, for oddsmath.group_odds
     float_inputs = []  # (skin, wear, count) per (leg, unit), for average_normalized_float
     input_mix_rows = []
@@ -361,11 +396,22 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
         for skin in leg.outputs:
             n_variants += 1
             landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-            data, _ = _price(skin["name"], landed_wear, candidate.stattrak, currency, abort_check, live_fetch)
+            # allow_thirdparty=False: revenue must be backed by real Steam sale evidence --
+            # an output with no Steam price but four-figure Buff163/Skinport listings (e.g.
+            # AWP | Gungnir, which trades above Steam's price cap) is unsellable at that
+            # price on the market this tool's fee/revenue math assumes. See _price().
+            data, _ = _price(skin["name"], landed_wear, candidate.stattrak, currency, abort_check,
+                             live_fetch, allow_thirdparty=False)
             price = (data.get("median_price") or data.get("lowest_price")) if data else None
             volume = data.get("volume") if data else None
             tp = (data.get("thirdparty") or {}) if data else {}
             score, reasons = dead_skin_mod.score_from_signals(volume) if price is not None else (0.0, [])
+            if price is None and bulk_prices_mod.has_market_listing(
+                    market_hash_name(skin["name"], landed_wear, candidate.stattrak)) is False:
+                # Visibility only (the row is already unpriced/excluded from revenue): the
+                # Steam feed POSITIVELY confirms no non-souvenir copy has sold in 90 days --
+                # this output can't be sold on Steam at any believable price right now.
+                reasons = ["not_sellable_on_steam"]
             if score > 0:
                 # Steam's own liquidity already looks thin -- try third-party corroboration for
                 # extra visibility, but a miss no longer disqualifies this output (that made the

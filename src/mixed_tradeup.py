@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from . import oddsmath
 from . import marketplaces as marketplaces_mod
+from . import user_overrides as user_overrides_mod
 from .tradeup import _cheapest_wear_price, _price_at_matched_wear, STEAM_SELL_FEE
 
 MAX_FILLER_CANDIDATES = 6  # cap how many other collections get priced -- each one costs requests
@@ -67,6 +68,7 @@ def find_best_filler_mix(primary_collection: str, primary_baseline_roi: float, i
         return None
     primary_price, primary_name, primary_wear = primary_cheapest[:3]  # 4th element (volume) unused here
 
+    blacklisted = user_overrides_mod.blacklisted_skins()
     candidates = []
     for coll, by_rarity in idx.items():
         if coll == primary_collection:
@@ -76,6 +78,14 @@ def find_best_filler_mix(primary_collection: str, primary_baseline_roi: float, i
         if stattrak:
             f_inputs = [s for s in f_inputs if s["stattrak"]]
             f_outputs = [s for s in f_outputs if s["stattrak"]]
+        if blacklisted:
+            # Same rule the main scan applies (see tradeup.scan_collection): a user-blacklisted
+            # skin never enters as an input, and a filler collection whose output pool contains
+            # one is skipped entirely -- mixing it in would put the blacklisted skin back in
+            # the possible-drops table.
+            f_inputs = [s for s in f_inputs if s["name"] not in blacklisted]
+            if any(s["name"] in blacklisted for s in f_outputs):
+                continue
         if not f_inputs or not f_outputs:
             continue
         candidates.append((coll, f_inputs, f_outputs))

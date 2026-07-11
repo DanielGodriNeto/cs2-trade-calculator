@@ -35,12 +35,14 @@ from . import agents as agents_mod
 from . import dead_skin as dead_skin_mod
 from . import invalid_skins as invalid_skins_mod
 from . import mispriced_skins as mispriced_skins_mod
+from . import wear_anomaly as wear_anomaly_mod
 from . import market_reliability as market_reliability_mod
 from . import verify_queue as verify_queue_mod
 from . import evolution as evolution_mod
 from . import recovery as recovery_mod
 from . import pattern_db as pattern_db_mod
 from . import pattern_scanner as pattern_scanner_mod
+from . import user_overrides as user_overrides_mod
 from . import backup_engine as backup_engine_mod
 from .steam_prices import CURRENCIES, get_price, market_hash_name as build_market_hash_name
 
@@ -634,6 +636,95 @@ def cmd_mispriced_skins(args):
           f"verification shows the price back in line -- see src/mispriced_skins.py.")
 
 
+def cmd_skin_blacklist(args):
+    if args.add:
+        all_names = {s["name"] for s in data_mod.load_skins() + data_mod.load_knives_gloves()}
+        name = args.add if args.add in all_names else next(
+            (n for n in all_names if n.lower() == args.add.lower()), None)
+        if name is None:
+            print(f'Unknown skin "{args.add}" -- use the exact database name '
+                  f'(e.g. "AWP | Gungnir").')
+            return
+        user_overrides_mod.add_blacklist(name, note=args.note or "")
+        print(f"Blacklisted permanently: {name}. It is now excluded from candidate generation, "
+              f"scans, and the manual builder, and every existing trade-up containing it is "
+              f"hidden. Remove with: python -m src.main skin-blacklist --remove \"{name}\"")
+        return
+    if args.remove:
+        removed = user_overrides_mod.remove_blacklist(args.remove)
+        print("Removed." if removed else f'"{args.remove}" was not blacklisted.')
+        return
+    rows_in = user_overrides_mod.list_blacklist()
+    if not rows_in:
+        print("No skins blacklisted. Unlike every self-healing registry here, entries on this "
+              "list NEVER expire -- they change only when you add/remove them "
+              "(--add/--remove, or the dashboard's Skin blacklist panel).")
+        return
+    rows = [{
+        "skin": d["skin"],
+        "note": d.get("note", ""),
+        "added": time.strftime("%Y-%m-%d %H:%M", time.localtime(d["added_at"])) if d.get("added_at") else "-",
+    } for d in rows_in]
+    _print_table(rows, ["skin", "note", "added"])
+    print(f"\n{len(rows_in)} skin(s) permanently blacklisted -- excluded everywhere (inputs AND "
+          f"outputs) until removed. See src/user_overrides.py.")
+
+
+def cmd_price_override(args):
+    if args.remove:
+        removed = user_overrides_mod.remove_override(args.remove)
+        print("Removed." if removed else f'No override stored for "{args.remove}".')
+        return
+    if args.skin and args.wear and args.price is not None:
+        entry = user_overrides_mod.set_override(args.skin, args.wear, args.stattrak,
+                                                 args.price, args.currency)
+        print(f"Override set: {entry['market_hash_name']} = {entry['price']} "
+              f"(currency {entry['currency']}). This price now wins over every other source, "
+              f"and existing trade-ups containing the skin are re-priced/re-ROI'd in the "
+              f"opportunity lists.")
+        return
+    rows_in = user_overrides_mod.list_overrides()
+    if not rows_in:
+        print("No price overrides stored. Set one with: python -m src.main price-override "
+              "--skin \"AWP | Gungnir\" --wear \"Factory New\" --price 1500")
+        return
+    rows = [{
+        "market name": d["market_hash_name"],
+        "price": f"{d['price']:.2f}",
+        "currency": d.get("currency", 1),
+        "added": time.strftime("%Y-%m-%d %H:%M", time.localtime(d["added_at"])) if d.get("added_at") else "-",
+    } for d in rows_in]
+    _print_table(rows, ["market name", "price", "currency", "added"])
+    print(f"\n{len(rows_in)} override(s) active -- each wins over the price cache, the bulk "
+          f"mirror, and live fetches until removed. See src/user_overrides.py.")
+
+
+def cmd_wear_anomalies(args):
+    rows_in = wear_anomaly_mod.list_anomalies(currency=args.currency)
+    if not rows_in:
+        print("No wear-order price inversions on record. Marks appear when a positive-ROI scan "
+              "finds an output skin whose BETTER condition (less wear) is priced cheaper than "
+              "the condition the trade-up would produce -- that higher price is a bad data "
+              "point, not real revenue.")
+        return
+    rows = [{
+        "skin": d["market_hash_name"],
+        "priced at": f"{d.get('price'):.2f}" if d.get("price") is not None else "-",
+        "better wear": (f"{d.get('better_wear', '?')} @ {d.get('better_price'):.2f}"
+                         if d.get("better_price") is not None else "-"),
+        "inversion %": f"{d.get('inversion_pct', 0):.1f}",
+        "state": "active (excluded)" if d.get("active") else "expired -- due for re-check",
+        "marked": time.strftime("%Y-%m-%d %H:%M", time.localtime(d["marked_at"])) if d.get("marked_at") else "-",
+    } for d in rows_in]
+    _print_table(rows, ["skin", "priced at", "better wear", "inversion %", "state", "marked"])
+    n_active = sum(1 for d in rows_in if d.get("active"))
+    print(f"\n{len(rows_in)} skin(s) marked ({n_active} active). While active, the flagged "
+          f"skin+wear prices as unavailable in every scan and strategy search, so no trade-up "
+          f"gets recommended off its inflated price. Marks expire after "
+          f"{wear_anomaly_mod.RECHECK_SECONDS // 3600}h and clear immediately when a re-check "
+          f"finds the wear ladder back in order -- see src/wear_anomaly.py.")
+
+
 def cmd_market_reliability(args):
     rows_in = market_reliability_mod.list_tracked(currency=args.currency)
     if not rows_in:
@@ -1028,6 +1119,39 @@ def build_parser():
              "avoids them (temporary, self-healing -- see src/mispriced_skins.py)")
     p_mispriced.add_argument("--currency", type=int, default=1)
     p_mispriced.set_defaults(func=cmd_mispriced_skins)
+
+    p_wear_anom = sub.add_parser(
+        "wear-anomalies",
+        help="List skins whose price failed the wear-order sanity check (a BETTER condition "
+             "priced cheaper than a worse one -- the worse wear's price is a bad data point, "
+             "excluded from recommendations while active; temporary, self-healing -- "
+             "see src/wear_anomaly.py)")
+    p_wear_anom.add_argument("--currency", type=int, default=1)
+    p_wear_anom.set_defaults(func=cmd_wear_anomalies)
+
+    p_skin_bl = sub.add_parser(
+        "skin-blacklist",
+        help="List/manage the PERMANENT per-skin blacklist (src/user_overrides.py) -- a "
+             "blacklisted skin is excluded everywhere (inputs AND outputs) and every existing "
+             "trade-up containing it is hidden, until you remove it yourself")
+    p_skin_bl.add_argument("--add", help='Exact skin name to blacklist, e.g. "AWP | Gungnir"')
+    p_skin_bl.add_argument("--remove", help="Skin name to un-blacklist")
+    p_skin_bl.add_argument("--note", help="Optional note stored with --add")
+    p_skin_bl.set_defaults(func=cmd_skin_blacklist)
+
+    p_override = sub.add_parser(
+        "price-override",
+        help="List/manage manual price overrides (src/user_overrides.py) -- an override wins "
+             "over every price source for that skin+wear, and existing trade-ups containing "
+             "the skin get their cost/ROI recomputed in the opportunity lists")
+    p_override.add_argument("--skin", help='Skin name, e.g. "AWP | Gungnir"')
+    p_override.add_argument("--wear", help='Wear, e.g. "Factory New"')
+    p_override.add_argument("--stattrak", action="store_true")
+    p_override.add_argument("--price", type=float, help="Your price for this skin+wear")
+    p_override.add_argument("--currency", type=int, default=1, help="Steam currency code (default 1 = USD)")
+    p_override.add_argument("--remove", metavar="MARKET_HASH_NAME",
+                            help='Remove the override for this full market name, e.g. "AWP | Gungnir (Factory New)"')
+    p_override.set_defaults(func=cmd_price_override)
 
     p_verify_queue = sub.add_parser(
         "verify-queue",

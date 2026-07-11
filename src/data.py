@@ -69,9 +69,9 @@ def load_skins(force_refresh: bool = False) -> list[dict]:
         rid = rarity.get("id")
         if rid not in RARITY_INDEX:
             continue  # skip knives/gloves (Extraordinary) and Contraband (M4A4 Howl)
-        collections = [c["name"] for c in (item.get("collections") or [])]
+        collections = [c["name"] for c in (item.get("collections") or []) if _is_real_collection(c["name"])]
         if not collections:
-            continue  # not from a collection -> can't be farmed via trade-up strategy
+            continue  # not from a (real) collection -> can't be farmed via trade-up strategy
         wears = [w["name"] for w in (item.get("wears") or [])]
         if not wears:
             continue
@@ -131,6 +131,43 @@ def collections_index(skins: list[dict]) -> dict:
         for c in s["collections"]:
             idx.setdefault(c, {}).setdefault(s["rarity_id"], []).append(s)
     return idx
+
+
+_collection_names_cache: dict = {"mtime": None, "names": frozenset()}
+
+
+def valid_collection_names() -> frozenset:
+    """Every real, trade-up-eligible collection name currently in the skin database (post
+    _is_real_collection filtering) -- cached until SKINS_CACHE's mtime changes (same freshness
+    key the file itself uses, refreshed at most weekly per DATA_TTL_SECONDS), so hot per-entry
+    filtering (sim_loop.py's _entry_hidden, run across a son's whole opportunity archive -- can
+    be thousands of entries) doesn't re-parse the whole skin database on every single check.
+    Used to retroactively hide any already-banked trade-up opportunity that references a
+    collection later found to be a data-fallback placeholder (see _is_real_collection) rather
+    than a real one -- self-cleans stale entries a son found before this filter existed, same as
+    every other _entry_hidden reason."""
+    mtime = SKINS_CACHE.stat().st_mtime if SKINS_CACHE.exists() else None
+    if mtime is not None and _collection_names_cache["mtime"] == mtime:
+        return _collection_names_cache["names"]
+    names = frozenset(c for s in load_skins() for c in s["collections"])
+    _collection_names_cache["mtime"] = mtime
+    _collection_names_cache["names"] = names
+    return names
+
+
+def _is_real_collection(name: str) -> bool:
+    """Every genuine CS2 collection -- weapon-case sets and no-case Community/map collections
+    alike -- is named "The <X> Collection" (verified against all 92 raw collection tags in the
+    upstream feed, 2026-07-11: 91/92 match this pattern). The one outlier, "Limited Edition
+    Item", is the upstream feed's fallback bucket for a handful of unrelated XP-Shop/promotional
+    skins (e.g. Desert Eagle | Heat Treated, AK-47 | Aphrodite -- different weapons, no shared
+    case, "collections[0].id" literally "collection-set-xpshop-wpn-01") that have no real
+    Valve-defined collection at all, not a genuine drop-pool set the trade-up contract UI would
+    ever let you select. Filtering these out here (general pattern, not a per-skin exclusion)
+    means a skin whose ONLY tagged collection is a placeholder like this correctly has no
+    tradeup-eligible collection -- see the `if not collections: continue` below, same rule
+    already applied to skins with zero collections at all."""
+    return name.startswith("The ") and name.endswith("Collection")
 
 
 _DEFAULT_KNIFE_WEARS = ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"]

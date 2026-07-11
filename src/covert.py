@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 from . import float_mix as float_mix_mod
 from . import marketplaces as marketplaces_mod
 from . import rules_engine as rules_engine_mod
+from . import user_overrides as user_overrides_mod
 from .tradeup import PossibleDrop, STEAM_SELL_FEE, _cheapest_wear_price, _price_and_volume_at_matched_wear
+from . import wear_anomaly as wear_anomaly_mod
 
 COVERT_INPUT_COUNT = rules_engine_mod.COVERT_INPUT_COUNT  # alias, see rules_engine.py
 
@@ -56,6 +58,14 @@ def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
         inputs = [s for s in inputs if s["stattrak"]]
         # gloves have no StatTrak variant (Valve doesn't track kills on them) -- only knives do
         outputs = [s for s in outputs if s["stattrak"]]
+    # User's permanent skin blacklist -- same rule as tradeup.scan_collection: blacklisted
+    # skins never enter as inputs, and a case whose knife/glove pool contains one is skipped
+    # (the contract can't be done without a chance of landing on it).
+    blacklisted = user_overrides_mod.blacklisted_skins()
+    if blacklisted:
+        inputs = [s for s in inputs if s["name"] not in blacklisted]
+        if any(s["name"] in blacklisted for s in outputs):
+            return None
     if not inputs or not outputs:
         return None
 
@@ -107,6 +117,23 @@ def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
                                  image=skin.get("image", ""), wear=actual_wear, volume=volume)
         revenues.append(price_val)
         priced += 1
+
+    # Same positive-ROI wear-order sanity check as the regular scan (see tradeup.py /
+    # wear_anomaly.py): a priced output whose own better condition is cheaper is a bad data
+    # point, not revenue -- drop it before this result can look profitable off it.
+    if revenues and cost and (sum(revenues) / len(revenues)) * (1 - STEAM_SELL_FEE) >= cost:
+        for out_skin, drop in zip(outputs, drops):
+            if drop.price is None or (abort_check and abort_check()):
+                continue
+            anomaly = wear_anomaly_mod.check_output_price(
+                out_skin, drop.wear, drop.price, stattrak, currency, abort_check)
+            if anomaly:
+                drop.wear_anomaly = anomaly
+                drop.price = None
+                drop.profit_after_fee = None
+                drop.max_input_price = None
+        revenues = [d.price for d in drops if d.price is not None]
+        priced = len(revenues)
 
     if not revenues:
         return None

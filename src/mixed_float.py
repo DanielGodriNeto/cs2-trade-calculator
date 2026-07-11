@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from . import oddsmath
 from . import marketplaces as marketplaces_mod
+from . import user_overrides as user_overrides_mod
 from .float_mix import _candidate_mixes, _price_per_wear
 from .tradeup import _cheapest_wear_price, _price_at_matched_wear, STEAM_SELL_FEE
 
@@ -187,6 +188,7 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
             break
         _consider(primary_mix, "", None, "", 0.0, "", 0, [])
 
+    blacklisted = user_overrides_mod.blacklisted_skins()
     candidates = []
     for coll, by_rarity in idx.items():
         if coll == primary_collection:
@@ -196,6 +198,13 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
         if stattrak:
             f_inputs = [s for s in f_inputs if s["stattrak"]]
             f_outputs = [s for s in f_outputs if s["stattrak"]]
+        if blacklisted:
+            # Same user-blacklist rule as mixed_tradeup.find_best_filler_mix: never buy a
+            # blacklisted skin as filler, never mix in a collection whose output pool would put
+            # a blacklisted skin back among the possible drops.
+            f_inputs = [s for s in f_inputs if s["name"] not in blacklisted]
+            if any(s["name"] in blacklisted for s in f_outputs):
+                continue
         if not f_inputs or not f_outputs:
             continue
         candidates.append((coll, f_inputs, f_outputs))

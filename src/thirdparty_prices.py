@@ -37,6 +37,18 @@ from . import net
 CSFLOAT_LISTINGS_URL = "https://csfloat.com/api/v1/listings"
 CSFLOAT_API_KEY = os.environ.get("CSFLOAT_API_KEY")  # unset = CSFloat checks silently skipped, never an error
 
+CSFLOAT_TTL_SECONDS = 3600  # 1h -- unlike Skinport/Buff163 (one bulk-mirror fetch reused as an
+# in-memory dict lookup for the whole catalog, effectively already "free" per skin), CSFloat has
+# no bulk endpoint: _get_csfloat_price makes one real live HTTP request PER skin+wear+float-range.
+# Without a cache, verifying the same skin (a common trade-up input reused across many different
+# candidate compositions, or the same composition re-verified after sim_loop._consider_best's
+# dedupe replaces an entry) burns a fresh CSFloat request every single time -- exactly the
+# "shouldn't have to keep checking it again" case steam_prices.py's own 24h cache already solves
+# for Steam. Shorter than Steam's 24h TTL since these are live buy-now LISTINGS (can sell out or
+# reprice within the hour), not aggregated multi-day sale statistics.
+_csfloat_cache: dict = {}  # (market_hash_name, round(min_float,4), round(max_float,4)) -> (price|None, fetched_at)
+_csfloat_cache_lock = threading.Lock()
+
 # Diagnostics: without this, a fetch that's silently failing (e.g. blocked by Skinport's
 # Cloudflare bot-protection, which returns a 403 challenge page instead of JSON) looks
 # IDENTICAL to "checked, genuinely no listings" -- both just produce a None price. This tracks
@@ -132,6 +144,13 @@ def _get_csfloat_price(market_hash_name: str, stattrak: bool, abort_check=None,
         return None
     if abort_check and abort_check():
         return None
+    cache_key = (market_hash_name,
+                 round(min_float, 4) if min_float is not None else None,
+                 round(max_float, 4) if max_float is not None else None)
+    with _csfloat_cache_lock:
+        cached = _csfloat_cache.get(cache_key)
+        if cached and (time.time() - cached[1]) < CSFLOAT_TTL_SECONDS:
+            return cached[0]
     params = {
         "market_hash_name": market_hash_name,
         "sort_by": "lowest_price",
@@ -160,10 +179,19 @@ def _get_csfloat_price(market_hash_name: str, stattrak: bool, abort_check=None,
     listings = body if isinstance(body, list) else body.get("data", [])
     if not listings:
         _record_success("csfloat")  # a real, successful response -- just no listings for this item
+        with _csfloat_cache_lock:
+            _csfloat_cache[cache_key] = (None, time.time())
         return None
     price_cents = listings[0].get("price")
     _record_success("csfloat")
-    return price_cents / 100 if price_cents is not None else None
+    result = price_cents / 100 if price_cents is not None else None
+    # Only a genuine, successful response is cached (a real "no listings"/real price included) --
+    # a network/HTTP failure above returns None WITHOUT reaching here, so a transient error is
+    # never cached as if it were a confirmed answer (matches steam_prices.get_price's same
+    # "don't poison a retry with a transient failure" rule).
+    with _csfloat_cache_lock:
+        _csfloat_cache[cache_key] = (result, time.time())
+    return result
 
 
 def get_thirdparty_price(skin_name: str, wear: str, stattrak: bool, currency: int,

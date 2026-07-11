@@ -43,6 +43,7 @@ from src import adaptive as adaptive_mod
 from src import dead_skin as dead_skin_mod
 from src import invalid_skins as invalid_skins_mod
 from src import mispriced_skins as mispriced_skins_mod
+from src import wear_anomaly as wear_anomaly_mod
 from src import market_reliability as market_reliability_mod
 from src import tradability as tradability_mod
 from src import rules_engine as rules_engine_mod
@@ -50,6 +51,7 @@ from src import random_trade as random_trade_mod
 from src import simulate as simulate_mod
 from src import verify_queue as verify_queue_mod
 from src import sim_blacklist as sim_blacklist_mod
+from src import user_overrides as user_overrides_mod
 from src import xlsx_export as xlsx_export_mod
 from src import evolution as evolution_mod
 from src import recovery as recovery_mod
@@ -466,6 +468,10 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 return
             if path == "/api/sim-population/blacklist":
                 return self._send_json(sim_blacklist_mod.list_entries())
+            if path == "/api/skin-blacklist":
+                return self._send_json(user_overrides_mod.list_blacklist())
+            if path == "/api/price-overrides":
+                return self._send_json(user_overrides_mod.list_overrides())
             if path == "/api/sim-population/leaderboards":
                 return self._send_json({
                     "collections": sim_loop_mod.most_profitable_collections(),
@@ -513,6 +519,11 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 cur_param = params.get("currency", ["1"])[0]
                 currency = int(cur_param) if cur_param.isdigit() else 1
                 return self._send_json(mispriced_skins_mod.list_mispriced(currency=currency))
+            if path == "/api/wear-anomalies":
+                params = parse_qs(urlparse(self.path).query)
+                cur_param = params.get("currency", ["1"])[0]
+                currency = int(cur_param) if cur_param.isdigit() else 1
+                return self._send_json(wear_anomaly_mod.list_anomalies(currency=currency))
             if path == "/api/market-reliability":
                 params = parse_qs(urlparse(self.path).query)
                 cur_param = params.get("currency", ["1"])[0]
@@ -614,6 +625,8 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                     "verify_queue_confidence_threshold": verify_queue_mod.CONFIDENCE_THRESHOLD,
                     "mispriced_gap_threshold_pct": mispriced_skins_mod.GAP_THRESHOLD_PCT,
                     "mispriced_recheck_seconds": mispriced_skins_mod.RECHECK_SECONDS,
+                    "wear_anomaly_tolerance_pct": wear_anomaly_mod.INVERSION_TOLERANCE_PCT,
+                    "wear_anomaly_recheck_seconds": wear_anomaly_mod.RECHECK_SECONDS,
                     "tradability_reasons": tradability_mod.ELIGIBILITY_REASONS,
                     "standard_input_count": rules_engine_mod.STANDARD_INPUT_COUNT,
                 })
@@ -860,6 +873,10 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 removed = mispriced_skins_mod.clear_all()
                 return self._send_json({"ok": True, "removed": removed})
 
+            if path == "/api/wear-anomalies/clear":
+                removed = wear_anomaly_mod.clear_all()
+                return self._send_json({"ok": True, "removed": removed})
+
             if path == "/api/sim-population/verify-top":
                 # "Verify top N trade-ups" button (Results page): force-queue the current
                 # leaderboard's top N into the SAME one-at-a-time Stage-2 consumer the
@@ -909,6 +926,12 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                     if skin is None:
                         problems.append({"skin": name, "issue": "unknown_skin",
                                          "detail": "Not found in the skin database (knives/gloves can't be inputs)."})
+                        continue
+                    if user_overrides_mod.is_blacklisted_skin(name):
+                        problems.append({"skin": name, "issue": "user_blacklisted",
+                                         "detail": "You permanently blacklisted this skin "
+                                                   "(Market intelligence → Skin blacklist). "
+                                                   "Remove it there to use it again."})
                         continue
                     ok, reason = tradability_mod.check_skin(skin, idx)
                     if not ok:
@@ -1075,6 +1098,63 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 removed = sim_blacklist_mod.remove(body.get("signature", ""))
                 return self._send_json({"ok": True, "removed": removed})
 
+            if path == "/api/skin-blacklist":
+                # PERMANENT per-skin blacklist (user_overrides.py -- unlike every self-healing
+                # registry, this only ever changes when the user says so). Existing best-list/
+                # archive entries touching the skin disappear at once (list-time filtering) and
+                # sons self-clean their checkpoints on their next round; scans/agents/manual
+                # builder all refuse the skin from now on.
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                skin = (body.get("skin") or "").strip()
+                if not skin:
+                    return self._send_json({"ok": False, "error": "skin name is required"}, 400)
+                all_names = {s["name"] for s in data_mod.load_skins() + data_mod.load_knives_gloves()}
+                if skin not in all_names:
+                    # Case-insensitive resolution as a convenience -- an exact-name mismatch
+                    # would otherwise silently blacklist nothing.
+                    resolved = next((n for n in all_names if n.lower() == skin.lower()), None)
+                    if resolved is None:
+                        return self._send_json({"ok": False,
+                                                 "error": f'unknown skin "{skin}" -- use the exact '
+                                                          f'database name (try the autocomplete)'}, 400)
+                    skin = resolved
+                entry = user_overrides_mod.add_blacklist(skin, note=body.get("note", ""))
+                return self._send_json({"ok": True, "entry": entry})
+            if path == "/api/skin-blacklist/remove":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                removed = user_overrides_mod.remove_blacklist(body.get("skin", ""))
+                return self._send_json({"ok": True, "removed": removed})
+
+            if path == "/api/price-overrides":
+                # Manual price override for one skin+wear(+StatTrak) -- wins over every other
+                # price source (see user_overrides.py) and retro-reprices existing best-list/
+                # archive entries at list time, so Min-ROI filters catch bugged trade-ups
+                # immediately.
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                try:
+                    entry = user_overrides_mod.set_override(
+                        body.get("skin", ""), body.get("wear", ""), bool(body.get("stattrak")),
+                        float(body.get("price", 0)), int(body.get("currency", 1)))
+                except (TypeError, ValueError) as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                return self._send_json({"ok": True, "entry": entry})
+            if path == "/api/price-overrides/remove":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                removed = user_overrides_mod.remove_override(body.get("market_hash_name", ""))
+                return self._send_json({"ok": True, "removed": removed})
+
             if path == "/api/sim-population/reset-all":
                 # Global "Restart all training & data": stop the round-robin scheduler first so it
                 # isn't mid-handoff while we wipe checkpoints, pause every son so no running thread
@@ -1084,6 +1164,30 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                     son.pause_event.set()
                 sim_loop_mod.reset_all(sim_population)
                 return self._send_json({"ok": True})
+
+            if path == "/api/reset-all-data":
+                # App-wide "Reset all data" (topbar): wipes every REGENERABLE cache/registry --
+                # the ML sim population, rare-pattern scan results, the live-Steam price cache,
+                # and the invalid-skin/mispriced-skin/wear-anomaly/dead-skin registries -- so the
+                # whole app can restart cold. Deliberately does NOT touch data/outcomes.jsonl
+                # (real hand-logged trade history), the real ROI model, price_history.jsonl,
+                # sim_blacklist.json (a user preference, "already done"), or user_overrides.py's
+                # permanent blacklist/price overrides -- none of that is regenerable.
+                round_robin.stop()
+                for son in sim_population:
+                    son.pause_event.set()
+                sim_loop_mod.reset_all(sim_population)
+                pattern_scan_state.pause_event.set()
+                removed_patterns = pattern_scanner_mod.clear_opportunities()
+                removed_prices = steam_prices.clear_cache()
+                removed_invalid = invalid_skins_mod.clear_all()
+                removed_dead = dead_skin_mod.clear_all()
+                removed_mispriced = mispriced_skins_mod.clear_all()
+                removed_wear = wear_anomaly_mod.clear_all()
+                return self._send_json({"ok": True, "removed": {
+                    "pattern_opportunities": removed_patterns, "price_cache_entries": removed_prices,
+                    "invalid_skins": removed_invalid, "dead_skin_scores": removed_dead,
+                    "mispriced_skins": removed_mispriced, "wear_anomalies": removed_wear}})
 
             if path == "/api/sim-population/round-robin/start":
                 round_robin.start()
