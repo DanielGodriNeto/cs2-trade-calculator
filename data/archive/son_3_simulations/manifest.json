@@ -1,0 +1,50 @@
+{
+ "source": "data/sons/son_3/simulations.jsonl",
+ "bytes_archived": 154511734,
+ "lines_archived": 15661,
+ "part_counters": {
+  "2026-07-10": 4
+ },
+ "chunks": [
+  {
+   "file": "2026-07-10_part001.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 6396,
+   "unique_skins": 1228,
+   "first_record_at": "2026-07-10 12:48:02",
+   "last_record_at": "2026-07-10 14:02:22",
+   "raw_bytes": 50334967,
+   "gz_bytes": 5464700
+  },
+  {
+   "file": "2026-07-10_part002.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 5378,
+   "unique_skins": 1062,
+   "first_record_at": "2026-07-10 14:02:22",
+   "last_record_at": "2026-07-10 15:36:24",
+   "raw_bytes": 50332960,
+   "gz_bytes": 4020277
+  },
+  {
+   "file": "2026-07-10_part003.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 3632,
+   "unique_skins": 637,
+   "first_record_at": "2026-07-10 15:36:24",
+   "last_record_at": "2026-07-10 16:52:49",
+   "raw_bytes": 50337449,
+   "gz_bytes": 3178652
+  },
+  {
+   "file": "2026-07-10_part004.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 255,
+   "unique_skins": 64,
+   "first_record_at": "2026-07-10 16:53:33",
+   "last_record_at": "2026-07-10 16:58:23",
+   "raw_bytes": 3506358,
+   "gz_bytes": 205943
+  }
+ ]
+}

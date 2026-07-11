@@ -1,0 +1,1214 @@
+"""Local web dashboard for the CS2 trade-up / anomaly scanner.
+
+Runs a background thread that re-scans on a timer and a small stdlib-only HTTP
+server (no Flask/etc.) that serves a dashboard showing the latest results. This
+is a READ-ONLY scanner, same as the CLI: it never logs into Steam, places
+orders, or touches an inventory -- see ../README.md for why.
+
+Run with:  python web/server.py   (from the cs2-trade-calculator directory)
+Then open: http://127.0.0.1:5000
+"""
+import csv
+import io
+import json
+import sys
+import threading
+import time
+from dataclasses import asdict
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src import data as data_mod
+from src import tradeup as tradeup_mod
+from src import anomalies as anomalies_mod
+from src import covert as covert_mod
+from src.steam_prices import CURRENCIES
+from src import steam_prices
+from src import outcomes as outcomes_mod
+from src import learning as learning_mod
+from src import retrain_loop as retrain_loop_mod
+from src import thirdparty_prices as thirdparty_prices_mod
+from src import price_report as price_report_mod
+from src import price_history as price_history_mod
+from src import oddsmath as oddsmath_mod
+from src import data_archive as data_archive_mod
+from src import price_scan as price_scan_mod
+from src import sim_loop as sim_loop_mod
+from src import sim_learning as sim_learning_mod
+from src import agents as agents_mod
+from src import adaptive as adaptive_mod
+from src import dead_skin as dead_skin_mod
+from src import invalid_skins as invalid_skins_mod
+from src import mispriced_skins as mispriced_skins_mod
+from src import market_reliability as market_reliability_mod
+from src import tradability as tradability_mod
+from src import rules_engine as rules_engine_mod
+from src import random_trade as random_trade_mod
+from src import simulate as simulate_mod
+from src import verify_queue as verify_queue_mod
+from src import sim_blacklist as sim_blacklist_mod
+from src import xlsx_export as xlsx_export_mod
+from src import evolution as evolution_mod
+from src import recovery as recovery_mod
+from src import pattern_db as pattern_db_mod
+from src import pattern_scanner as pattern_scanner_mod
+from src import backup_engine as backup_engine_mod
+import tempfile
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+PORT = 5000
+
+_universe_size_cache = None  # lazily computed, then cached for the process lifetime -- the
+# skin database doesn't change while the server runs, so there's no reason to rebuild
+# price_scan.build_target_list()'s full (skin, wear, stattrak) universe on every top-bar poll
+
+
+def _universe_size() -> int:
+    global _universe_size_cache
+    if _universe_size_cache is None:
+        _universe_size_cache = len(price_scan_mod.build_target_list())
+    return _universe_size_cache
+
+CONFIG_KEYS = ("collection", "stattrak", "min_roi", "anomaly_min_gap_pct",
+               "anomaly_min_volume", "currency", "fast_mode", "skip_anomalies",
+               "float_strategy", "mixed_strategy", "strategy_any_roi", "scan_covert", "case",
+               "check_thirdparty", "use_ml")
+
+
+class ScanState:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.tradeups: list = []
+        self.anomalies: list = []
+        self.covert: list = []
+        self.status = "idle"  # starting | running | idle | paused | stopped | error
+        self.progress = {"stage": "", "current": 0, "total": 0, "label": ""}
+        self.last_run = None
+        self.last_duration = None
+        self.error = None
+        self.config = {
+            "collection": "",
+            "stattrak": False,
+            "min_roi": 0.0,
+            "anomaly_min_gap_pct": 15.0,
+            "anomaly_min_volume": 5,
+            "currency": 1,
+            "fast_mode": False,
+            "skip_anomalies": False,
+            "float_strategy": False,
+            "mixed_strategy": False,
+            "strategy_any_roi": False,  # opt-in: run float/mixed/mixed-float strategies on every
+            # result, not just ones whose plain ROI is already >= 0 -- many more requests
+            "scan_covert": False,  # opt-in: Covert -> knife/glove needs its own case data + extra requests
+            "case": "",  # substring filter for the Covert -> knife/glove scan (case names, not collections)
+            "check_thirdparty": False,  # opt-in: cross-check Steam prices against Skinport/CSFloat
+            # to flag a "drought" (Steam priced anomalously high) -- see src/thirdparty_prices.py
+            "use_ml": False,  # opt-in: consult the trained ROI model (src/learning.py) as a tiebreaker
+            # signal -- no-op until enough outcomes have been logged and train-model has run
+        }
+        self.wake_event = threading.Event()  # "restart now with current config" (scan-now / config change)
+        self.stop_event = threading.Event()  # "stop and discard progress" -- doesn't auto-restart
+        self.pause_event = threading.Event()  # "pause but remember where we were" -- resumable
+        # Resume bookkeeping: which collection to pick back up at, and whatever results were
+        # already found before pausing (only meaningful while paused; reset on any fresh start).
+        self.resume_collection_index = 0
+        self.partial_tradeup_results: list = []
+
+    def abort_requested(self) -> bool:
+        """A restart, a deliberate stop, or a pause should all interrupt an in-progress
+        price lookup -- which one it was is sorted out by the caller in run_scan."""
+        return self.wake_event.is_set() or self.stop_event.is_set() or self.pause_event.is_set()
+
+    def reset_resume_state(self):
+        """Call whenever a scan should start completely fresh (new scope/settings, explicit
+        Scan now, or Stop) rather than continuing a previously paused pass."""
+        self.resume_collection_index = 0
+        self.partial_tradeup_results = []
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            return {
+                "status": self.status,
+                "progress": dict(self.progress),
+                "last_run": self.last_run,
+                "last_duration": self.last_duration,
+                "error": self.error,
+                "config": dict(self.config),
+                "tradeup_count": len(self.tradeups),
+                "anomaly_count": len(self.anomalies),
+                "covert_count": len(self.covert),
+                "can_resume": self.status == "paused",
+            }
+
+
+def run_scan(state: ScanState):
+    with state.lock:
+        state.status = "running"
+        state.error = None
+        cfg = dict(state.config)
+        start_index = state.resume_collection_index
+        tradeup_results = list(state.partial_tradeup_results)
+    start = time.time()
+    try:
+        skins = data_mod.load_skins()
+        idx = data_mod.collections_index(skins)
+        scope = [c for c in idx if not cfg["collection"] or cfg["collection"].lower() in c.lower()]
+
+        for i, collection in enumerate(scope, 1):
+            if i <= start_index:
+                continue  # already scanned in a previous pass before this one was paused
+            if state.wake_event.is_set() or state.stop_event.is_set():
+                with state.lock:
+                    state.reset_resume_state()
+                return  # scope/settings changed, or stopped -- abandon this pass, discard resume point
+            if state.pause_event.is_set():
+                with state.lock:
+                    state.resume_collection_index = i - 1
+                    state.partial_tradeup_results = tradeup_results
+                    state.status = "paused"
+                steam_prices.flush_cache()
+                return
+            with state.lock:
+                state.progress = {"stage": "tradeups", "current": i, "total": len(scope), "label": collection}
+            collection_results = tradeup_mod.scan_collection(
+                collection, idx[collection], cfg["stattrak"], cfg["currency"],
+                abort_check=state.abort_requested, fast_mode=cfg["fast_mode"],
+                float_strategy=cfg["float_strategy"], min_roi=cfg["min_roi"],
+                mixed_strategy=cfg["mixed_strategy"], full_idx=idx,
+                strategy_any_roi=cfg["strategy_any_roi"], check_thirdparty=cfg["check_thirdparty"],
+                use_ml=cfg["use_ml"])
+            if state.pause_event.is_set() and not (state.wake_event.is_set() or state.stop_event.is_set()):
+                # scan_collection bailed out mid-way when the pause hit -- that collection's
+                # results are incomplete, so discard them and redo the whole collection on resume
+                with state.lock:
+                    state.resume_collection_index = i - 1
+                    state.partial_tradeup_results = tradeup_results
+                    state.status = "paused"
+                steam_prices.flush_cache()
+                return
+            if state.wake_event.is_set() or state.stop_event.is_set():
+                with state.lock:
+                    state.reset_resume_state()
+                return
+            tradeup_results.extend(collection_results)
+            # publish partial results after every collection so a full (all-collections) scan is
+            # useful to watch live instead of showing nothing until it finishes hours later
+            visible = sorted([r for r in tradeup_results if r.roi_pct >= cfg["min_roi"]],
+                              key=lambda r: r.roi_pct, reverse=True)
+            with state.lock:
+                state.tradeups = visible
+
+        with state.lock:
+            state.reset_resume_state()  # tradeups phase is fully done -- nothing left to resume there
+        steam_prices.flush_cache()
+
+        if cfg["skip_anomalies"]:
+            with state.lock:
+                state.anomalies = []
+        else:
+            flat_skins = [s for s in skins
+                          if not cfg["collection"] or any(cfg["collection"].lower() in c.lower() for c in s["collections"])]
+            anomaly_results = []
+            chunk = 25
+            for i in range(0, len(flat_skins), chunk):
+                if state.abort_requested():
+                    if state.pause_event.is_set() and not (state.wake_event.is_set() or state.stop_event.is_set()):
+                        with state.lock:
+                            state.status = "paused"
+                        steam_prices.flush_cache()
+                    return
+                part = flat_skins[i:i + chunk]
+                with state.lock:
+                    state.progress = {"stage": "anomalies", "current": min(i + chunk, len(flat_skins)),
+                                       "total": len(flat_skins), "label": ""}
+                anomaly_results.extend(
+                    anomalies_mod.scan_skins(part, cfg["currency"], cfg["anomaly_min_gap_pct"], cfg["anomaly_min_volume"],
+                                              abort_check=state.abort_requested, fast_mode=cfg["fast_mode"],
+                                              stattrak=cfg["stattrak"])
+                )
+                with state.lock:
+                    state.anomalies = sorted(anomaly_results, key=lambda a: a.profit_after_fee, reverse=True)
+        steam_prices.flush_cache()
+
+        if not cfg["scan_covert"]:
+            with state.lock:
+                state.covert = []
+        else:
+            if state.abort_requested():
+                if state.pause_event.is_set() and not (state.wake_event.is_set() or state.stop_event.is_set()):
+                    with state.lock:
+                        state.status = "paused"
+                    steam_prices.flush_cache()
+                return
+            with state.lock:
+                state.progress = {"stage": "covert", "current": 0, "total": 1, "label": "Covert -> knife/glove"}
+            knives_gloves = data_mod.load_knives_gloves()
+            cases_idx = data_mod.cases_index(skins, knives_gloves)
+            covert_results = covert_mod.scan_all(
+                cases_idx, stattrak=cfg["stattrak"], currency=cfg["currency"], only_case=cfg["case"],
+                fast_mode=cfg["fast_mode"], abort_check=state.abort_requested,
+                float_strategy=cfg["float_strategy"], min_roi=cfg["min_roi"], mixed_strategy=cfg["mixed_strategy"],
+                strategy_any_roi=cfg["strategy_any_roi"])
+            if state.pause_event.is_set() and not (state.wake_event.is_set() or state.stop_event.is_set()):
+                with state.lock:
+                    state.status = "paused"
+                steam_prices.flush_cache()
+                return
+            with state.lock:
+                state.covert = [r for r in covert_results if r.roi_pct >= cfg["min_roi"]]
+
+        with state.lock:
+            state.status = "idle"
+            state.last_run = time.time()
+            state.last_duration = time.time() - start
+            state.progress = {"stage": "", "current": 0, "total": 0, "label": ""}
+        steam_prices.flush_cache()
+    except Exception as e:  # keep the background loop alive even if a scan fails
+        with state.lock:
+            state.status = "error"
+            state.error = str(e)
+        steam_prices.flush_cache()
+
+
+def scan_loop(state: ScanState):
+    """No automatic rescanning -- a scan runs once (when triggered by Scan now, Continue, or
+    a config change) and then this thread just waits indefinitely for the next trigger. This
+    includes the very FIRST run: the thread waits on wake_event before ever calling run_scan,
+    so nothing scans just because the server process started (previously it did, silently
+    kicking off a full ~90-collection scan on every boot -- contradicted this module's own
+    docstring above)."""
+    state.wake_event.wait()
+    state.wake_event.clear()
+    while True:
+        run_scan(state)
+        with state.lock:
+            stopped = state.stop_event.is_set()
+            if stopped:
+                state.stop_event.clear()
+                state.status = "stopped"
+                state.progress = {"stage": "", "current": 0, "total": 0, "label": ""}
+        state.wake_event.wait()  # stay put until scan-now, resume, or a config change wakes us
+        state.wake_event.clear()
+
+
+RATE_LIMIT_AUTO_RETRY_CHECK_SECONDS = 30
+RATE_LIMIT_AUTO_RETRY_AFTER_SECONDS = 5 * 60  # matches the dashboard's VPN-warning threshold
+
+
+def rate_limit_watchdog(state: ScanState):
+    """This is the one exception to 'no automatic rescanning': if Steam has refused every
+    request for 5+ minutes straight, there's otherwise no way to get unstuck without a human
+    clicking something. So this retries automatically every 5 minutes for as long as that
+    streak continues, and stops the moment a single request succeeds (the streak clears in
+    steam_prices, so this naturally goes quiet again -- it isn't a general recurring rescan).
+
+    IMPORTANT: a scan that's actively "running" is NOT stuck -- it's just slow, and
+    steam_prices.get_price() already retries/backs off per-request on its own. This must never
+    interrupt or discard progress from an in-progress pass (a real bug this project hit: a long
+    scan across many collections would get silently killed and restarted from scratch partway
+    through, so it could run "forever" without ever finishing). It only nudges a scan that's
+    genuinely idle (nothing running to interrupt) -- and even then, resumes in place (like
+    clicking Continue) rather than wiping any paused/partial progress (like clicking Scan now
+    would) if there is any to preserve."""
+    last_auto_retry = 0.0
+    while True:
+        time.sleep(RATE_LIMIT_AUTO_RETRY_CHECK_SECONDS)
+        streak_start = steam_prices.get_stats().get("rate_limit_streak_start")
+        if not streak_start:
+            continue
+        now = time.time()
+        if now - streak_start >= RATE_LIMIT_AUTO_RETRY_AFTER_SECONDS and \
+                now - last_auto_retry >= RATE_LIMIT_AUTO_RETRY_AFTER_SECONDS:
+            with state.lock:
+                if state.status == "running":
+                    continue  # let the in-progress pass keep going -- do NOT touch it
+            last_auto_retry = now
+            state.pause_event.clear()
+            state.wake_event.set()
+
+
+def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopState,
+                  price_scan_state: price_scan_mod.PriceScanState,
+                  sim_population: list,
+                  verify_queue_state: verify_queue_mod.VerifyQueueState,
+                  convergence_watcher: "sim_loop_mod.ConvergenceWatcher",
+                  round_robin: "sim_loop_mod.RoundRobinScheduler",
+                  pattern_scan_state: "pattern_scanner_mod.PatternScanState",
+                  backup_worker: "backup_engine_mod.BackupWorkerState"):
+    class Handler(BaseHTTPRequestHandler):
+        def _send_json(self, obj, status=200):
+            body = json.dumps(obj).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _send_file(self, path: Path, content_type: str):
+            if not path.exists():
+                self.send_response(404)
+                self.end_headers()
+                return
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _read_json_body(self):
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            return json.loads(raw or b"{}")
+
+        def do_GET(self):
+            path = urlparse(self.path).path
+            if path == "/":
+                return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
+            if path == "/app.js":
+                return self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
+            if path == "/style.css":
+                return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8")
+            if path == "/api/status":
+                return self._send_json(state.snapshot())
+            if path == "/api/tradeups":
+                with state.lock:
+                    rows = [asdict(r) for r in state.tradeups]
+                return self._send_json(rows)
+            if path == "/api/anomalies":
+                with state.lock:
+                    rows = [asdict(a) for a in state.anomalies]
+                return self._send_json(rows)
+            if path == "/api/covert":
+                with state.lock:
+                    rows = [asdict(r) for r in state.covert]
+                return self._send_json(rows)
+            if path == "/api/currencies":
+                return self._send_json([{"code": code, "name": name, "symbol": symbol}
+                                         for code, (name, symbol) in sorted(CURRENCIES.items(), key=lambda kv: kv[1][0])])
+            if path == "/api/network-stats":
+                stats = steam_prices.get_stats()
+                stats["universe_size"] = _universe_size()
+                return self._send_json(stats)
+            if path == "/api/thirdparty-stats":
+                return self._send_json(thirdparty_prices_mod.get_stats())
+            if path == "/api/outcomes":
+                return self._send_json([asdict(o) for o in outcomes_mod.load_outcomes()])
+            if path == "/api/outcomes/stats":
+                return self._send_json(outcomes_mod.stats())
+            if path == "/api/model-status":
+                return self._send_json(learning_mod.get_model_status())
+            if path == "/api/retrain-loop/status":
+                return self._send_json(retrain_state.snapshot())
+            if path == "/api/price-scan/status":
+                return self._send_json(price_scan_state.snapshot())
+            if path == "/api/sim-population/status":
+                return self._send_json([s.snapshot() for s in sim_population])
+            if path == "/api/sim-population/best-simulations":
+                params = parse_qs(urlparse(self.path).query)
+                son_param = params.get("son", [""])[0]
+                son_id = int(son_param) if son_param.isdigit() else None
+                return self._send_json(sim_loop_mod.list_best_simulations(son_id=son_id))
+            if path == "/api/sim-population/round-history":
+                # Full lifetime ROI/profit progress per son, read straight from the uncapped
+                # round_history.jsonl (see sim_loop.son_round_history_file) -- unlike the
+                # checkpoint-backed history the agent-stats chart already uses (capped at the
+                # last 300 rounds), this survives as long as the son has run. Loaded on demand by
+                # the Results page, not the 3s poll.
+                return self._send_json({sid: sim_loop_mod.load_round_history(sid) for sid in range(sim_loop_mod.N_SONS)})
+            if path == "/api/sim-population/opportunities/archive":
+                # Unlike best-simulations above (checkpoint-backed, capped at BEST_KEPT=50 per
+                # son), this reads sim_loop.list_all_opportunities() -- EVERY unique trade-up
+                # the population has ever simulated, paginated server-side so the response stays
+                # small regardless of how large the archive has grown. Loaded on demand by the
+                # dashboard's "Browse all opportunities" panel, not on the 3s poll.
+                params = parse_qs(urlparse(self.path).query)
+                son_param = params.get("son", [""])[0]
+                son_id = int(son_param) if son_param.isdigit() else None
+                collection = params.get("collection", [""])[0].strip() or None
+                min_roi_param = params.get("min_roi", [""])[0]
+                min_roi = float(min_roi_param) if min_roi_param else None
+                page = max(1, int(params.get("page", ["1"])[0]) if params.get("page", ["1"])[0].isdigit() else 1)
+                page_size_raw = params.get("page_size", ["50"])[0]
+                page_size = min(500, max(1, int(page_size_raw) if page_size_raw.isdigit() else 50))
+                all_items = sim_loop_mod.list_all_opportunities(son_id=son_id, collection_filter=collection,
+                                                                  min_roi=min_roi)
+                start = (page - 1) * page_size
+                return self._send_json({
+                    "total": len(all_items), "page": page, "page_size": page_size,
+                    "n_pages": max(1, -(-len(all_items) // page_size)),
+                    "items": all_items[start:start + page_size],
+                })
+            if path == "/api/export/xlsx":
+                # Local-file substitute for a "create a Google Sheet" button (see
+                # requirements.txt / xlsx_export.py's module docstring for why) -- a single
+                # formatted workbook covering the full opportunity archive, every agent's
+                # stats/history, leaderboards, and model quality, with a couple of embedded
+                # charts. openpyxl is imported lazily inside build_workbook(), so a server
+                # without it installed only fails HERE, on an actual export click, not at
+                # startup or anywhere else in the dashboard.
+                try:
+                    data = xlsx_export_mod.build_workbook(sim_population, agents_mod.AGENT_NAMES)
+                except ImportError as e:
+                    return self._send_json(
+                        {"ok": False, "error": f"openpyxl not installed in this Python "
+                                                 f"environment ({e}) -- run: pip install openpyxl"}, 500)
+                ts = time.strftime("%Y%m%d-%H%M%S")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                self.send_header("Content-Disposition", f'attachment; filename="cs2-trade-data-{ts}.xlsx"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            if path == "/api/sim-population/blacklist":
+                return self._send_json(sim_blacklist_mod.list_entries())
+            if path == "/api/sim-population/leaderboards":
+                return self._send_json({
+                    "collections": sim_loop_mod.most_profitable_collections(),
+                    "skins": sim_loop_mod.most_profitable_skins(),
+                })
+            if path == "/api/verify-queue/status":
+                return self._send_json(verify_queue_state.snapshot())
+            if path == "/api/sim-population/convergence":
+                return self._send_json(convergence_watcher.snapshot())
+            if path == "/api/sim-population/round-robin/status":
+                return self._send_json(round_robin.snapshot())
+            if path == "/api/dead-skins":
+                params = parse_qs(urlparse(self.path).query)
+                cur_param = params.get("currency", ["1"])[0]
+                currency = int(cur_param) if cur_param.isdigit() else 1
+                return self._send_json(dead_skin_mod.list_dead_skins(currency=currency))
+            if path == "/api/invalid-skins":
+                params = parse_qs(urlparse(self.path).query)
+                cur_param = params.get("currency", ["1"])[0]
+                currency = int(cur_param) if cur_param.isdigit() else 1
+                return self._send_json(invalid_skins_mod.list_invalid_skins(currency=currency))
+            if path == "/api/skins":
+                params = parse_qs(urlparse(self.path).query)
+                q = params.get("q", [""])[0].strip().lower()
+                tradeable_only = params.get("tradeable", ["false"])[0].lower() == "true"
+                skins = data_mod.load_skins()
+                idx = data_mod.collections_index(skins)
+                all_skins = skins + data_mod.load_knives_gloves()
+                matches = [s for s in all_skins if not q or q in s["name"].lower()]
+                out = []
+                for s in matches:
+                    ok, reason = tradability_mod.check_skin(s, idx) if "collections" in s else (False, "not_a_tradeup_rarity")
+                    if tradeable_only and not ok:
+                        continue
+                    out.append({"name": s["name"], "image": s.get("image", ""),
+                                "wears": s["wears"], "collections": s.get("collections", []),
+                                "rarity_name": s.get("rarity_name", ""),
+                                "stattrak": bool(s.get("stattrak")),
+                                "tradeable": ok, "tradeable_reason": reason})
+                    if len(out) >= 30:
+                        break
+                return self._send_json(out)
+            if path == "/api/mispriced-skins":
+                params = parse_qs(urlparse(self.path).query)
+                cur_param = params.get("currency", ["1"])[0]
+                currency = int(cur_param) if cur_param.isdigit() else 1
+                return self._send_json(mispriced_skins_mod.list_mispriced(currency=currency))
+            if path == "/api/market-reliability":
+                params = parse_qs(urlparse(self.path).query)
+                cur_param = params.get("currency", ["1"])[0]
+                currency = int(cur_param) if cur_param.isdigit() else 1
+                return self._send_json(market_reliability_mod.list_tracked(currency=currency))
+            if path == "/api/market-reliability/log":
+                params = parse_qs(urlparse(self.path).query)
+                limit_param = params.get("limit", ["200"])[0]
+                limit = int(limit_param) if limit_param.isdigit() else 200
+                return self._send_json(market_reliability_mod.list_log(limit=limit))
+            if path == "/api/evolution/status":
+                return self._send_json(evolution_mod.snapshot())
+            if path == "/api/evolution/lineage":
+                params = parse_qs(urlparse(self.path).query)
+                limit_param = params.get("limit", ["100"])[0]
+                limit = int(limit_param) if limit_param.isdigit() else 100
+                return self._send_json(evolution_mod.list_lineage(limit=limit))
+            if path == "/api/recovery/log":
+                params = parse_qs(urlparse(self.path).query)
+                limit_param = params.get("limit", ["100"])[0]
+                limit = int(limit_param) if limit_param.isdigit() else 100
+                return self._send_json(recovery_mod.list_log(limit=limit))
+            if path == "/api/patterns/status":
+                return self._send_json({"scanner": pattern_scan_state.snapshot(),
+                                         "knowledge": pattern_db_mod.get_status()})
+            if path == "/api/patterns/opportunities":
+                params = parse_qs(urlparse(self.path).query)
+                def _s(name):
+                    v = params.get(name, [""])[0].strip()
+                    return v or None
+                def _f(name):
+                    v = params.get(name, [""])[0].strip()
+                    try:
+                        return float(v) if v else None
+                    except ValueError:
+                        return None
+                tier_param = params.get("tier", [""])[0]
+                return self._send_json(pattern_scanner_mod.list_opportunities(
+                    weapon=_s("weapon"), pattern_type=_s("pattern_type"),
+                    marketplace=_s("marketplace"), min_profit=_f("min_profit"),
+                    min_confidence=_s("min_confidence"), min_float=_f("min_float"),
+                    max_float=_f("max_float"),
+                    tier=int(tier_param) if tier_param.isdigit() else None,
+                    sort=params.get("sort", ["score"])[0] or "score"))
+            if path == "/api/patterns/db":
+                db = pattern_db_mod.load_db()
+                return self._send_json({"schema_version": db.get("schema_version"),
+                                         "knowledge_version": db.get("knowledge_version"),
+                                         "sources": db.get("sources"),
+                                         "entries": db.get("entries"),
+                                         "last_verified_at": db.get("last_verified_at")})
+            if path == "/api/patterns/db/history":
+                params = parse_qs(urlparse(self.path).query)
+                limit_param = params.get("limit", ["100"])[0]
+                limit = int(limit_param) if limit_param.isdigit() else 100
+                return self._send_json(pattern_db_mod.list_history(limit=limit))
+            if path == "/api/backup/status":
+                return self._send_json(backup_engine_mod.get_status(backup_worker))
+            if path == "/api/constants":
+                return self._send_json({
+                    "steam_sell_fee_pct": tradeup_mod.STEAM_SELL_FEE * 100,
+                    "wear_breakpoints": oddsmath_mod.WEAR_BREAKPOINTS,
+                    "drought_threshold_pct": 15.0,  # thirdparty_prices.drought_flag()'s default threshold_pct
+                    "min_training_samples": learning_mod.MIN_TRAINING_SAMPLES,
+                    "retrain_trigger_delta": retrain_loop_mod.RETRAIN_TRIGGER_DELTA,
+                    "price_ttl_seconds": steam_prices.PRICE_TTL_SECONDS,
+                    "min_price_history_points": price_history_mod.MIN_HISTORY_POINTS,
+                    "low_volume_threshold": price_report_mod.LOW_VOLUME_THRESHOLD,
+                    "sim_min_training_samples": sim_learning_mod.MIN_TRAINING_SAMPLES,
+                    "sim_retrain_trigger_delta": sim_learning_mod.RETRAIN_TRIGGER_DELTA,
+                    "sim_son_temperatures": sim_loop_mod.SON_TEMPERATURES,
+                    "sim_stuck_threshold_rounds": sim_loop_mod.STUCK_THRESHOLD_ROUNDS,
+                    "sim_nudge_duration_rounds": sim_loop_mod.NUDGE_DURATION_ROUNDS,
+                    # Self-tuning agent preferences (src/adaptive.py). agent_profiles below are
+                    # each agent's STARTING personality -- the live, self-tuned values are on
+                    # each son's own snapshot in /api/sim-population/status.
+                    "sim_adaptive_params": list(adaptive_mod.ADAPTIVE_PARAMS),
+                    "sim_adapt_window_rounds": adaptive_mod.ADAPT_WINDOW_ROUNDS,
+                    "sim_adapt_adopt_epsilon_pp": adaptive_mod.ADOPT_EPSILON_PP,
+                    "sim_adapt_band_radius": adaptive_mod.BAND_RADIUS,
+                    "sim_adapt_exploration_floor": adaptive_mod.EXPLORATION_RATE_FLOOR,
+                    "sim_adapt_novelty_ucb_pp": adaptive_mod.NOVELTY_UCB_PP,
+                    "sim_adapt_novelty_reward_pp": adaptive_mod.NOVELTY_REWARD_PP,
+                    "sim_adapt_invalid_penalty_pp": adaptive_mod.INVALID_PENALTY_PP,
+                    "agent_names": agents_mod.AGENT_NAMES,
+                    "agent_profiles": {sid: {"name": p.name, "purpose": p.purpose,
+                                              "exploration_rate": p.exploration_rate,
+                                              "risk_tolerance": p.risk_tolerance,
+                                              "collection_mixing_bias": p.collection_mixing_bias,
+                                              "wear_optimization_bias": p.wear_optimization_bias,
+                                              "liquidity_importance": p.liquidity_importance,
+                                              "roi_weight": p.roi_weight,
+                                              "mutation_strength": p.mutation_strength,
+                                              "memory_weight": p.memory_weight}
+                                        for sid, p in agents_mod.AGENT_PROFILES.items()},
+                    "dead_skin_threshold": dead_skin_mod.DEAD_SKIN_THRESHOLD,
+                    "invalid_skin_recheck_seconds": invalid_skins_mod.INVALID_RECHECK_SECONDS,
+                    "verify_queue_roi_threshold_pct": verify_queue_mod.ROI_THRESHOLD_PCT,
+                    "verify_queue_confidence_threshold": verify_queue_mod.CONFIDENCE_THRESHOLD,
+                    "mispriced_gap_threshold_pct": mispriced_skins_mod.GAP_THRESHOLD_PCT,
+                    "mispriced_recheck_seconds": mispriced_skins_mod.RECHECK_SECONDS,
+                    "tradability_reasons": tradability_mod.ELIGIBILITY_REASONS,
+                    "standard_input_count": rules_engine_mod.STANDARD_INPUT_COUNT,
+                })
+            if path == "/api/price-report":
+                # Reuses whatever the current scan already found (state.tradeups is already
+                # filtered to roi_pct >= the configured min-roi -- see run_scan) instead of
+                # kicking off a brand new scan: Steam prices are taken straight from those
+                # results (see price_report.py's module docstring for why), so this only adds
+                # ONE new network call (Skinport's shared bulk fetch, already cached 5 min) plus
+                # optional per-row CSFloat calls -- fast enough to run inline, unlike a scan.
+                params = parse_qs(urlparse(self.path).query)
+                ml_only = params.get("ml_only", ["false"])[0].lower() == "true"
+                with state.lock:
+                    candidates = list(state.tradeups)
+                    currency = state.config["currency"]
+                if ml_only:
+                    candidates = [r for r in candidates
+                                  if r.ml_predicted_roi_pct is not None and r.ml_predicted_roi_pct >= 0]
+                if not candidates:
+                    reason = ("no ML-flagged winning trade-ups in the current results -- train a model, "
+                               "enable \"Use ML calibration\", and rescan first" if ml_only else
+                               "no winning trade-ups in the current results -- run a scan first")
+                    return self._send_json({"ok": False, "error": reason}, 400)
+                rows = price_report_mod.build_report(candidates, currency)
+                csv_rows = price_report_mod.to_csv_rows(rows)
+                buf = io.StringIO()
+                writer = csv.DictWriter(buf, fieldnames=price_report_mod.CSV_COLUMNS)
+                writer.writeheader()
+                writer.writerows(csv_rows)
+                data = buf.getvalue().encode("utf-8")
+                ts = time.strftime("%Y%m%d-%H%M%S")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="cs2-price-report-{ts}.csv"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            if path == "/api/export-data":
+                # Generated to a temp file (not the project root -- the browser's own download
+                # already saves a copy wherever the user wants; leaving one in the project
+                # root too on every click would just accumulate clutter, unlike the CLI's
+                # export-data, which deliberately leaves its archive in place).
+                try:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        tmp_path = Path(tmp) / "data-archive.zip"
+                        archive_path = data_archive_mod.export_archive(tmp_path)
+                        data = archive_path.read_bytes()
+                except FileNotFoundError as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                ts = time.strftime("%Y%m%d-%H%M%S")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="cs2-data-archive-{ts}.zip"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            if path == "/api/price-history":
+                params = parse_qs(urlparse(self.path).query)
+                skin = params.get("skin", [""])[0]
+                wear = params.get("wear", [""])[0]
+                stattrak = params.get("stattrak", ["false"])[0].lower() == "true"
+                try:
+                    currency = int(params.get("currency", ["1"])[0])
+                except ValueError:
+                    currency = 1
+                if not skin or not wear:
+                    return self._send_json({"ok": False, "error": "skin and wear are required"}, 400)
+                name = steam_prices.market_hash_name(skin, wear, stattrak)
+                history = price_history_mod.get_history(name, currency)
+                if not history:
+                    # Plant the first data point immediately (one live Steam lookup) rather
+                    # than making the user run a full collection scan before this feature
+                    # shows anything at all.
+                    steam_prices.get_price(name, currency)
+                    history = price_history_mod.get_history(name, currency)
+                prediction = price_history_mod.predict_next_price(history)
+                return self._send_json({
+                    "market_hash_name": name,
+                    "history": history,
+                    "prediction": (prediction.__dict__ if prediction else None),
+                    "min_points_required": price_history_mod.MIN_HISTORY_POINTS,
+                })
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):
+            path = urlparse(self.path).path
+            if path == "/api/config":
+                length = int(self.headers.get("Content-Length", 0) or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                try:
+                    body = json.loads(raw or b"{}")
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                with state.lock:
+                    for k in CONFIG_KEYS:
+                        if k in body:
+                            state.config[k] = body[k]
+                    state.reset_resume_state()  # new scope/settings -- any paused progress no longer applies
+                    cfg = dict(state.config)
+                return self._send_json({"ok": True, "config": cfg})
+            if path == "/api/scan-now":
+                with state.lock:
+                    state.reset_resume_state()  # explicit fresh start, not a resume
+                state.pause_event.clear()
+                state.wake_event.set()
+                return self._send_json({"ok": True})
+            if path == "/api/stop":
+                state.stop_event.set()
+                state.pause_event.clear()
+                # if we're currently paused, scan_loop is blocked in an untimed wake_event.wait() --
+                # stop_event alone won't unblock that, so wake it too or Stop would silently do nothing
+                state.wake_event.set()
+                return self._send_json({"ok": True})
+            if path == "/api/pause":
+                state.pause_event.set()
+                return self._send_json({"ok": True})
+            if path == "/api/resume":
+                state.pause_event.clear()
+                state.wake_event.set()  # resume_collection_index/partial_tradeup_results are left as-is
+                return self._send_json({"ok": True})
+
+            if path == "/api/evolution/enable":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                evolution_mod.set_enabled(bool(body.get("enabled", True)))
+                return self._send_json({"ok": True, "enabled": evolution_mod.enabled()})
+            if path == "/api/evolution/tick":
+                # On-demand manager step (the dashboard's "Run a tick now" button) -- same
+                # code path the background watcher runs every TICK_SECONDS.
+                return self._send_json({"ok": True, "result": evolution_mod.tick(sim_population)})
+
+            if path == "/api/patterns/scan/start":
+                pattern_scan_state.pause_event.clear()
+                pattern_scan_state.wake_event.set()
+                return self._send_json({"ok": True})
+            if path == "/api/patterns/scan/pause":
+                pattern_scan_state.pause_event.set()
+                return self._send_json({"ok": True})
+            if path == "/api/patterns/refresh":
+                try:
+                    result = pattern_db_mod.refresh_knowledge()
+                except (OSError, json.JSONDecodeError) as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 500)
+                return self._send_json({"ok": True, "result": result})
+            if path == "/api/patterns/db/update-entry":
+                # Manual override for one knowledge entry -- versioned + audited by pattern_db.
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                entry_id = body.get("id")
+                fields = body.get("fields") or {}
+                if not entry_id or not isinstance(fields, dict):
+                    return self._send_json({"ok": False, "error": "need id + fields"}, 400)
+                ok = pattern_db_mod.update_entry(entry_id, fields, note=body.get("note", ""))
+                return self._send_json({"ok": ok} if ok else
+                                        {"ok": False, "error": "unknown entry id or no updatable fields"}, 200 if ok else 400)
+
+            if path == "/api/backup/config":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                cfg = backup_engine_mod.save_config(body)
+                return self._send_json({"ok": True, "config": cfg,
+                                         "status": backup_engine_mod.get_status(backup_worker)})
+            if path == "/api/backup/run-now":
+                # Force one full cycle right now (skips the delta check), synchronously, so the
+                # dashboard can show the result of THIS run rather than "check back later".
+                result = backup_engine_mod.run_backup(force=True)
+                return self._send_json({"ok": result.get("ok", False), "result": result})
+
+            if path == "/api/market-reliability/override":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                try:
+                    market_reliability_mod.set_override(
+                        body["market_hash_name"], int(body.get("currency", 1)),
+                        body["state"], body.get("note", ""))
+                except (KeyError, TypeError, ValueError) as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                return self._send_json({"ok": True})
+
+            if path == "/api/market-reliability/override/clear":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                try:
+                    removed = market_reliability_mod.clear_override(
+                        body["market_hash_name"], int(body.get("currency", 1)))
+                except (KeyError, TypeError) as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                return self._send_json({"ok": True, "removed": removed})
+
+            if path == "/api/log-outcome":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                # No state.lock here -- outcomes.py has its own internal write lock, and this
+                # endpoint never touches ScanState, so it can't contend with the scan loop.
+                try:
+                    outcome = outcomes_mod.log_outcome(**body)
+                except (ValueError, TypeError) as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                return self._send_json({"ok": True, "outcome": asdict(outcome)})
+
+            if path == "/api/update-outcome-sale":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                try:
+                    updated = outcomes_mod.update_outcome_sale(body["id"], float(body["sale_price"]))
+                except (KeyError, TypeError, ValueError) as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                if updated is None:
+                    return self._send_json({"ok": False, "error": "outcome id not found"}, 404)
+                return self._send_json({"ok": True, "outcome": asdict(updated)})
+
+            if path == "/api/train-model":
+                # Sub-second on the row counts this feature realistically sees -- runs inline
+                # in the request handler rather than needing its own background-thread state
+                # machine, unlike scan-now.
+                result = learning_mod.train()
+                return self._send_json({"ok": True, "trained": result.trained, "reason": result.reason,
+                                         "n_samples": result.n_samples, "validation_mae": result.validation_mae,
+                                         "feature_importances": result.feature_importances,
+                                         "model_name": result.model_name, "candidate_maes": result.candidate_maes})
+
+            if path == "/api/invalid-skins/clear":
+                removed = invalid_skins_mod.clear_all()
+                return self._send_json({"ok": True, "removed": removed})
+
+            if path == "/api/mispriced-skins/clear":
+                removed = mispriced_skins_mod.clear_all()
+                return self._send_json({"ok": True, "removed": removed})
+
+            if path == "/api/sim-population/verify-top":
+                # "Verify top N trade-ups" button (Results page): force-queue the current
+                # leaderboard's top N into the SAME one-at-a-time Stage-2 consumer the
+                # automatic queue uses -- see verify_queue.enqueue_top. Each verification's
+                # per-skin gaps feed the mispriced-skin registry, which future simulations
+                # penalize (mispriced_skins.py's module docstring has the full loop).
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                n = body.get("n", 50)
+                n = max(1, min(200, int(n) if isinstance(n, (int, float)) else 50))
+                queued = verify_queue_mod.enqueue_top(n)
+                return self._send_json({"ok": True, "queued": queued})
+
+            if path == "/api/manual-tradeup":
+                # Manual trade-up builder: the user composes a contract from ANY skins --
+                # mixing collections is the point (post-Oct-2025 group-based odds) -- and this
+                # prices/validates it through the exact same path the agents use
+                # (rules_engine.validate_contract -> simulate.simulate), never a parallel
+                # re-implementation. Runs live price fetches, so it can take a few seconds.
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                units_in = body.get("units") or []
+                stattrak = bool(body.get("stattrak"))
+                try:
+                    currency = int(body.get("currency", 1))
+                except (TypeError, ValueError):
+                    currency = 1
+                if not units_in:
+                    return self._send_json({"ok": False, "error": "no input skins given"}, 400)
+                skins = data_mod.load_skins()
+                by_name = {s["name"]: s for s in skins}
+                idx = data_mod.collections_index(skins)
+                problems = []
+                resolved = []
+                for u in units_in:
+                    name = (u.get("skin") or "").strip()
+                    wear = u.get("wear") or ""
+                    try:
+                        count = int(u.get("count", 1))
+                    except (TypeError, ValueError):
+                        count = 0
+                    skin = by_name.get(name)
+                    if skin is None:
+                        problems.append({"skin": name, "issue": "unknown_skin",
+                                         "detail": "Not found in the skin database (knives/gloves can't be inputs)."})
+                        continue
+                    ok, reason = tradability_mod.check_skin(skin, idx)
+                    if not ok:
+                        problems.append({"skin": name, "issue": reason,
+                                         "detail": tradability_mod.ELIGIBILITY_REASONS.get(reason, reason)})
+                        continue
+                    if wear not in skin["wears"]:
+                        problems.append({"skin": name, "issue": "wear_not_available_for_skin",
+                                         "detail": f"This skin's float range excludes {wear or '(none)'}."})
+                        continue
+                    if stattrak and not skin.get("stattrak"):
+                        problems.append({"skin": name, "issue": "no_stattrak_variant",
+                                         "detail": "No StatTrak variant exists for this skin."})
+                        continue
+                    if count <= 0:
+                        problems.append({"skin": name, "issue": "non_positive_count", "detail": "Count must be >= 1."})
+                        continue
+                    resolved.append((skin, wear, count))
+                if problems:
+                    return self._send_json({"ok": False, "error": "some inputs can't be traded up",
+                                             "problems": problems}, 400)
+                rarity_ids = {s["rarity_id"] for s, _, _ in resolved}
+                if len(rarity_ids) > 1:
+                    return self._send_json({"ok": False, "error": "all 10 inputs must share ONE rarity tier "
+                                             f"(got {', '.join(sorted(rarity_ids))})"}, 400)
+                from_id = next(iter(rarity_ids))
+                to_id = data_mod.RARITY_CHAIN[data_mod.RARITY_INDEX[from_id] + 1][0]
+                legs_by_collection = {}
+                for skin, wear, count in resolved:
+                    # A skin realistically belongs to one collection; if the feed lists
+                    # several, prefer one that actually has outputs at the target tier.
+                    colls = skin.get("collections") or [""]
+                    coll = next((c for c in colls if idx.get(c, {}).get(to_id)), colls[0])
+                    legs_by_collection.setdefault(coll, []).append(
+                        {"skin": skin, "wear": wear, "count": count})
+                legs = []
+                for coll, units in legs_by_collection.items():
+                    outputs = idx.get(coll, {}).get(to_id, [])
+                    if stattrak:
+                        outputs = [s for s in outputs if s["stattrak"]]
+                    legs.append(random_trade_mod.CandidateLeg(collection=coll, units=units, outputs=outputs))
+                from_name = dict(data_mod.RARITY_CHAIN)[from_id]
+                to_name = dict(data_mod.RARITY_CHAIN)[to_id]
+                candidate = random_trade_mod.Candidate(
+                    from_rarity_id=from_id, from_rarity_name=from_name,
+                    to_rarity_id=to_id, to_rarity_name=to_name, stattrak=stattrak, legs=legs)
+                valid, reason = rules_engine_mod.validate_contract(candidate)
+                if not valid:
+                    friendly = {"collection_has_no_outputs_at_target_rarity":
+                                    f"a collection in this mix has no {to_name} skins -- the game "
+                                    "won't accept its skins in this contract"}
+                    return self._send_json({"ok": False,
+                                             "error": friendly.get(reason, f"not a legal contract: {reason}")}, 400)
+                record = simulate_mod.simulate(candidate, currency=currency, live_fetch=True)
+                if isinstance(record, simulate_mod.InvalidSimulation):
+                    return self._send_json({
+                        "ok": False,
+                        "error": ("couldn't price every input "
+                                   f"({record.n_priced_input_units}/{record.n_required_input_units} priced)"
+                                   if record.reason == "incomplete_inputs"
+                                   else "no output skin has a usable price right now"),
+                        "reason": record.reason}, 422)
+                return self._send_json({"ok": True, "result": asdict(record)})
+
+            if path == "/api/reset-model":
+                learning_mod.reset_model()
+                return self._send_json({"ok": True})
+
+            if path == "/api/retrain-loop/start":
+                with retrain_state.lock:
+                    retrain_state.pause_event.clear()
+                return self._send_json({"ok": True})
+            if path == "/api/retrain-loop/stop":
+                retrain_state.pause_event.set()
+                return self._send_json({"ok": True})
+
+            if path == "/api/verify-queue/start":
+                # Resumes the automatic Stage-2 verification consumer -- see verify_queue.py's
+                # module docstring for why this is safe to auto-start (narrow gate, one live
+                # call at a time) but still pausable if it ever proves disruptive.
+                with verify_queue_state.lock:
+                    verify_queue_state.pause_event.clear()
+                return self._send_json({"ok": True})
+            if path == "/api/verify-queue/stop":
+                verify_queue_state.pause_event.set()
+                return self._send_json({"ok": True})
+
+            if path == "/api/price-scan/config":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                with price_scan_state.lock:
+                    if "collection" in body:
+                        price_scan_state.config["collection"] = body["collection"]
+                        price_scan_state.checkpoint["index"] = 0  # new scope -- any paused progress no longer applies
+                    if "prioritize" in body:
+                        price_scan_state.config["prioritize"] = bool(body["prioritize"])
+                        price_scan_state.checkpoint["index"] = 0  # reordering the sweep -- see
+                        # price_scan.build_target_list's prioritize docstring, same reasoning as collection above
+                return self._send_json({"ok": True})
+            if path == "/api/price-scan/start" or path == "/api/price-scan/resume":
+                price_scan_state.pause_event.clear()
+                price_scan_state.stop_event.clear()
+                price_scan_state.wake_event.set()
+                return self._send_json({"ok": True})
+            if path == "/api/price-scan/pause":
+                price_scan_state.pause_event.set()
+                return self._send_json({"ok": True})
+            if path == "/api/price-scan/stop":
+                price_scan_state.stop_event.set()
+                price_scan_state.pause_event.clear()
+                price_scan_state.wake_event.set()
+                return self._send_json({"ok": True})
+
+            if path == "/api/sim-population/verify-prices":
+                # On-demand, live Skinport/CSFloat cross-check for ONE simulation record the
+                # user actually opened -- never run automatically across the whole leaderboard
+                # (rate-limited). See price_report.verify_simulation_record's own docstring.
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                try:
+                    rows = price_report_mod.verify_simulation_record(
+                        primary_collection=body["primary_collection"], from_rarity=body["from_rarity"],
+                        to_rarity=body["to_rarity"], stattrak=body["stattrak"],
+                        expected_roi_pct=body["expected_roi_pct"], input_mix=body["input_mix"],
+                        output_distribution=body["output_distribution"], currency=body.get("currency", 1))
+                except (KeyError, TypeError) as e:
+                    return self._send_json({"ok": False, "error": f"missing/invalid field: {e}"}, 400)
+                verified_roi_pct = price_confidence = None
+                # Persist back to the checkpoint entry too, same as the automatic queue does
+                # (verify_queue.summarize_and_writeback) -- "populated by either the manual
+                # button or the automatic queue" is one code path, not two. Only when the
+                # caller actually identifies which entry this is (id + son) -- optional so an
+                # older/simpler caller that just wants the display-only rows still works.
+                if "id" in body and "son" in body:
+                    entry = {"id": body["id"], "input_mix": body["input_mix"]}
+                    verified_roi_pct, price_confidence = verify_queue_mod.summarize_and_writeback(
+                        int(body["son"]), entry, rows, currency=body.get("currency", 1))
+                return self._send_json({"ok": True, "rows": [asdict(r) for r in rows],
+                                         "verified_roi_pct": verified_roi_pct, "price_confidence": price_confidence})
+
+            if path == "/api/sim-population/blacklist":
+                # Mark a trade-up the user has already executed as "done" -- it's hidden from the
+                # opportunity list from now on and never re-admitted to any son's best list
+                # (see sim_blacklist.py). Keyed by the composition's content signature, not the
+                # per-simulation id, so the same contract can't sneak back under a fresh id.
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                try:
+                    record = sim_blacklist_mod.add(body)
+                except (KeyError, TypeError) as e:
+                    return self._send_json({"ok": False, "error": f"missing/invalid field: {e}"}, 400)
+                return self._send_json({"ok": True, "entry": record})
+            if path == "/api/sim-population/blacklist/remove":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                removed = sim_blacklist_mod.remove(body.get("signature", ""))
+                return self._send_json({"ok": True, "removed": removed})
+
+            if path == "/api/sim-population/reset-all":
+                # Global "Restart all training & data": stop the round-robin scheduler first so it
+                # isn't mid-handoff while we wipe checkpoints, pause every son so no running thread
+                # writes a fresh round on top of the reset, then hard-reset each agent from scratch.
+                round_robin.stop()
+                for son in sim_population:
+                    son.pause_event.set()
+                sim_loop_mod.reset_all(sim_population)
+                return self._send_json({"ok": True})
+
+            if path == "/api/sim-population/round-robin/start":
+                round_robin.start()
+                return self._send_json({"ok": True})
+            if path == "/api/sim-population/round-robin/stop":
+                round_robin.stop()
+                return self._send_json({"ok": True})
+
+            # Per-son actions: /api/sim-population/<son_id>/start|resume|pause|stop|nudge|reset|train
+            parts = path.split("/")
+            if (len(parts) == 5 and parts[1] == "api" and parts[2] == "sim-population" and parts[3].isdigit()):
+                son_id, action = int(parts[3]), parts[4]
+                if 0 <= son_id < len(sim_population):
+                    son = sim_population[son_id]
+                    if action in ("start", "resume"):
+                        with son.lock:
+                            son.pause_event.clear()
+                        son.wake_event.set()
+                        return self._send_json({"ok": True})
+                    if action in ("pause", "stop"):
+                        # "Stop" idles the same always-running background thread rather than
+                        # terminating it -- the checkpoint already saves after every round, so a
+                        # later Start resumes instantly instead of spawning a replacement thread.
+                        son.pause_event.set()
+                        return self._send_json({"ok": True})
+                    if action == "nudge":
+                        sim_loop_mod.nudge(son)
+                        return self._send_json({"ok": True})
+                    if action == "reset":
+                        sim_loop_mod.full_reset(son)
+                        return self._send_json({"ok": True})
+                    if action == "train":
+                        result = sim_learning_mod.train(son.model_dir, son.sims_file)
+                        return self._send_json({"ok": True, "trained": result.trained, "reason": result.reason,
+                                                 "n_samples": result.n_samples, "validation_mae": result.validation_mae,
+                                                 "feature_importances": result.feature_importances,
+                                                 "model_name": result.model_name, "candidate_maes": result.candidate_maes})
+
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass  # keep console output clean; use /api/status for progress instead
+
+    return Handler
+
+
+def main():
+    state = ScanState()
+    threading.Thread(target=scan_loop, args=(state,), daemon=True).start()
+    threading.Thread(target=rate_limit_watchdog, args=(state,), daemon=True).start()
+
+    # Retrain-watch loop: safe to auto-start -- it only polls outcomes.stats() (cheap, no
+    # network) until enough new logged outcomes exist to actually retrain.
+    retrain_state = retrain_loop_mod.RetrainLoopState()
+    threading.Thread(target=retrain_loop_mod.retrain_loop, args=(retrain_state,), daemon=True).start()
+
+    # Bulk price scan: starts idle, waiting for the dashboard's Start button -- same
+    # no-scan-on-boot reasoning as ScanState.scan_loop above (this one also hits live Steam
+    # prices, just without any trade-up math on top).
+    price_scan_state = price_scan_mod.PriceScanState()
+    threading.Thread(target=price_scan_mod.scan_loop, args=(price_scan_state,), daemon=True).start()
+
+    # Guided random-simulation population: 4 independent "sons" (see sim_loop.py), each with
+    # its own temperature/data/model, all starting paused -- same reasoning as the deep search
+    # loop, a background batch job shouldn't kick off just because the server started.
+    sim_population = sim_loop_mod.create_population()
+    for son in sim_population:
+        son.pause_event.set()
+        threading.Thread(target=sim_loop_mod.sim_loop, args=(son,), daemon=True).start()
+
+    # Anti-convergence watcher (see sim_loop.ConvergenceWatcher): a cheap, always-on
+    # background check across the whole population -- safe to auto-start since it only
+    # reads each son's already-in-memory checkpoint and does nothing until 3+ sons have
+    # genuinely converged on the same strategy for several consecutive checks.
+    convergence_watcher = sim_loop_mod.ConvergenceWatcher()
+    convergence_stop = threading.Event()
+    threading.Thread(target=sim_loop_mod.watch_convergence,
+                      args=(sim_population, convergence_watcher, convergence_stop), daemon=True).start()
+
+    # Round-robin scheduler (see sim_loop.RoundRobinScheduler): "Run all" button on the
+    # dashboard -- disabled until a user starts it, same as every other opt-in loop above.
+    round_robin = sim_loop_mod.RoundRobinScheduler(sim_population)
+    round_robin_stop = threading.Event()
+    threading.Thread(target=sim_loop_mod.watch_round_robin,
+                      args=(round_robin, round_robin_stop), daemon=True).start()
+
+    # Automatic Stage-2 verification queue (see verify_queue.py): safe to auto-start, same
+    # reasoning as retrain-loop above -- it only does real (live-network) work once a
+    # background son's find actually clears the narrow ROI/confidence bar, and even then
+    # only one at a time.
+    verify_queue_state = verify_queue_mod.VerifyQueueState()
+    threading.Thread(target=verify_queue_mod.consumer_loop, args=(verify_queue_state,), daemon=True).start()
+
+    # Evolution Manager (see evolution.py): cross-agent cooperation watcher -- safe to
+    # auto-start, it only does cheap in-memory work over checkpoints already loaded, and
+    # every hook goes neutral the moment it's disabled via the dashboard toggle.
+    evolution_stop = threading.Event()
+    threading.Thread(target=evolution_mod.watch, args=(sim_population, evolution_stop),
+                      daemon=True).start()
+
+    # Rare Pattern Arbitrage scanner (see pattern_scanner.py): starts PAUSED -- it talks to
+    # an external listings API, so scanning is opt-in via the Rare Patterns page's Start
+    # button, same convention as the bulk price scan above.
+    pattern_scan_state = pattern_scanner_mod.PatternScanState()
+    threading.Thread(target=pattern_scanner_mod.scan_loop, args=(pattern_scan_state,),
+                      daemon=True).start()
+
+    # Automated GitHub Backup Engine (see backup_engine.py): the 6-hour delta-aware worker.
+    # Safe to auto-start -- until data/backup_config.json points at a real git clone it only
+    # hashes 3 local files per wake and reports "not configured" in its status panel.
+    backup_worker = backup_engine_mod.BackupWorkerState()
+    threading.Thread(target=backup_engine_mod.worker_loop, args=(backup_worker,),
+                      daemon=True).start()
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", PORT),
+                                 make_handler(state, retrain_state, price_scan_state,
+                                              sim_population, verify_queue_state, convergence_watcher,
+                                              round_robin, pattern_scan_state, backup_worker))
+    print(f"CS2 scanner dashboard running at http://127.0.0.1:{PORT}  (Ctrl+C to stop)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

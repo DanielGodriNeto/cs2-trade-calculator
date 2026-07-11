@@ -1,0 +1,27 @@
+# Core scanner (data.py, tradeup.py, float_mix.py, mixed_float.py, main.py, web/server.py, ...)
+# is still 100% Python 3.10+ standard library -- urllib for HTTP, json, dataclasses, argparse --
+# to keep it easy to audit and run. The two packages below are needed ONLY for the optional ML
+# calibration layer (src/learning.py) and the price-trend prediction (src/price_history.py):
+# every other module works with zero installed packages, and both of those import these
+# lazily inside their prediction functions, not at module load, so `import src.learning` /
+# `import src.price_history` (and everything that transitively imports them, including
+# steam_prices.py) still work without these installed until a prediction is actually requested
+# (--use-ml / "Use ML calibration", train-model/retrain-loop, or price-history's trend line).
+
+# The ML calibration model (predicts realized ROI% from logged trade-up outcomes) and the
+# price-history trend prediction (a plain LinearRegression) both use this. Pulls in
+# numpy/scipy transitively -- these are the only third-party dependencies this project has
+# ever needed.
+scikit-learn>=1.3
+
+# scikit-learn's own recommended model-serialization format (faster/safer than raw pickle for
+# numpy-backed objects) -- technically a scikit-learn dependency already, listed explicitly
+# since src/learning.py imports it directly to save/load the trained ROI model.
+joblib>=1.3
+
+# Used ONLY by web/server.py's "Export full spreadsheet (.xlsx)" button (src/xlsx_export.py) --
+# builds a formatted, multi-sheet local Excel workbook (every archived trade-up opportunity,
+# agent stats/history, leaderboards, model quality) with embedded charts, since the user opted
+# for a local file over wiring up Google Sheets API credentials. Imported lazily inside that one
+# handler, same lazy-import convention as scikit-learn above, so nothing else needs it installed.
+openpyxl>=3.1

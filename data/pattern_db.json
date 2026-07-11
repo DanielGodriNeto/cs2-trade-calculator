@@ -1,0 +1,405 @@
+{
+ "schema_version": 1,
+ "knowledge_version": 1,
+ "sources": [
+  {
+   "key": "csbluegem",
+   "label": "CSBlueGem (Case Hardened / Heat Treated pattern database)",
+   "url": "https://csbluegem.com"
+  },
+  {
+   "key": "steam_guide_ch",
+   "label": "Steam Community Guide: Case Hardened Blue Gem pattern guide",
+   "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=2337637002"
+  },
+  {
+   "key": "dopplerphases",
+   "label": "Doppler phase paint-index reference (community-maintained)",
+   "url": "https://chameleonpremium.com/tools/doppler-phases"
+  },
+  {
+   "key": "csgoskins_marblefade",
+   "label": "Karambit Marble Fade Fire & Ice seed guide (community-maintained)",
+   "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=1276945384"
+  },
+  {
+   "key": "floatdb",
+   "label": "FloatDB (float/pattern rankings)",
+   "url": "https://csfloat.com/db"
+  }
+ ],
+ "entries": [
+  {
+   "id": "ak47-ch-t1",
+   "type": "paint_seed",
+   "weapon": "AK-47",
+   "skin": "Case Hardened",
+   "finish": "Case Hardened",
+   "paint_seeds": [
+    661,
+    670,
+    955,
+    179
+   ],
+   "tier": 1,
+   "label": "Blue Gem (Tier 1, playside blue top)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 30.0,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": "#661 is the most famous Blue Gem pattern in the game; T1 premiums vary enormously with float/StatTrak -- multiplier is a conservative screening floor."
+  },
+  {
+   "id": "ak47-ch-t2",
+   "type": "paint_seed",
+   "weapon": "AK-47",
+   "skin": "Case Hardened",
+   "finish": "Case Hardened",
+   "paint_seeds": [
+    151,
+    321,
+    592,
+    76
+   ],
+   "tier": 2,
+   "label": "Blue Gem (Tier 2)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 8.0,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": ""
+  },
+  {
+   "id": "ak47-ch-t3",
+   "type": "paint_seed",
+   "weapon": "AK-47",
+   "skin": "Case Hardened",
+   "finish": "Case Hardened",
+   "paint_seeds": [
+    4,
+    105,
+    555,
+    828
+   ],
+   "tier": 3,
+   "label": "Blue Gem (Tier 3)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 2.5,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": ""
+  },
+  {
+   "id": "karambit-ch-t1",
+   "type": "paint_seed",
+   "weapon": "\u2605 Karambit",
+   "skin": "Case Hardened",
+   "finish": "Case Hardened",
+   "paint_seeds": [
+    387,
+    601,
+    776
+   ],
+   "tier": 1,
+   "label": "Blue Gem (Tier 1)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 15.0,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": "#387 is the famous Karambit Blue Gem."
+  },
+  {
+   "id": "karambit-ch-t2",
+   "type": "paint_seed",
+   "weapon": "\u2605 Karambit",
+   "skin": "Case Hardened",
+   "finish": "Case Hardened",
+   "paint_seeds": [
+    269,
+    470,
+    905
+   ],
+   "tier": 2,
+   "label": "Blue Gem (Tier 2)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 5.0,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": ""
+  },
+  {
+   "id": "fiveseven-ch-t1",
+   "type": "paint_seed",
+   "weapon": "Five-SeveN",
+   "skin": "Case Hardened",
+   "finish": "Case Hardened",
+   "paint_seeds": [
+    278,
+    690
+   ],
+   "tier": 1,
+   "label": "Blue Gem (Tier 1)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 5.0,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": ""
+  },
+  {
+   "id": "bayonet-ch-t1",
+   "type": "paint_seed",
+   "weapon": "\u2605 Bayonet",
+   "skin": "Case Hardened",
+   "finish": "Case Hardened",
+   "paint_seeds": [
+    555
+   ],
+   "tier": 1,
+   "label": "Blue Gem (Tier 1, #555)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 20.0,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": ""
+  },
+  {
+   "id": "deagle-ht-t1",
+   "type": "paint_seed",
+   "weapon": "Desert Eagle",
+   "skin": "Heat Treated",
+   "finish": "Heat Treated",
+   "paint_seeds": [
+    490,
+    148
+   ],
+   "tier": 1,
+   "label": "Blue Gem Heat Treated (Tier 1)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 10.0,
+   "confidence": "medium",
+   "source": "csbluegem",
+   "notes": ""
+  },
+  {
+   "id": "deagle-ht-t2",
+   "type": "paint_seed",
+   "weapon": "Desert Eagle",
+   "skin": "Heat Treated",
+   "finish": "Heat Treated",
+   "paint_seeds": [
+    69,
+    704
+   ],
+   "tier": 2,
+   "label": "Blue Gem Heat Treated (Tier 2)",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 3.0,
+   "confidence": "low",
+   "source": "csbluegem",
+   "notes": ""
+  },
+  {
+   "id": "karambit-mf-ffi",
+   "type": "paint_seed",
+   "weapon": "\u2605 Karambit",
+   "skin": "Marble Fade",
+   "finish": "Marble Fade",
+   "paint_seeds": [
+    412,
+    16
+   ],
+   "tier": 1,
+   "label": "Fire & Ice (max, 1st tier)",
+   "min_float": null,
+   "max_float": 0.07,
+   "premium_multiplier": 2.5,
+   "confidence": "medium",
+   "source": "csgoskins_marblefade",
+   "notes": "True max Fire & Ice with no yellow; FN-only in practice."
+  },
+  {
+   "id": "karambit-mf-ffi-t2",
+   "type": "paint_seed",
+   "weapon": "\u2605 Karambit",
+   "skin": "Marble Fade",
+   "finish": "Marble Fade",
+   "paint_seeds": [
+    146,
+    241,
+    359,
+    393
+   ],
+   "tier": 2,
+   "label": "Fire & Ice (2nd tier)",
+   "min_float": null,
+   "max_float": 0.07,
+   "premium_multiplier": 1.6,
+   "confidence": "low",
+   "source": "csgoskins_marblefade",
+   "notes": ""
+  },
+  {
+   "id": "doppler-ruby",
+   "type": "paint_index",
+   "weapon": "*",
+   "skin": "Doppler",
+   "finish": "Doppler",
+   "paint_indexes": [
+    415
+   ],
+   "tier": 1,
+   "label": "Ruby",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 5.0,
+   "confidence": "high",
+   "source": "dopplerphases",
+   "notes": "Paint index 415 = Ruby on every Doppler knife. Arbitrage case: seller lists at generic Doppler price."
+  },
+  {
+   "id": "doppler-sapphire",
+   "type": "paint_index",
+   "weapon": "*",
+   "skin": "Doppler",
+   "finish": "Doppler",
+   "paint_indexes": [
+    416
+   ],
+   "tier": 1,
+   "label": "Sapphire",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 6.0,
+   "confidence": "high",
+   "source": "dopplerphases",
+   "notes": ""
+  },
+  {
+   "id": "doppler-blackpearl",
+   "type": "paint_index",
+   "weapon": "*",
+   "skin": "Doppler",
+   "finish": "Doppler",
+   "paint_indexes": [
+    417
+   ],
+   "tier": 1,
+   "label": "Black Pearl",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 3.5,
+   "confidence": "high",
+   "source": "dopplerphases",
+   "notes": ""
+  },
+  {
+   "id": "doppler-p2",
+   "type": "paint_index",
+   "weapon": "*",
+   "skin": "Doppler",
+   "finish": "Doppler",
+   "paint_indexes": [
+    419
+   ],
+   "tier": 3,
+   "label": "Phase 2",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 1.15,
+   "confidence": "high",
+   "source": "dopplerphases",
+   "notes": "Modest but reliable premium over generic Doppler pricing."
+  },
+  {
+   "id": "doppler-p4",
+   "type": "paint_index",
+   "weapon": "*",
+   "skin": "Doppler",
+   "finish": "Doppler",
+   "paint_indexes": [
+    421
+   ],
+   "tier": 3,
+   "label": "Phase 4",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 1.05,
+   "confidence": "high",
+   "source": "dopplerphases",
+   "notes": ""
+  },
+  {
+   "id": "gamma-doppler-emerald",
+   "type": "paint_index",
+   "weapon": "*",
+   "skin": "Gamma Doppler",
+   "finish": "Gamma Doppler",
+   "paint_indexes": [
+    568
+   ],
+   "tier": 1,
+   "label": "Emerald",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 5.0,
+   "confidence": "high",
+   "source": "dopplerphases",
+   "notes": ""
+  },
+  {
+   "id": "kato14-holo-craft",
+   "type": "sticker_craft",
+   "weapon": "*",
+   "skin": "*",
+   "finish": "*",
+   "sticker_match": [
+    "Katowice 2014"
+   ],
+   "sticker_require_holo": true,
+   "tier": 1,
+   "label": "Katowice 2014 Holo craft",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 3.0,
+   "confidence": "low",
+   "source": "floatdb",
+   "notes": "Any listing carrying a Katowice 2014 holo sticker is flagged for manual review -- craft value is sticker-driven and position-dependent, the multiplier is only a screening floor."
+  },
+  {
+   "id": "crown-foil-craft",
+   "type": "sticker_craft",
+   "weapon": "*",
+   "skin": "*",
+   "finish": "*",
+   "sticker_match": [
+    "Crown (Foil)"
+   ],
+   "sticker_require_holo": false,
+   "tier": 2,
+   "label": "Crown Foil craft",
+   "min_float": null,
+   "max_float": null,
+   "premium_multiplier": 1.5,
+   "confidence": "low",
+   "source": "floatdb",
+   "notes": "Flag-for-review entry; premium scales with number of Crowns and placement."
+  }
+ ],
+ "created_at": 1783716329.027035,
+ "last_verified_at": 1783732197.9050624,
+ "last_refresh_result": {
+  "at": 1783732197.9050624,
+  "n_changes": 0,
+  "remote_verifiers": null,
+  "remote_verification_available": false
+ }
+}

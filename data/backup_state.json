@@ -1,0 +1,1 @@
+{"last_hashes": {}, "last_backup_at": null, "last_archive": null, "last_result": {"ok": false, "action": "not_configured", "message": "backup engine disabled in data/backup_config.json", "changed_files": ["outcomes.jsonl", "price_history.jsonl", "dead_skin_scores.json"]}}

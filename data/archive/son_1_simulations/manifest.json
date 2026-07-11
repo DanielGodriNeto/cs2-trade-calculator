@@ -1,0 +1,30 @@
+{
+ "source": "data/sons/son_1/simulations.jsonl",
+ "bytes_archived": 76723551,
+ "lines_archived": 16198,
+ "part_counters": {
+  "2026-07-10": 2
+ },
+ "chunks": [
+  {
+   "file": "2026-07-10_part001.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 10474,
+   "unique_skins": 1305,
+   "first_record_at": "2026-07-10 12:48:00",
+   "last_record_at": "2026-07-10 15:08:15",
+   "raw_bytes": 50331723,
+   "gz_bytes": 6262740
+  },
+  {
+   "file": "2026-07-10_part002.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 5724,
+   "unique_skins": 1118,
+   "first_record_at": "2026-07-10 15:08:15",
+   "last_record_at": "2026-07-10 16:58:48",
+   "raw_bytes": 26391828,
+   "gz_bytes": 3189338
+  }
+ ]
+}

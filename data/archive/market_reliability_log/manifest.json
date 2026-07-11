@@ -1,0 +1,61 @@
+{
+ "source": "data/market_reliability_log.jsonl",
+ "bytes_archived": 207668041,
+ "lines_archived": 877418,
+ "part_counters": {
+  "2026-07-10": 4,
+  "2026-07-11": 1
+ },
+ "chunks": [
+  {
+   "file": "2026-07-10_part001.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 212751,
+   "unique_skins": 629,
+   "first_record_at": "2026-07-10 16:53:52",
+   "last_record_at": "2026-07-10 18:38:31",
+   "raw_bytes": 50331877,
+   "gz_bytes": 4156608
+  },
+  {
+   "file": "2026-07-10_part002.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 212682,
+   "unique_skins": 627,
+   "first_record_at": "2026-07-10 18:38:31",
+   "last_record_at": "2026-07-10 20:24:28",
+   "raw_bytes": 50331766,
+   "gz_bytes": 4163940
+  },
+  {
+   "file": "2026-07-10_part003.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 212656,
+   "unique_skins": 627,
+   "first_record_at": "2026-07-10 20:24:28",
+   "last_record_at": "2026-07-10 22:18:30",
+   "raw_bytes": 50331710,
+   "gz_bytes": 4020495
+  },
+  {
+   "file": "2026-07-10_part004.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 205287,
+   "unique_skins": 627,
+   "first_record_at": "2026-07-10 22:18:30",
+   "last_record_at": "2026-07-10 23:59:53",
+   "raw_bytes": 48612519,
+   "gz_bytes": 4053177
+  },
+  {
+   "file": "2026-07-11_part001.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 34042,
+   "unique_skins": 627,
+   "first_record_at": "2026-07-11 00:00:10",
+   "last_record_at": "2026-07-11 00:20:08",
+   "raw_bytes": 8060169,
+   "gz_bytes": 673696
+  }
+ ]
+}
