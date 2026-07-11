@@ -28,3 +28,17 @@ data/*.tmp
 # unless you specifically want to check one in as a point-in-time backup (in which case,
 # `git add -f` that one file).
 /data-archive-*.zip
+
+# Safety net for src/sheets_export.py's Google service-account key: it should live OUTSIDE this
+# repo entirely (see that module's docstring -- data/ gets zipped and auto-pushed to GitHub by
+# backup_engine.py), but this catches it anywhere in the tree if one ever ends up here anyway.
+*service-account*.json
+*serviceaccount*.json
+*-key.json
+credentials.json
+
+# Personal watch-mode setup cheat-sheet + launcher (src/watch_loop.py, src/alerts.py) -- holds
+# the private ntfy topic name (and, once filled in, Google Sheets paths). Local-only, never
+# pushed to GitHub even though this repo's own auto-backup would otherwise happily zip it up.
+/SETUP_NOTES.md
+/run_watch.bat

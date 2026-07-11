@@ -1,1 +1,2 @@
 {"id": "invalid-2026-07-11T19-52-03-927400", "simulated_at": 1783799523.7619298, "from_rarity": "Restricted", "to_rarity": "Classified", "stattrak": false, "reason": "incomplete_inputs", "n_priced_input_units": 9, "n_required_input_units": 10, "primary_collection": "The Canals Collection"}
+{"id": "invalid-2026-07-11T20-55-01-153500", "simulated_at": 1783803301.275157, "from_rarity": "Classified", "to_rarity": "Covert", "stattrak": false, "reason": "no_output_price", "n_priced_input_units": 10, "n_required_input_units": 10, "primary_collection": "The Canals Collection"}

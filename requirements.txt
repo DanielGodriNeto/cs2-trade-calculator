@@ -21,7 +21,13 @@ joblib>=1.3
 
 # Used ONLY by web/server.py's "Export full spreadsheet (.xlsx)" button (src/xlsx_export.py) --
 # builds a formatted, multi-sheet local Excel workbook (every archived trade-up opportunity,
-# agent stats/history, leaderboards, model quality) with embedded charts, since the user opted
-# for a local file over wiring up Google Sheets API credentials. Imported lazily inside that one
-# handler, same lazy-import convention as scikit-learn above, so nothing else needs it installed.
+# agent stats/history, leaderboards, model quality) with embedded charts. Imported lazily inside
+# that one handler, same lazy-import convention as scikit-learn above, so nothing else needs it
+# installed.
 openpyxl>=3.1
+
+# Used ONLY by src/sheets_export.py -- pushes the live trade-up/rare-pattern view to a Google
+# Sheet via a service account (see that module's docstring for setup). Pulls in google-auth
+# transitively. Imported lazily inside export(), same convention as openpyxl above: not needed
+# until GOOGLE_SERVICE_ACCOUNT_FILE/GOOGLE_SHEET_ID are actually configured.
+gspread>=6.1

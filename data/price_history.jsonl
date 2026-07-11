@@ -25634,3 +25634,937 @@
 {"ts": 1783800525.8402822, "market_hash_name": "MAG-7 | SWAG-7 (Field-Tested)", "currency": 1, "lowest_price": 0.66, "median_price": 0.66, "volume": null}
 {"ts": 1783800525.8514843, "market_hash_name": "Negev | Lionfish (Minimal Wear)", "currency": 1, "lowest_price": 0.98, "median_price": 0.98, "volume": null}
 {"ts": 1783800525.8623164, "market_hash_name": "Nova | Wild Six (Minimal Wear)", "currency": 1, "lowest_price": 1.08, "median_price": 1.08, "volume": null}
+{"ts": 1783800549.8015306, "market_hash_name": "MAC-10 | Nuclear Garden (Minimal Wear)", "currency": 1, "lowest_price": 26.8, "median_price": 26.8, "volume": null}
+{"ts": 1783800552.0956016, "market_hash_name": "AWP | Pink DDPAT (Factory New)", "currency": 1, "lowest_price": 191.47, "median_price": 191.47, "volume": null}
+{"ts": 1783800554.4784055, "market_hash_name": "Desert Eagle | Urban DDPAT (Minimal Wear)", "currency": 1, "lowest_price": 6.54, "median_price": 6.54, "volume": null}
+{"ts": 1783800556.439803, "market_hash_name": "FAMAS | Djinn (Battle-Scarred)", "currency": 1, "lowest_price": 13.94, "median_price": 13.94, "volume": null}
+{"ts": 1783800583.7291236, "market_hash_name": "Desert Eagle | Starcade (Factory New)", "currency": 1, "lowest_price": 356.14, "median_price": 356.14, "volume": null}
+{"ts": 1783800583.9972906, "market_hash_name": "Galil AR | Control (Minimal Wear)", "currency": 1, "lowest_price": 1.25, "median_price": 1.25, "volume": null}
+{"ts": 1783800584.3285186, "market_hash_name": "Desert Eagle | Directive (Well-Worn)", "currency": 1, "lowest_price": 1.37, "median_price": 1.37, "volume": null}
+{"ts": 1783800584.3383553, "market_hash_name": "MP9 | Airlock (Battle-Scarred)", "currency": 1, "lowest_price": 13.92, "median_price": 13.92, "volume": null}
+{"ts": 1783800584.9135482, "market_hash_name": "P90 | Shallow Grave (Battle-Scarred)", "currency": 1, "lowest_price": 41.58, "median_price": 41.58, "volume": null}
+{"ts": 1783800585.4913359, "market_hash_name": "USP-S | Blueprint (Well-Worn)", "currency": 1, "lowest_price": 5.87, "median_price": 5.87, "volume": null}
+{"ts": 1783800586.9380977, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Twist (Factory New)", "currency": 1, "lowest_price": 4.35, "median_price": 4.35, "volume": null}
+{"ts": 1783800586.949978, "market_hash_name": "StatTrak\u2122 AUG | Torque (Factory New)", "currency": 1, "lowest_price": 19.61, "median_price": 19.61, "volume": null}
+{"ts": 1783800586.9778082, "market_hash_name": "StatTrak\u2122 PP-Bizon | Antique (Factory New)", "currency": 1, "lowest_price": 15.04, "median_price": 15.04, "volume": null}
+{"ts": 1783800586.9904163, "market_hash_name": "StatTrak\u2122 MAC-10 | Tatter (Factory New)", "currency": 1, "lowest_price": 15.28, "median_price": 15.28, "volume": null}
+{"ts": 1783800587.0054443, "market_hash_name": "StatTrak\u2122 MAC-10 | Curse (Factory New)", "currency": 1, "lowest_price": 32.7, "median_price": 32.7, "volume": null}
+{"ts": 1783800587.0211885, "market_hash_name": "StatTrak\u2122 XM1014 | Heaven Guard (Factory New)", "currency": 1, "lowest_price": 32.11, "median_price": 32.11, "volume": null}
+{"ts": 1783800587.177454, "market_hash_name": "Desert Eagle | Firebreathing (Battle-Scarred)", "currency": 1, "lowest_price": 1.06, "median_price": 1.06, "volume": null}
+{"ts": 1783800587.1926222, "market_hash_name": "M4A1-S | Electrum (Battle-Scarred)", "currency": 1, "lowest_price": 1.23, "median_price": 1.23, "volume": null}
+{"ts": 1783800587.2117233, "market_hash_name": "MP9 | Urban Sovereign (Battle-Scarred)", "currency": 1, "lowest_price": 0.86, "median_price": 0.86, "volume": null}
+{"ts": 1783800587.3682275, "market_hash_name": "StatTrak\u2122 MP5-SD | Desert Strike (Battle-Scarred)", "currency": 1, "lowest_price": 0.14, "median_price": 0.14, "volume": null}
+{"ts": 1783800587.386635, "market_hash_name": "StatTrak\u2122 P2000 | Acid Etched (Battle-Scarred)", "currency": 1, "lowest_price": 1.09, "median_price": 1.09, "volume": null}
+{"ts": 1783800587.5335467, "market_hash_name": "StatTrak\u2122 Sawed-Off | Apocalypto (Battle-Scarred)", "currency": 1, "lowest_price": 0.97, "median_price": 0.97, "volume": null}
+{"ts": 1783800587.5468144, "market_hash_name": "StatTrak\u2122 SCAR-20 | Enforcer (Battle-Scarred)", "currency": 1, "lowest_price": 1.47, "median_price": 1.47, "volume": null}
+{"ts": 1783800587.5563323, "market_hash_name": "StatTrak\u2122 SSG 08 | Fever Dream (Battle-Scarred)", "currency": 1, "lowest_price": 2.61, "median_price": 2.61, "volume": null}
+{"ts": 1783800587.7956572, "market_hash_name": "StatTrak\u2122 Negev | Dazzle (Field-Tested)", "currency": 1, "lowest_price": 0.55, "median_price": 0.55, "volume": null}
+{"ts": 1783800587.813437, "market_hash_name": "StatTrak\u2122 Desert Eagle | Directive (Field-Tested)", "currency": 1, "lowest_price": 2.55, "median_price": 2.55, "volume": null}
+{"ts": 1783800587.8295393, "market_hash_name": "StatTrak\u2122 SCAR-20 | Powercore (Field-Tested)", "currency": 1, "lowest_price": 1.55, "median_price": 1.55, "volume": null}
+{"ts": 1783800588.5061219, "market_hash_name": "StatTrak\u2122 Five-SeveN | Monkey Business (Battle-Scarred)", "currency": 1, "lowest_price": 13.93, "median_price": 13.93, "volume": null}
+{"ts": 1783800588.7025177, "market_hash_name": "StatTrak\u2122 AK-47 | Neon Revolution (Minimal Wear)", "currency": 1, "lowest_price": 167.35, "median_price": 167.35, "volume": null}
+{"ts": 1783800589.3119514, "market_hash_name": "Glock-18 | Sand Dune (Factory New)", "currency": 1, "lowest_price": 261.75, "median_price": 261.75, "volume": null}
+{"ts": 1783800589.3140848, "market_hash_name": "Glock-18 | Sand Dune (Field-Tested)", "currency": 1, "lowest_price": 11.1, "median_price": 11.1, "volume": null}
+{"ts": 1783800589.3283098, "market_hash_name": "Glock-18 | Sand Dune (Well-Worn)", "currency": 1, "lowest_price": 10.83, "median_price": 10.83, "volume": null}
+{"ts": 1783800589.345207, "market_hash_name": "MAG-7 | Hazard (Well-Worn)", "currency": 1, "lowest_price": 22.05, "median_price": 22.05, "volume": null}
+{"ts": 1783800589.624849, "market_hash_name": "Sawed-Off | Fubar (Well-Worn)", "currency": 1, "lowest_price": 1.77, "median_price": 1.77, "volume": null}
+{"ts": 1783800589.6367548, "market_hash_name": "CZ75-Auto | Red Astor (Well-Worn)", "currency": 1, "lowest_price": 1.36, "median_price": 1.36, "volume": null}
+{"ts": 1783800589.6508963, "market_hash_name": "SSG 08 | Ghost Crusader (Well-Worn)", "currency": 1, "lowest_price": 1.44, "median_price": 1.44, "volume": null}
+{"ts": 1783800589.878352, "market_hash_name": "P90 | ScaraB Rush (Minimal Wear)", "currency": 1, "lowest_price": 19.11, "median_price": 19.11, "volume": null}
+{"ts": 1783800590.1139429, "market_hash_name": "P90 | Run and Hide (Well-Worn)", "currency": 1, "lowest_price": 115.0, "median_price": 115.0, "volume": null}
+{"ts": 1783800590.1388927, "market_hash_name": "XM1014 | Black Tie (Minimal Wear)", "currency": 1, "lowest_price": 2.6, "median_price": 2.6, "volume": null}
+{"ts": 1783800590.4748232, "market_hash_name": "SG 553 | Wave Spray (Minimal Wear)", "currency": 1, "lowest_price": 7.88, "median_price": 7.88, "volume": null}
+{"ts": 1783800590.488203, "market_hash_name": "SG 553 | Wave Spray (Battle-Scarred)", "currency": 1, "lowest_price": 6.83, "median_price": 6.83, "volume": null}
+{"ts": 1783800590.4974778, "market_hash_name": "Galil AR | Shattered (Field-Tested)", "currency": 1, "lowest_price": 6.54, "median_price": 6.54, "volume": null}
+{"ts": 1783800590.5054126, "market_hash_name": "Galil AR | Shattered (Battle-Scarred)", "currency": 1, "lowest_price": 6.99, "median_price": 6.99, "volume": null}
+{"ts": 1783800590.5143747, "market_hash_name": "Tec-9 | Snek-9 (Minimal Wear)", "currency": 1, "lowest_price": 1.12, "median_price": 1.12, "volume": null}
+{"ts": 1783800590.5341036, "market_hash_name": "CZ75-Auto | Eco (Field-Tested)", "currency": 1, "lowest_price": 1.52, "median_price": 1.52, "volume": null}
+{"ts": 1783800590.5439425, "market_hash_name": "Nova | Toy Soldier (Field-Tested)", "currency": 1, "lowest_price": 1.41, "median_price": 1.41, "volume": null}
+{"ts": 1783800591.7015007, "market_hash_name": "StatTrak\u2122 P250 | Bullfrog (Factory New)", "currency": 1, "lowest_price": 1.43, "median_price": 1.43, "volume": null}
+{"ts": 1783800591.7135985, "market_hash_name": "StatTrak\u2122 P250 | Bullfrog (Well-Worn)", "currency": 1, "lowest_price": 0.29, "median_price": 0.29, "volume": null}
+{"ts": 1783800591.7276103, "market_hash_name": "StatTrak\u2122 Dual Berettas | Angel Eyes (Battle-Scarred)", "currency": 1, "lowest_price": 1.18, "median_price": 1.18, "volume": null}
+{"ts": 1783800591.7430542, "market_hash_name": "StatTrak\u2122 MAC-10 | Cat Fight (Battle-Scarred)", "currency": 1, "lowest_price": 1.02, "median_price": 1.02, "volume": null}
+{"ts": 1783800591.7638497, "market_hash_name": "StatTrak\u2122 Nova | Ocular (Battle-Scarred)", "currency": 1, "lowest_price": 1.05, "median_price": 1.05, "volume": null}
+{"ts": 1783800591.9470246, "market_hash_name": "G3SG1 | Orange Kimono (Well-Worn)", "currency": 1, "lowest_price": 13.42, "median_price": 13.42, "volume": null}
+{"ts": 1783800591.964303, "market_hash_name": "G3SG1 | Orange Kimono (Minimal Wear)", "currency": 1, "lowest_price": 16.04, "median_price": 16.04, "volume": null}
+{"ts": 1783800591.9731271, "market_hash_name": "G3SG1 | Orange Kimono (Battle-Scarred)", "currency": 1, "lowest_price": 9.01, "median_price": 9.01, "volume": null}
+{"ts": 1783800591.9851978, "market_hash_name": "Tec-9 | Bamboo Forest (Battle-Scarred)", "currency": 1, "lowest_price": 9.65, "median_price": 9.65, "volume": null}
+{"ts": 1783800591.9949243, "market_hash_name": "Tec-9 | Bamboo Forest (Well-Worn)", "currency": 1, "lowest_price": 11.65, "median_price": 11.65, "volume": null}
+{"ts": 1783800592.0084562, "market_hash_name": "Tec-9 | Bamboo Forest (Minimal Wear)", "currency": 1, "lowest_price": 17.09, "median_price": 17.09, "volume": null}
+{"ts": 1783800592.013873, "market_hash_name": "Tec-9 | Bamboo Forest (Factory New)", "currency": 1, "lowest_price": 68.91, "median_price": 68.91, "volume": null}
+{"ts": 1783800592.2037008, "market_hash_name": "Desert Eagle | Firebreathing (Minimal Wear)", "currency": 1, "lowest_price": 2.74, "median_price": 2.74, "volume": null}
+{"ts": 1783800592.21879, "market_hash_name": "MP9 | Urban Sovereign (Factory New)", "currency": 1, "lowest_price": 6.53, "median_price": 6.53, "volume": null}
+{"ts": 1783800592.5357454, "market_hash_name": "StatTrak\u2122 Sawed-Off | Wasteland Princess (Minimal Wear)", "currency": 1, "lowest_price": 20.16, "median_price": 20.16, "volume": null}
+{"ts": 1783800592.6769557, "market_hash_name": "MAC-10 | Tatter (Battle-Scarred)", "currency": 1, "lowest_price": 6.33, "median_price": 6.33, "volume": null}
+{"ts": 1783800592.689219, "market_hash_name": "PP-Bizon | Antique (Factory New)", "currency": 1, "lowest_price": 15.3, "median_price": 15.3, "volume": null}
+{"ts": 1783800625.0389848, "market_hash_name": "Glock-18 | Sacrifice (Factory New)", "currency": 1, "lowest_price": 28.99, "median_price": 28.99, "volume": null}
+{"ts": 1783800625.0514097, "market_hash_name": "UMP-45 | Plastique (Well-Worn)", "currency": 1, "lowest_price": 1.18, "median_price": 1.18, "volume": null}
+{"ts": 1783800626.2115054, "market_hash_name": "Dual Berettas | Stained (Minimal Wear)", "currency": 1, "lowest_price": 0.24, "median_price": 0.24, "volume": null}
+{"ts": 1783800626.3193235, "market_hash_name": "MP5-SD | Agent (Field-Tested)", "currency": 1, "lowest_price": 1.05, "median_price": 1.05, "volume": null}
+{"ts": 1783800626.4114692, "market_hash_name": "PP-Bizon | Sand Dashed (Minimal Wear)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783800626.6406226, "market_hash_name": "StatTrak\u2122 SCAR-20 | Trail Blazer (Minimal Wear)", "currency": 1, "lowest_price": 0.92, "median_price": 0.92, "volume": null}
+{"ts": 1783800627.1223593, "market_hash_name": "M249 | Aztec (Factory New)", "currency": 1, "lowest_price": 6.43, "median_price": 6.43, "volume": null}
+{"ts": 1783800627.1274927, "market_hash_name": "UMP-45 | Plastique (Factory New)", "currency": 1, "lowest_price": 7.62, "median_price": 7.62, "volume": null}
+{"ts": 1783800627.2401698, "market_hash_name": "MAC-10 | Carnivore (Factory New)", "currency": 1, "lowest_price": 6.85, "median_price": 6.85, "volume": null}
+{"ts": 1783800627.5402892, "market_hash_name": "P90 | Module (Field-Tested)", "currency": 1, "lowest_price": 1.36, "median_price": 1.36, "volume": null}
+{"ts": 1783800627.5438566, "market_hash_name": "Dual Berettas | Elite 1.6 (Well-Worn)", "currency": 1, "lowest_price": 0.46, "median_price": 0.46, "volume": null}
+{"ts": 1783800627.5518994, "market_hash_name": "MP5-SD | Desert Strike (Well-Worn)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783800627.5557766, "market_hash_name": "R8 Revolver | Bone Forged (Factory New)", "currency": 1, "lowest_price": 0.99, "median_price": 0.99, "volume": null}
+{"ts": 1783800627.56918, "market_hash_name": "P2000 | Acid Etched (Well-Worn)", "currency": 1, "lowest_price": 0.71, "median_price": 0.71, "volume": null}
+{"ts": 1783800627.5775502, "market_hash_name": "Sawed-Off | Apocalypto (Well-Worn)", "currency": 1, "lowest_price": 0.68, "median_price": 0.68, "volume": null}
+{"ts": 1783800627.5875533, "market_hash_name": "SCAR-20 | Enforcer (Well-Worn)", "currency": 1, "lowest_price": 0.7, "median_price": 0.7, "volume": null}
+{"ts": 1783800627.591973, "market_hash_name": "SG 553 | Darkwing (Well-Worn)", "currency": 1, "lowest_price": 0.72, "median_price": 0.72, "volume": null}
+{"ts": 1783800627.7817972, "market_hash_name": "P90 | Vent Rush (Factory New)", "currency": 1, "lowest_price": 2.62, "median_price": 2.62, "volume": null}
+{"ts": 1783800627.8621693, "market_hash_name": "M249 | Jungle (Field-Tested)", "currency": 1, "lowest_price": 5.38, "median_price": 5.38, "volume": null}
+{"ts": 1783800627.8669097, "market_hash_name": "MAC-10 | Strats (Factory New)", "currency": 1, "lowest_price": 6.56, "median_price": 6.56, "volume": null}
+{"ts": 1783800627.871825, "market_hash_name": "MAC-10 | Bronzer (Factory New)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783800627.8788278, "market_hash_name": "Five-SeveN | Autumn Thicket (Factory New)", "currency": 1, "lowest_price": 0.06, "median_price": 0.06, "volume": null}
+{"ts": 1783800627.8881261, "market_hash_name": "PP-Bizon | Breaker Box (Factory New)", "currency": 1, "lowest_price": 3.84, "median_price": 3.84, "volume": null}
+{"ts": 1783800627.8977282, "market_hash_name": "UMP-45 | Mechanism (Factory New)", "currency": 1, "lowest_price": 3.67, "median_price": 3.67, "volume": null}
+{"ts": 1783800627.9027305, "market_hash_name": "Dual Berettas | Rose Nacre (Minimal Wear)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783800627.9077256, "market_hash_name": "Five-SeveN | Sky Blue (Factory New)", "currency": 1, "lowest_price": 0.37, "median_price": 0.37, "volume": null}
+{"ts": 1783800627.9124339, "market_hash_name": "Galil AR | Robin's Egg (Factory New)", "currency": 1, "lowest_price": 0.35, "median_price": 0.35, "volume": null}
+{"ts": 1783800627.9179225, "market_hash_name": "Glock-18 | Ocean Topo (Factory New)", "currency": 1, "lowest_price": 0.6, "median_price": 0.6, "volume": null}
+{"ts": 1783800627.9229758, "market_hash_name": "M4A4 | Naval Shred Camo (Factory New)", "currency": 1, "lowest_price": 0.56, "median_price": 0.56, "volume": null}
+{"ts": 1783800627.9279177, "market_hash_name": "Negev | Sour Grapes (Minimal Wear)", "currency": 1, "lowest_price": 0.13, "median_price": 0.13, "volume": null}
+{"ts": 1783800627.9360044, "market_hash_name": "Nova | Turquoise Pour (Minimal Wear)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783800627.944385, "market_hash_name": "Zeus x27 | Electric Blue (Minimal Wear)", "currency": 1, "lowest_price": 0.13, "median_price": 0.13, "volume": null}
+{"ts": 1783800627.949483, "market_hash_name": "XM1014 | Gum Wall Camo (Factory New)", "currency": 1, "lowest_price": 0.27, "median_price": 0.27, "volume": null}
+{"ts": 1783800627.958858, "market_hash_name": "M4A4 | Steel Work (Minimal Wear)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783800628.1628144, "market_hash_name": "UMP-45 | Exposure (Well-Worn)", "currency": 1, "lowest_price": 1.17, "median_price": 1.17, "volume": null}
+{"ts": 1783800628.1708987, "market_hash_name": "AUG | Random Access (Factory New)", "currency": 1, "lowest_price": 14.02, "median_price": 14.02, "volume": null}
+{"ts": 1783800628.256628, "market_hash_name": "MAC-10 | Whitefish (Well-Worn)", "currency": 1, "lowest_price": 0.36, "median_price": 0.36, "volume": null}
+{"ts": 1783800628.2642653, "market_hash_name": "MAC-10 | Whitefish (Factory New)", "currency": 1, "lowest_price": 4.93, "median_price": 4.93, "volume": null}
+{"ts": 1783800628.2693527, "market_hash_name": "Galil AR | Blue Titanium (Factory New)", "currency": 1, "lowest_price": 44.34, "median_price": 44.34, "volume": null}
+{"ts": 1783800628.2801485, "market_hash_name": "AWP | Atheris (Field-Tested)", "currency": 1, "lowest_price": 6.28, "median_price": 6.28, "volume": null}
+{"ts": 1783800628.2861507, "market_hash_name": "Desert Eagle | Light Rail (Field-Tested)", "currency": 1, "lowest_price": 1.49, "median_price": 1.49, "volume": null}
+{"ts": 1783800628.2912903, "market_hash_name": "MP5-SD | Gauss (Field-Tested)", "currency": 1, "lowest_price": 0.82, "median_price": 0.82, "volume": null}
+{"ts": 1783800628.3003561, "market_hash_name": "UMP-45 | Moonrise (Minimal Wear)", "currency": 1, "lowest_price": 1.08, "median_price": 1.08, "volume": null}
+{"ts": 1783800628.3142104, "market_hash_name": "Glock-18 | Brass (Field-Tested)", "currency": 1, "lowest_price": 43.54, "median_price": 43.54, "volume": null}
+{"ts": 1783800670.7834861, "market_hash_name": "P2000 | Royal Baroque (Battle-Scarred)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783800671.7407937, "market_hash_name": "P90 | Mustard Gas (Battle-Scarred)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783800672.5963895, "market_hash_name": "P250 | Inferno (Battle-Scarred)", "currency": 1, "lowest_price": 0.75, "median_price": 0.75, "volume": null}
+{"ts": 1783800672.8018606, "market_hash_name": "PP-Bizon | Cobalt Halftone (Well-Worn)", "currency": 1, "lowest_price": 1.86, "median_price": 1.86, "volume": null}
+{"ts": 1783800672.803061, "market_hash_name": "PP-Bizon | Cobalt Halftone (Factory New)", "currency": 1, "lowest_price": 16.65, "median_price": 16.65, "volume": null}
+{"ts": 1783800672.8058343, "market_hash_name": "M4A4 | Global Offensive (Factory New)", "currency": 1, "lowest_price": 107.53, "median_price": 107.53, "volume": null}
+{"ts": 1783800679.7784348, "market_hash_name": "StatTrak\u2122 XM1014 | XOXO (Minimal Wear)", "currency": 1, "lowest_price": 11.09, "median_price": 11.09, "volume": null}
+{"ts": 1783800680.897637, "market_hash_name": "AUG | Sand Storm (Factory New)", "currency": 1, "lowest_price": 46.86, "median_price": 46.86, "volume": null}
+{"ts": 1783800681.0245593, "market_hash_name": "XM1014 | Oxide Blaze (Minimal Wear)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783800681.0285854, "market_hash_name": "MAG-7 | SWAG-7 (Minimal Wear)", "currency": 1, "lowest_price": 1.61, "median_price": 1.61, "volume": null}
+{"ts": 1783800681.1544814, "market_hash_name": "StatTrak\u2122 AWP | Phobos (Factory New)", "currency": 1, "lowest_price": 11.09, "median_price": 11.09, "volume": null}
+{"ts": 1783800681.799241, "market_hash_name": "MP9 | Bee-Tron (Factory New)", "currency": 1, "lowest_price": 0.22, "median_price": 0.22, "volume": null}
+{"ts": 1783800681.8095243, "market_hash_name": "SSG 08 | Sans Comic (Minimal Wear)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783800681.8359911, "market_hash_name": "StatTrak\u2122 MAC-10 | Malachite (Factory New)", "currency": 1, "lowest_price": 16.19, "median_price": 16.19, "volume": null}
+{"ts": 1783800682.3256931, "market_hash_name": "StatTrak\u2122 Desert Eagle | Naga (Minimal Wear)", "currency": 1, "lowest_price": 10.19, "median_price": 10.19, "volume": null}
+{"ts": 1783800682.5606914, "market_hash_name": "G3SG1 | New Roots (Factory New)", "currency": 1, "lowest_price": 8.85, "median_price": 8.85, "volume": null}
+{"ts": 1783800682.5687191, "market_hash_name": "Galil AR | Amber Fade (Factory New)", "currency": 1, "lowest_price": 25.8, "median_price": 25.8, "volume": null}
+{"ts": 1783800682.5740283, "market_hash_name": "Nova | Quick Sand (Factory New)", "currency": 1, "lowest_price": 8.83, "median_price": 8.83, "volume": null}
+{"ts": 1783800682.5817165, "market_hash_name": "P250 | Black & Tan (Factory New)", "currency": 1, "lowest_price": 8.22, "median_price": 8.22, "volume": null}
+{"ts": 1783800682.8216488, "market_hash_name": "StatTrak\u2122 SCAR-20 | Grotto (Field-Tested)", "currency": 1, "lowest_price": 0.86, "median_price": 0.86, "volume": null}
+{"ts": 1783800683.302113, "market_hash_name": "P250 | Cartel (Factory New)", "currency": 1, "lowest_price": 51.29, "median_price": 51.29, "volume": null}
+{"ts": 1783800683.5415313, "market_hash_name": "P250 | Red Rock (Factory New)", "currency": 1, "lowest_price": 65.12, "median_price": 65.12, "volume": null}
+{"ts": 1783800695.7408776, "market_hash_name": "AWP | Fever Dream (Battle-Scarred)", "currency": 1, "lowest_price": 15.36, "median_price": 15.36, "volume": null}
+{"ts": 1783800695.7500703, "market_hash_name": "AK-47 | Bloodsport (Well-Worn)", "currency": 1, "lowest_price": 178.06, "median_price": 178.06, "volume": null}
+{"ts": 1783800696.9040282, "market_hash_name": "MAC-10 | Last Dive (Factory New)", "currency": 1, "lowest_price": 8.44, "median_price": 8.44, "volume": null}
+{"ts": 1783800696.9201005, "market_hash_name": "AWP | Fever Dream (Well-Worn)", "currency": 1, "lowest_price": 15.66, "median_price": 15.66, "volume": null}
+{"ts": 1783800713.6884782, "market_hash_name": "SG 553 | Berry Gel Coat (Battle-Scarred)", "currency": 1, "lowest_price": 1.56, "median_price": 1.56, "volume": null}
+{"ts": 1783800713.7065036, "market_hash_name": "P90 | Attack Vector (Well-Worn)", "currency": 1, "lowest_price": 8.16, "median_price": 8.16, "volume": null}
+{"ts": 1783800717.2225678, "market_hash_name": "Sawed-Off | Sage Spray (Minimal Wear)", "currency": 1, "lowest_price": 1.24, "median_price": 1.24, "volume": null}
+{"ts": 1783800717.6542237, "market_hash_name": "CZ75-Auto | Pole Position (Battle-Scarred)", "currency": 1, "lowest_price": 1.32, "median_price": 1.32, "volume": null}
+{"ts": 1783800718.391215, "market_hash_name": "CZ75-Auto | Pole Position (Minimal Wear)", "currency": 1, "lowest_price": 2.55, "median_price": 2.55, "volume": null}
+{"ts": 1783800719.3562982, "market_hash_name": "AWP | Pink DDPAT (Battle-Scarred)", "currency": 1, "lowest_price": 36.45, "median_price": 36.45, "volume": null}
+{"ts": 1783800722.3453772, "market_hash_name": "FAMAS | Hexane (Field-Tested)", "currency": 1, "lowest_price": 3.82, "median_price": 3.82, "volume": null}
+{"ts": 1783800722.890008, "market_hash_name": "MP9 | Bee-Tron (Well-Worn)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800722.9147317, "market_hash_name": "Tec-9 | Banana Leaf (Battle-Scarred)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783800722.9293673, "market_hash_name": "XM1014 | XoooM (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800744.6968997, "market_hash_name": "StatTrak\u2122 AWP | Capillary (Field-Tested)", "currency": 1, "lowest_price": 2.35, "median_price": 2.35, "volume": null}
+{"ts": 1783800745.4884343, "market_hash_name": "Galil AR | Chatterbox (Well-Worn)", "currency": 1, "lowest_price": 160.11, "median_price": 160.11, "volume": null}
+{"ts": 1783800746.0914147, "market_hash_name": "P90 | ScaraB Rush (Factory New)", "currency": 1, "lowest_price": 27.81, "median_price": 27.81, "volume": null}
+{"ts": 1783800746.2164733, "market_hash_name": "AK-47 | Safety Net (Well-Worn)", "currency": 1, "lowest_price": 3.7, "median_price": 3.7, "volume": null}
+{"ts": 1783800746.6487513, "market_hash_name": "P2000 | Oceanic (Well-Worn)", "currency": 1, "lowest_price": 0.92, "median_price": 0.92, "volume": null}
+{"ts": 1783800747.055938, "market_hash_name": "StatTrak\u2122 MAC-10 | Tatter (Minimal Wear)", "currency": 1, "lowest_price": 11.41, "median_price": 11.41, "volume": null}
+{"ts": 1783800747.0639663, "market_hash_name": "StatTrak\u2122 MAC-10 | Curse (Well-Worn)", "currency": 1, "lowest_price": 16.4, "median_price": 16.4, "volume": null}
+{"ts": 1783800747.7505338, "market_hash_name": "Nova | Rising Sun (Factory New)", "currency": 1, "lowest_price": 6.51, "median_price": 6.51, "volume": null}
+{"ts": 1783800747.7593484, "market_hash_name": "AK-47 | Searing Rage (Factory New)", "currency": 1, "lowest_price": 38.47, "median_price": 38.47, "volume": null}
+{"ts": 1783800749.2575965, "market_hash_name": "StatTrak\u2122 SSG 08 | Dezastre (Field-Tested)", "currency": 1, "lowest_price": 0.14, "median_price": 0.14, "volume": null}
+{"ts": 1783800749.2656393, "market_hash_name": "StatTrak\u2122 SSG 08 | Dezastre (Battle-Scarred)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783800749.2743177, "market_hash_name": "StatTrak\u2122 SSG 08 | Dezastre (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783800749.2808592, "market_hash_name": "StatTrak\u2122 SSG 08 | Dezastre (Factory New)", "currency": 1, "lowest_price": 1.91, "median_price": 1.91, "volume": null}
+{"ts": 1783800749.295402, "market_hash_name": "StatTrak\u2122 XM1014 | Irezumi (Well-Worn)", "currency": 1, "lowest_price": 0.12, "median_price": 0.12, "volume": null}
+{"ts": 1783800749.3172836, "market_hash_name": "StatTrak\u2122 XM1014 | Irezumi (Factory New)", "currency": 1, "lowest_price": 0.93, "median_price": 0.93, "volume": null}
+{"ts": 1783800749.3396804, "market_hash_name": "StatTrak\u2122 Nova | Dark Sigil (Factory New)", "currency": 1, "lowest_price": 0.58, "median_price": 0.58, "volume": null}
+{"ts": 1783800749.3495574, "market_hash_name": "StatTrak\u2122 Nova | Dark Sigil (Battle-Scarred)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783800749.3647156, "market_hash_name": "StatTrak\u2122 Five-SeveN | Hybrid (Field-Tested)", "currency": 1, "lowest_price": 1.22, "median_price": 1.22, "volume": null}
+{"ts": 1783800749.368497, "market_hash_name": "StatTrak\u2122 Glock-18 | Block-18 (Field-Tested)", "currency": 1, "lowest_price": 1.76, "median_price": 1.76, "volume": null}
+{"ts": 1783800749.3797934, "market_hash_name": "StatTrak\u2122 M4A4 | Etch Lord (Field-Tested)", "currency": 1, "lowest_price": 1.38, "median_price": 1.38, "volume": null}
+{"ts": 1783800749.3938813, "market_hash_name": "StatTrak\u2122 MP7 | Just Smile (Field-Tested)", "currency": 1, "lowest_price": 1.26, "median_price": 1.26, "volume": null}
+{"ts": 1783800749.4003358, "market_hash_name": "StatTrak\u2122 Sawed-Off | Analog Input (Field-Tested)", "currency": 1, "lowest_price": 1.09, "median_price": 1.09, "volume": null}
+{"ts": 1783800749.5448017, "market_hash_name": "UMP-45 | Caramel (Minimal Wear)", "currency": 1, "lowest_price": 19.99, "median_price": 19.99, "volume": null}
+{"ts": 1783800749.677377, "market_hash_name": "SG 553 | Tornado (Well-Worn)", "currency": 1, "lowest_price": 12.89, "median_price": 12.89, "volume": null}
+{"ts": 1783800749.6866117, "market_hash_name": "SG 553 | Tornado (Factory New)", "currency": 1, "lowest_price": 67.14, "median_price": 67.14, "volume": null}
+{"ts": 1783800749.834813, "market_hash_name": "PP-Bizon | Sand Dashed (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783800749.8415806, "market_hash_name": "Nova | Sand Dune (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800749.8525515, "market_hash_name": "Nova | Sand Dune (Minimal Wear)", "currency": 1, "lowest_price": 0.06, "median_price": 0.06, "volume": null}
+{"ts": 1783800749.8650033, "market_hash_name": "Nova | Sand Dune (Factory New)", "currency": 1, "lowest_price": 1.4, "median_price": 1.4, "volume": null}
+{"ts": 1783800750.137129, "market_hash_name": "AK-47 | Inheritance (Battle-Scarred)", "currency": 1, "lowest_price": 49.95, "median_price": 49.95, "volume": null}
+{"ts": 1783800750.317615, "market_hash_name": "StatTrak\u2122 Sawed-Off | Limelight (Minimal Wear)", "currency": 1, "lowest_price": 4.21, "median_price": 4.21, "volume": null}
+{"ts": 1783800750.3365664, "market_hash_name": "StatTrak\u2122 Sawed-Off | Limelight (Well-Worn)", "currency": 1, "lowest_price": 1.74, "median_price": 1.74, "volume": null}
+{"ts": 1783800750.3468125, "market_hash_name": "StatTrak\u2122 P2000 | Imperial Dragon (Field-Tested)", "currency": 1, "lowest_price": 13.74, "median_price": 13.74, "volume": null}
+{"ts": 1783800750.9046981, "market_hash_name": "PP-Bizon | Seabird (Minimal Wear)", "currency": 1, "lowest_price": 7.99, "median_price": 7.99, "volume": null}
+{"ts": 1783800750.9229455, "market_hash_name": "CZ75-Auto | Indigo (Factory New)", "currency": 1, "lowest_price": 20.5, "median_price": 20.5, "volume": null}
+{"ts": 1783800751.4743662, "market_hash_name": "StatTrak\u2122 M4A1-S | Bright Water (Minimal Wear)", "currency": 1, "lowest_price": 94.47, "median_price": 94.47, "volume": null}
+{"ts": 1783800751.5042677, "market_hash_name": "StatTrak\u2122 M4A4 | Zirka (Field-Tested)", "currency": 1, "lowest_price": 37.27, "median_price": 37.27, "volume": null}
+{"ts": 1783800751.5184631, "market_hash_name": "StatTrak\u2122 USP-S | Overgrowth (Battle-Scarred)", "currency": 1, "lowest_price": 41.64, "median_price": 41.64, "volume": null}
+{"ts": 1783800790.1093276, "market_hash_name": "M4A4 | Desolate Space (Factory New)", "currency": 1, "lowest_price": 121.37, "median_price": 121.37, "volume": null}
+{"ts": 1783800790.322834, "market_hash_name": "M4A1-S | Rose Hex (Factory New)", "currency": 1, "lowest_price": 1.31, "median_price": 1.31, "volume": null}
+{"ts": 1783800790.4849582, "market_hash_name": "XM1014 | CaliCamo (Factory New)", "currency": 1, "lowest_price": 0.71, "median_price": 0.71, "volume": null}
+{"ts": 1783800790.636299, "market_hash_name": "UMP-45 | Mudder (Field-Tested)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783800790.649524, "market_hash_name": "M4A1-S | Boreal Forest (Minimal Wear)", "currency": 1, "lowest_price": 0.41, "median_price": 0.41, "volume": null}
+{"ts": 1783800790.6603007, "market_hash_name": "Nova | Candy Apple (Factory New)", "currency": 1, "lowest_price": 0.36, "median_price": 0.36, "volume": null}
+{"ts": 1783800791.7732396, "market_hash_name": "MP7 | Anodized Navy (Minimal Wear)", "currency": 1, "lowest_price": 2.5, "median_price": 2.5, "volume": null}
+{"ts": 1783800793.0446005, "market_hash_name": "M4A1-S | Rose Hex (Minimal Wear)", "currency": 1, "lowest_price": 0.53, "median_price": 0.53, "volume": null}
+{"ts": 1783800793.0477514, "market_hash_name": "FAMAS | Decommissioned (Factory New)", "currency": 1, "lowest_price": 15.45, "median_price": 15.45, "volume": null}
+{"ts": 1783800794.0510476, "market_hash_name": "SSG 08 | Zeno (Minimal Wear)", "currency": 1, "lowest_price": 1.01, "median_price": 1.01, "volume": null}
+{"ts": 1783800794.3648803, "market_hash_name": "UMP-45 | Mudder (Battle-Scarred)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783800794.535272, "market_hash_name": "Dual Berettas | Oil Change (Well-Worn)", "currency": 1, "lowest_price": 1.71, "median_price": 1.71, "volume": null}
+{"ts": 1783800794.5455606, "market_hash_name": "Nova | Marsh Grass (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783800794.5500233, "market_hash_name": "SCAR-20 | Short Ochre (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783800794.5615535, "market_hash_name": "SCAR-20 | Short Ochre (Battle-Scarred)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783800794.5698066, "market_hash_name": "P250 | Facility Draft (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800794.577614, "market_hash_name": "P250 | Facility Draft (Well-Worn)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800794.5816965, "market_hash_name": "Glock-18 | Red Tire (Well-Worn)", "currency": 1, "lowest_price": 3.37, "median_price": 3.37, "volume": null}
+{"ts": 1783800794.5843663, "market_hash_name": "UMP-45 | Mechanism (Well-Worn)", "currency": 1, "lowest_price": 5.45, "median_price": 5.45, "volume": null}
+{"ts": 1783800794.589806, "market_hash_name": "FAMAS | Grey Ghost (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800794.5947475, "market_hash_name": "Galil AR | O-Ranger (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800794.5963228, "market_hash_name": "M4A4 | Steel Work (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800794.598146, "market_hash_name": "SG 553 | Basket Halftone (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800794.600257, "market_hash_name": "Tec-9 | Citric Acid (Battle-Scarred)", "currency": 1, "lowest_price": 0.04, "median_price": 0.04, "volume": null}
+{"ts": 1783800794.6062574, "market_hash_name": "M249 | Shipping Forecast (Well-Worn)", "currency": 1, "lowest_price": 21.8, "median_price": 21.8, "volume": null}
+{"ts": 1783800794.6133356, "market_hash_name": "MP7 | Motherboard (Well-Worn)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783800794.6189365, "market_hash_name": "Negev | Bulkhead (Well-Worn)", "currency": 1, "lowest_price": 0.06, "median_price": 0.06, "volume": null}
+{"ts": 1783800794.7061775, "market_hash_name": "AUG | Torque (Factory New)", "currency": 1, "lowest_price": 14.9, "median_price": 14.9, "volume": null}
+{"ts": 1783800794.709991, "market_hash_name": "P2000 | Wicked Sick (Field-Tested)", "currency": 1, "lowest_price": 4.71, "median_price": 4.71, "volume": null}
+{"ts": 1783800794.7167935, "market_hash_name": "USP-S | Orion (Minimal Wear)", "currency": 1, "lowest_price": 80.0, "median_price": 80.0, "volume": null}
+{"ts": 1783800794.894678, "market_hash_name": "MAG-7 | Petroglyph (Factory New)", "currency": 1, "lowest_price": 3.63, "median_price": 3.63, "volume": null}
+{"ts": 1783800794.904955, "market_hash_name": "MP9 | Airlock (Minimal Wear)", "currency": 1, "lowest_price": 16.61, "median_price": 16.61, "volume": null}
+{"ts": 1783800794.9064229, "market_hash_name": "Tec-9 | Fuel Injector (Minimal Wear)", "currency": 1, "lowest_price": 18.69, "median_price": 18.69, "volume": null}
+{"ts": 1783800794.9891388, "market_hash_name": "AK-47 | The Outsiders (Factory New)", "currency": 1, "lowest_price": 120.24, "median_price": 120.24, "volume": null}
+{"ts": 1783800841.7797418, "market_hash_name": "SSG 08 | Abyss (Field-Tested)", "currency": 1, "lowest_price": 0.64, "median_price": 0.64, "volume": null}
+{"ts": 1783800841.9054663, "market_hash_name": "AWP | Green Energy (Battle-Scarred)", "currency": 1, "lowest_price": 7.88, "median_price": 7.88, "volume": null}
+{"ts": 1783800842.5871334, "market_hash_name": "USP-S | Tropical Breeze (Factory New)", "currency": 1, "lowest_price": 2.63, "median_price": 2.63, "volume": null}
+{"ts": 1783800843.366774, "market_hash_name": "Desert Eagle | Pilot (Field-Tested)", "currency": 1, "lowest_price": 119.31, "median_price": 119.31, "volume": null}
+{"ts": 1783800843.4250276, "market_hash_name": "Five-SeveN | Violent Daimyo (Well-Worn)", "currency": 1, "lowest_price": 0.57, "median_price": 0.57, "volume": null}
+{"ts": 1783800843.4281185, "market_hash_name": "Dual Berettas | Tread (Factory New)", "currency": 1, "lowest_price": 8.9, "median_price": 8.9, "volume": null}
+{"ts": 1783800843.4352853, "market_hash_name": "G3SG1 | Keeping Tabs (Well-Worn)", "currency": 1, "lowest_price": 1.08, "median_price": 1.08, "volume": null}
+{"ts": 1783800844.7353213, "market_hash_name": "StatTrak\u2122 AWP | Mortis (Factory New)", "currency": 1, "lowest_price": 25.28, "median_price": 25.28, "volume": null}
+{"ts": 1783800844.7382944, "market_hash_name": "StatTrak\u2122 AUG | Fleet Flock (Well-Worn)", "currency": 1, "lowest_price": 14.16, "median_price": 14.16, "volume": null}
+{"ts": 1783800844.7410626, "market_hash_name": "StatTrak\u2122 P250 | Asiimov (Well-Worn)", "currency": 1, "lowest_price": 14.52, "median_price": 14.52, "volume": null}
+{"ts": 1783800844.7460253, "market_hash_name": "StatTrak\u2122 M4A4 | Neo-Noir (Well-Worn)", "currency": 1, "lowest_price": 42.87, "median_price": 42.87, "volume": null}
+{"ts": 1783800844.8060734, "market_hash_name": "P2000 | Wicked Sick (Well-Worn)", "currency": 1, "lowest_price": 4.16, "median_price": 4.16, "volume": null}
+{"ts": 1783800851.8596413, "market_hash_name": "StatTrak\u2122 MP9 | Urban Sovereign (Factory New)", "currency": 1, "lowest_price": 11.32, "median_price": 11.32, "volume": null}
+{"ts": 1783800852.241961, "market_hash_name": "StatTrak\u2122 M4A1-S | Mecha Industries (Factory New)", "currency": 1, "lowest_price": 345.0, "median_price": 345.0, "volume": null}
+{"ts": 1783800853.5516279, "market_hash_name": "StatTrak\u2122 Glock-18 | Wasteland Rebel (Minimal Wear)", "currency": 1, "lowest_price": 139.35, "median_price": 139.35, "volume": null}
+{"ts": 1783800854.3247545, "market_hash_name": "Five-SeveN | Withered Vine (Battle-Scarred)", "currency": 1, "lowest_price": 1.43, "median_price": 1.43, "volume": null}
+{"ts": 1783800854.3341622, "market_hash_name": "Nova | Quick Sand (Battle-Scarred)", "currency": 1, "lowest_price": 3.33, "median_price": 3.33, "volume": null}
+{"ts": 1783800855.5472388, "market_hash_name": "Sawed-Off | The Kraken (Well-Worn)", "currency": 1, "lowest_price": 99.17, "median_price": 99.17, "volume": null}
+{"ts": 1783800855.9358144, "market_hash_name": "M4A4 | Poly Mag (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783800856.1806417, "market_hash_name": "Sawed-Off | Serenity (Factory New)", "currency": 1, "lowest_price": 8.0, "median_price": 8.0, "volume": null}
+{"ts": 1783800856.3081546, "market_hash_name": "FAMAS | Afterimage (Well-Worn)", "currency": 1, "lowest_price": 27.58, "median_price": 27.58, "volume": null}
+{"ts": 1783800856.5585234, "market_hash_name": "AWP | Wildfire (Battle-Scarred)", "currency": 1, "lowest_price": 52.29, "median_price": 52.29, "volume": null}
+{"ts": 1783800856.6875234, "market_hash_name": "MAG-7 | Justice (Minimal Wear)", "currency": 1, "lowest_price": 11.57, "median_price": 11.57, "volume": null}
+{"ts": 1783800856.8067071, "market_hash_name": "M4A4 | Turbine (Minimal Wear)", "currency": 1, "lowest_price": 5.54, "median_price": 5.54, "volume": null}
+{"ts": 1783800856.8159993, "market_hash_name": "P90 | Randy Rush (Factory New)", "currency": 1, "lowest_price": 6.22, "median_price": 6.22, "volume": null}
+{"ts": 1783800856.821034, "market_hash_name": "MAC-10 | Saib\u0101 Oni (Well-Worn)", "currency": 1, "lowest_price": 1.56, "median_price": 1.56, "volume": null}
+{"ts": 1783800856.8303554, "market_hash_name": "CZ75-Auto | Slalom (Minimal Wear)", "currency": 1, "lowest_price": 15.28, "median_price": 15.28, "volume": null}
+{"ts": 1783800856.9476051, "market_hash_name": "StatTrak\u2122 UMP-45 | Wild Child (Minimal Wear)", "currency": 1, "lowest_price": 9.8, "median_price": 9.8, "volume": null}
+{"ts": 1783800856.954768, "market_hash_name": "StatTrak\u2122 UMP-45 | Wild Child (Factory New)", "currency": 1, "lowest_price": 26.32, "median_price": 26.32, "volume": null}
+{"ts": 1783800856.9619792, "market_hash_name": "StatTrak\u2122 AWP | Duality (Factory New)", "currency": 1, "lowest_price": 32.75, "median_price": 32.75, "volume": null}
+{"ts": 1783800857.0798829, "market_hash_name": "Nova | Army Sheen (Field-Tested)", "currency": 1, "lowest_price": 1.04, "median_price": 1.04, "volume": null}
+{"ts": 1783800857.089206, "market_hash_name": "R8 Revolver | Night (Battle-Scarred)", "currency": 1, "lowest_price": 1.05, "median_price": 1.05, "volume": null}
+{"ts": 1783800857.0970657, "market_hash_name": "SSG 08 | Jungle Dashed (Factory New)", "currency": 1, "lowest_price": 15.86, "median_price": 15.86, "volume": null}
+{"ts": 1783800857.106672, "market_hash_name": "SSG 08 | Jungle Dashed (Battle-Scarred)", "currency": 1, "lowest_price": 1.18, "median_price": 1.18, "volume": null}
+{"ts": 1783800857.10972, "market_hash_name": "SSG 08 | Jungle Dashed (Minimal Wear)", "currency": 1, "lowest_price": 1.5, "median_price": 1.5, "volume": null}
+{"ts": 1783800857.1174498, "market_hash_name": "SSG 08 | Jungle Dashed (Well-Worn)", "currency": 1, "lowest_price": 4.61, "median_price": 4.61, "volume": null}
+{"ts": 1783800857.1250656, "market_hash_name": "SSG 08 | Jungle Dashed (Field-Tested)", "currency": 1, "lowest_price": 0.85, "median_price": 0.85, "volume": null}
+{"ts": 1783800857.132283, "market_hash_name": "SG 553 | Lush Ruins (Battle-Scarred)", "currency": 1, "lowest_price": 1.1, "median_price": 1.1, "volume": null}
+{"ts": 1783800857.1418335, "market_hash_name": "SG 553 | Lush Ruins (Field-Tested)", "currency": 1, "lowest_price": 0.75, "median_price": 0.75, "volume": null}
+{"ts": 1783800857.1578202, "market_hash_name": "CZ75-Auto | Silver (Factory New)", "currency": 1, "lowest_price": 4.14, "median_price": 4.14, "volume": null}
+{"ts": 1783800857.165654, "market_hash_name": "G3SG1 | Ancient Ritual (Field-Tested)", "currency": 1, "lowest_price": 2.27, "median_price": 2.27, "volume": null}
+{"ts": 1783800857.1710398, "market_hash_name": "P2000 | Panther Camo (Field-Tested)", "currency": 1, "lowest_price": 2.32, "median_price": 2.32, "volume": null}
+{"ts": 1783800857.1810813, "market_hash_name": "MP7 | Tall Grass (Field-Tested)", "currency": 1, "lowest_price": 2.15, "median_price": 2.15, "volume": null}
+{"ts": 1783800857.3010645, "market_hash_name": "CZ75-Auto | Midnight Palm (Battle-Scarred)", "currency": 1, "lowest_price": 1.26, "median_price": 1.26, "volume": null}
+{"ts": 1783800857.3115714, "market_hash_name": "P90 | Verdant Growth (Well-Worn)", "currency": 1, "lowest_price": 0.43, "median_price": 0.43, "volume": null}
+{"ts": 1783800857.3193955, "market_hash_name": "P90 | Verdant Growth (Factory New)", "currency": 1, "lowest_price": 1.75, "median_price": 1.75, "volume": null}
+{"ts": 1783800857.3266726, "market_hash_name": "P90 | Verdant Growth (Battle-Scarred)", "currency": 1, "lowest_price": 2.05, "median_price": 2.05, "volume": null}
+{"ts": 1783800857.3342922, "market_hash_name": "P90 | Verdant Growth (Minimal Wear)", "currency": 1, "lowest_price": 0.65, "median_price": 0.65, "volume": null}
+{"ts": 1783800872.33205, "market_hash_name": "Five-SeveN | Capillary (Field-Tested)", "currency": 1, "lowest_price": 0.5, "median_price": 0.5, "volume": null}
+{"ts": 1783800872.3426414, "market_hash_name": "P2000 | Urban Hazard (Well-Worn)", "currency": 1, "lowest_price": 0.16, "median_price": 0.16, "volume": null}
+{"ts": 1783800896.5463982, "market_hash_name": "MAG-7 | Insomnia (Field-Tested)", "currency": 1, "lowest_price": 0.12, "median_price": 0.12, "volume": null}
+{"ts": 1783800896.5615613, "market_hash_name": "Glock-18 | Umbral Rabbit (Field-Tested)", "currency": 1, "lowest_price": 0.53, "median_price": 0.53, "volume": null}
+{"ts": 1783800896.5792584, "market_hash_name": "M4A1-S | Emphorosaur-S (Field-Tested)", "currency": 1, "lowest_price": 0.59, "median_price": 0.59, "volume": null}
+{"ts": 1783800896.5923293, "market_hash_name": "P90 | Neoqueen (Field-Tested)", "currency": 1, "lowest_price": 0.48, "median_price": 0.48, "volume": null}
+{"ts": 1783800896.603019, "market_hash_name": "R8 Revolver | Banana Cannon (Well-Worn)", "currency": 1, "lowest_price": 0.5, "median_price": 0.5, "volume": null}
+{"ts": 1783800898.0152726, "market_hash_name": "MP7 | Armor Core (Factory New)", "currency": 1, "lowest_price": 2.92, "median_price": 2.92, "volume": null}
+{"ts": 1783800900.2828386, "market_hash_name": "Desert Eagle | Oxide Blaze (Battle-Scarred)", "currency": 1, "lowest_price": 0.66, "median_price": 0.66, "volume": null}
+{"ts": 1783800924.708402, "market_hash_name": "PP-Bizon | Embargo (Field-Tested)", "currency": 1, "lowest_price": 2.34, "median_price": 2.34, "volume": null}
+{"ts": 1783800925.3718421, "market_hash_name": "P250 | Constructivist (Factory New)", "currency": 1, "lowest_price": 0.68, "median_price": 0.68, "volume": null}
+{"ts": 1783800925.3955576, "market_hash_name": "FAMAS | 2A2F (Minimal Wear)", "currency": 1, "lowest_price": 2.15, "median_price": 2.15, "volume": null}
+{"ts": 1783800925.4010813, "market_hash_name": "Glock-18 | Green Line (Minimal Wear)", "currency": 1, "lowest_price": 3.05, "median_price": 3.05, "volume": null}
+{"ts": 1783800925.4121478, "market_hash_name": "XM1014 | Run Run Run (Minimal Wear)", "currency": 1, "lowest_price": 1.48, "median_price": 1.48, "volume": null}
+{"ts": 1783800925.8087928, "market_hash_name": "M4A4 | Zubastick (Minimal Wear)", "currency": 1, "lowest_price": 0.31, "median_price": 0.31, "volume": null}
+{"ts": 1783800925.8188367, "market_hash_name": "M4A1-S | Electrum (Minimal Wear)", "currency": 1, "lowest_price": 3.46, "median_price": 3.46, "volume": null}
+{"ts": 1783800925.820725, "market_hash_name": "MP7 | Amberline (Minimal Wear)", "currency": 1, "lowest_price": 2.33, "median_price": 2.33, "volume": null}
+{"ts": 1783800925.8328235, "market_hash_name": "MP9 | Urban Sovereign (Minimal Wear)", "currency": 1, "lowest_price": 2.41, "median_price": 2.41, "volume": null}
+{"ts": 1783800926.1168268, "market_hash_name": "StatTrak\u2122 R8 Revolver | Bone Forged (Battle-Scarred)", "currency": 1, "lowest_price": 0.26, "median_price": 0.26, "volume": null}
+{"ts": 1783800926.27317, "market_hash_name": "M4A4 | Choppa (Factory New)", "currency": 1, "lowest_price": 2.64, "median_price": 2.64, "volume": null}
+{"ts": 1783800926.2893872, "market_hash_name": "Galil AR | Control (Factory New)", "currency": 1, "lowest_price": 6.09, "median_price": 6.09, "volume": null}
+{"ts": 1783800926.2996223, "market_hash_name": "P90 | Wave Breaker (Factory New)", "currency": 1, "lowest_price": 5.8, "median_price": 5.8, "volume": null}
+{"ts": 1783800926.3083456, "market_hash_name": "Zeus x27 | Tosai (Factory New)", "currency": 1, "lowest_price": 2.85, "median_price": 2.85, "volume": null}
+{"ts": 1783800927.2716231, "market_hash_name": "G3SG1 | Green Apple (Factory New)", "currency": 1, "lowest_price": 0.35, "median_price": 0.35, "volume": null}
+{"ts": 1783800927.2852697, "market_hash_name": "Nova | Caged Steel (Factory New)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783800927.8586044, "market_hash_name": "M4A4 | Converter (Well-Worn)", "currency": 1, "lowest_price": 1.29, "median_price": 1.29, "volume": null}
+{"ts": 1783800927.8708682, "market_hash_name": "AK-47 | Safety Net (Battle-Scarred)", "currency": 1, "lowest_price": 3.59, "median_price": 3.59, "volume": null}
+{"ts": 1783800928.235922, "market_hash_name": "AUG | Momentum (Factory New)", "currency": 1, "lowest_price": 62.2, "median_price": 62.2, "volume": null}
+{"ts": 1783800928.2497365, "market_hash_name": "Five-SeveN | Angry Mob (Minimal Wear)", "currency": 1, "lowest_price": 85.29, "median_price": 85.29, "volume": null}
+{"ts": 1783800928.2593527, "market_hash_name": "M4A4 | The Emperor (Minimal Wear)", "currency": 1, "lowest_price": 105.17, "median_price": 105.17, "volume": null}
+{"ts": 1783800928.6216676, "market_hash_name": "StatTrak\u2122 FAMAS | Roll Cage (Factory New)", "currency": 1, "lowest_price": 253.1, "median_price": 253.1, "volume": null}
+{"ts": 1783800929.1952796, "market_hash_name": "MP9 | Shredded (Minimal Wear)", "currency": 1, "lowest_price": 0.62, "median_price": 0.62, "volume": null}
+{"ts": 1783800929.3947647, "market_hash_name": "Dual Berettas | Panther (Factory New)", "currency": 1, "lowest_price": 13.86, "median_price": 13.86, "volume": null}
+{"ts": 1783800929.4079657, "market_hash_name": "Dual Berettas | Panther (Minimal Wear)", "currency": 1, "lowest_price": 6.18, "median_price": 6.18, "volume": null}
+{"ts": 1783800929.8347642, "market_hash_name": "Glock-18 | Glockingbird (Minimal Wear)", "currency": 1, "lowest_price": 2.97, "median_price": 2.97, "volume": null}
+{"ts": 1783800930.0202005, "market_hash_name": "Zeus x27 | Olympus (Battle-Scarred)", "currency": 1, "lowest_price": 4.43, "median_price": 4.43, "volume": null}
+{"ts": 1783800930.697093, "market_hash_name": "MP9 | Modest Threat (Field-Tested)", "currency": 1, "lowest_price": 0.27, "median_price": 0.27, "volume": null}
+{"ts": 1783800930.7074237, "market_hash_name": "MP9 | Modest Threat (Well-Worn)", "currency": 1, "lowest_price": 0.22, "median_price": 0.22, "volume": null}
+{"ts": 1783800930.9032097, "market_hash_name": "Negev | Wall Bang (Minimal Wear)", "currency": 1, "lowest_price": 0.19, "median_price": 0.19, "volume": null}
+{"ts": 1783800930.9177966, "market_hash_name": "Negev | Wall Bang (Factory New)", "currency": 1, "lowest_price": 1.58, "median_price": 1.58, "volume": null}
+{"ts": 1783800930.9285252, "market_hash_name": "Negev | Wall Bang (Well-Worn)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783800930.934443, "market_hash_name": "Galil AR | Metallic Squeezer (Factory New)", "currency": 1, "lowest_price": 1.83, "median_price": 1.83, "volume": null}
+{"ts": 1783800930.9453638, "market_hash_name": "Nova | Wurst H\u00f6lle (Minimal Wear)", "currency": 1, "lowest_price": 0.95, "median_price": 0.95, "volume": null}
+{"ts": 1783800931.3220289, "market_hash_name": "AUG | Radiation Hazard (Field-Tested)", "currency": 1, "lowest_price": 2.94, "median_price": 2.94, "volume": null}
+{"ts": 1783800931.326552, "market_hash_name": "AUG | Radiation Hazard (Well-Worn)", "currency": 1, "lowest_price": 3.46, "median_price": 3.46, "volume": null}
+{"ts": 1783800932.2694836, "market_hash_name": "FAMAS | Macabre (Battle-Scarred)", "currency": 1, "lowest_price": 5.91, "median_price": 5.91, "volume": null}
+{"ts": 1783800932.4214911, "market_hash_name": "FAMAS | Macabre (Factory New)", "currency": 1, "lowest_price": 22.77, "median_price": 22.77, "volume": null}
+{"ts": 1783800932.4284844, "market_hash_name": "FAMAS | Macabre (Minimal Wear)", "currency": 1, "lowest_price": 7.0, "median_price": 7.0, "volume": null}
+{"ts": 1783800966.7704768, "market_hash_name": "AWP | Wildfire (Minimal Wear)", "currency": 1, "lowest_price": 106.44, "median_price": 106.44, "volume": null}
+{"ts": 1783800968.162552, "market_hash_name": "StatTrak\u2122 AUG | Luxe Trim (Battle-Scarred)", "currency": 1, "lowest_price": 0.32, "median_price": 0.32, "volume": null}
+{"ts": 1783800968.1797566, "market_hash_name": "StatTrak\u2122 Dual Berettas | Hydro Strike (Battle-Scarred)", "currency": 1, "lowest_price": 2.05, "median_price": 2.05, "volume": null}
+{"ts": 1783800968.1918182, "market_hash_name": "StatTrak\u2122 MAC-10 | Saib\u0101 Oni (Battle-Scarred)", "currency": 1, "lowest_price": 2.94, "median_price": 2.94, "volume": null}
+{"ts": 1783800968.197465, "market_hash_name": "StatTrak\u2122 P90 | Randy Rush (Battle-Scarred)", "currency": 1, "lowest_price": 1.38, "median_price": 1.38, "volume": null}
+{"ts": 1783800968.205258, "market_hash_name": "StatTrak\u2122 SSG 08 | Rapid Transit (Battle-Scarred)", "currency": 1, "lowest_price": 2.71, "median_price": 2.71, "volume": null}
+{"ts": 1783800969.3995144, "market_hash_name": "SCAR-20 | Assault (Factory New)", "currency": 1, "lowest_price": 0.96, "median_price": 0.96, "volume": null}
+{"ts": 1783800971.2144692, "market_hash_name": "StatTrak\u2122 FAMAS | Afterimage (Well-Worn)", "currency": 1, "lowest_price": 36.91, "median_price": 36.91, "volume": null}
+{"ts": 1783800971.2280018, "market_hash_name": "StatTrak\u2122 Desert Eagle | Cobalt Disruption (Factory New)", "currency": 1, "lowest_price": 311.33, "median_price": 311.33, "volume": null}
+{"ts": 1783800971.363564, "market_hash_name": "PP-Bizon | Cobalt Halftone (Field-Tested)", "currency": 1, "lowest_price": 1.81, "median_price": 1.81, "volume": null}
+{"ts": 1783800971.3720992, "market_hash_name": "Dual Berettas | Marina (Battle-Scarred)", "currency": 1, "lowest_price": 9.42, "median_price": 9.42, "volume": null}
+{"ts": 1783800971.3814704, "market_hash_name": "Nova | Rising Skull (Well-Worn)", "currency": 1, "lowest_price": 5.72, "median_price": 5.72, "volume": null}
+{"ts": 1783800971.6510482, "market_hash_name": "P2000 | Gnarled (Factory New)", "currency": 1, "lowest_price": 1.55, "median_price": 1.55, "volume": null}
+{"ts": 1783800971.6635945, "market_hash_name": "AUG | Midnight Lily (Minimal Wear)", "currency": 1, "lowest_price": 421.41, "median_price": 421.41, "volume": null}
+{"ts": 1783800971.799035, "market_hash_name": "StatTrak\u2122 Glock-18 | Mirror Mosaic (Factory New)", "currency": 1, "lowest_price": 87.88, "median_price": 87.88, "volume": null}
+{"ts": 1783800971.8083062, "market_hash_name": "StatTrak\u2122 XM1014 | XOXO (Well-Worn)", "currency": 1, "lowest_price": 4.59, "median_price": 4.59, "volume": null}
+{"ts": 1783800971.8142278, "market_hash_name": "StatTrak\u2122 Galil AR | Chromatic Aberration (Factory New)", "currency": 1, "lowest_price": 50.76, "median_price": 50.76, "volume": null}
+{"ts": 1783800971.8249679, "market_hash_name": "StatTrak\u2122 AK-47 | The Oligarch (Field-Tested)", "currency": 1, "lowest_price": 155.55, "median_price": 155.55, "volume": null}
+{"ts": 1783800971.833393, "market_hash_name": "StatTrak\u2122 M4A4 | Full Throttle (Field-Tested)", "currency": 1, "lowest_price": 132.58, "median_price": 132.58, "volume": null}
+{"ts": 1783801021.2430692, "market_hash_name": "Sawed-Off | Spirit Board (Factory New)", "currency": 1, "lowest_price": 1.28, "median_price": 1.28, "volume": null}
+{"ts": 1783801021.5926845, "market_hash_name": "CZ75-Auto | Vendetta (Minimal Wear)", "currency": 1, "lowest_price": 1.92, "median_price": 1.92, "volume": null}
+{"ts": 1783801021.658838, "market_hash_name": "P250 | Contaminant (Field-Tested)", "currency": 1, "lowest_price": 1.27, "median_price": 1.27, "volume": null}
+{"ts": 1783801021.7885804, "market_hash_name": "P90 | Cocoa Rampage (Field-Tested)", "currency": 1, "lowest_price": 1.47, "median_price": 1.47, "volume": null}
+{"ts": 1783801022.272882, "market_hash_name": "USP-S | 27 (Field-Tested)", "currency": 1, "lowest_price": 0.34, "median_price": 0.34, "volume": null}
+{"ts": 1783801022.2778318, "market_hash_name": "M4A4 | Turbine (Well-Worn)", "currency": 1, "lowest_price": 1.82, "median_price": 1.82, "volume": null}
+{"ts": 1783801022.6362023, "market_hash_name": "R8 Revolver | Junk Yard (Minimal Wear)", "currency": 1, "lowest_price": 0.41, "median_price": 0.41, "volume": null}
+{"ts": 1783801023.030241, "market_hash_name": "StatTrak\u2122 AK-47 | Crane Flight (Factory New)", "currency": 1, "lowest_price": 214.71, "median_price": 214.71, "volume": null}
+{"ts": 1783801023.0374098, "market_hash_name": "StatTrak\u2122 AWP | Queen's Gambit (Field-Tested)", "currency": 1, "lowest_price": 104.41, "median_price": 104.41, "volume": null}
+{"ts": 1783801023.0422668, "market_hash_name": "StatTrak\u2122 Glock-18 | Fully Tuned (Field-Tested)", "currency": 1, "lowest_price": 90.65, "median_price": 90.65, "volume": null}
+{"ts": 1783801023.1702871, "market_hash_name": "MAC-10 | Sienna Damask (Well-Worn)", "currency": 1, "lowest_price": 0.41, "median_price": 0.41, "volume": null}
+{"ts": 1783801023.1754642, "market_hash_name": "MAC-10 | Sienna Damask (Battle-Scarred)", "currency": 1, "lowest_price": 0.32, "median_price": 0.32, "volume": null}
+{"ts": 1783801023.176185, "market_hash_name": "MAC-10 | Sienna Damask (Field-Tested)", "currency": 1, "lowest_price": 0.18, "median_price": 0.18, "volume": null}
+{"ts": 1783801023.1830494, "market_hash_name": "CZ75-Auto | Midnight Palm (Well-Worn)", "currency": 1, "lowest_price": 0.64, "median_price": 0.64, "volume": null}
+{"ts": 1783801023.187256, "market_hash_name": "FAMAS | CaliCamo (Battle-Scarred)", "currency": 1, "lowest_price": 0.44, "median_price": 0.44, "volume": null}
+{"ts": 1783801023.2480702, "market_hash_name": "AK-47 | B the Monster (Well-Worn)", "currency": 1, "lowest_price": 148.61, "median_price": 148.61, "volume": null}
+{"ts": 1783801032.1533446, "market_hash_name": "StatTrak\u2122 M249 | System Lock (Minimal Wear)", "currency": 1, "lowest_price": 1.42, "median_price": 1.42, "volume": null}
+{"ts": 1783801032.15863, "market_hash_name": "StatTrak\u2122 Five-SeveN | Scumbria (Field-Tested)", "currency": 1, "lowest_price": 0.33, "median_price": 0.33, "volume": null}
+{"ts": 1783801032.4307187, "market_hash_name": "StatTrak\u2122 Dual Berettas | Urban Shock (Well-Worn)", "currency": 1, "lowest_price": 4.4, "median_price": 4.4, "volume": null}
+{"ts": 1783801032.7194283, "market_hash_name": "MP5-SD | Necro Jr. (Field-Tested)", "currency": 1, "lowest_price": 0.12, "median_price": 0.12, "volume": null}
+{"ts": 1783801033.2474706, "market_hash_name": "CZ75-Auto | Tacticat (Factory New)", "currency": 1, "lowest_price": 6.34, "median_price": 6.34, "volume": null}
+{"ts": 1783801033.4375386, "market_hash_name": "StatTrak\u2122 SCAR-20 | Powercore (Factory New)", "currency": 1, "lowest_price": 12.06, "median_price": 12.06, "volume": null}
+{"ts": 1783801034.1208606, "market_hash_name": "MAG-7 | Foresight (Factory New)", "currency": 1, "lowest_price": 0.58, "median_price": 0.58, "volume": null}
+{"ts": 1783801034.1401842, "market_hash_name": "PP-Bizon | Bizoom (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801034.3917286, "market_hash_name": "StatTrak\u2122 Five-SeveN | Scumbria (Battle-Scarred)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783801034.4033926, "market_hash_name": "StatTrak\u2122 MAC-10 | Malachite (Well-Worn)", "currency": 1, "lowest_price": 3.95, "median_price": 3.95, "volume": null}
+{"ts": 1783801034.412679, "market_hash_name": "StatTrak\u2122 Glock-18 | Weasel (Battle-Scarred)", "currency": 1, "lowest_price": 1.46, "median_price": 1.46, "volume": null}
+{"ts": 1783801034.4183612, "market_hash_name": "StatTrak\u2122 MAG-7 | Petroglyph (Field-Tested)", "currency": 1, "lowest_price": 1.18, "median_price": 1.18, "volume": null}
+{"ts": 1783801034.4275916, "market_hash_name": "StatTrak\u2122 SCAR-20 | Powercore (Battle-Scarred)", "currency": 1, "lowest_price": 1.27, "median_price": 1.27, "volume": null}
+{"ts": 1783801036.5855105, "market_hash_name": "AK-47 | Predator (Battle-Scarred)", "currency": 1, "lowest_price": 12.7, "median_price": 12.7, "volume": null}
+{"ts": 1783801036.5948465, "market_hash_name": "AK-47 | Predator (Well-Worn)", "currency": 1, "lowest_price": 12.8, "median_price": 12.8, "volume": null}
+{"ts": 1783801036.7104216, "market_hash_name": "AUG | Random Access (Well-Worn)", "currency": 1, "lowest_price": 1.61, "median_price": 1.61, "volume": null}
+{"ts": 1783801036.8328404, "market_hash_name": "M4A4 | Hellish (Minimal Wear)", "currency": 1, "lowest_price": 98.82, "median_price": 98.82, "volume": null}
+{"ts": 1783801036.8492942, "market_hash_name": "StatTrak\u2122 PP-Bizon | Blue Streak (Battle-Scarred)", "currency": 1, "lowest_price": 4.21, "median_price": 4.21, "volume": null}
+{"ts": 1783801036.8590899, "market_hash_name": "StatTrak\u2122 PP-Bizon | Blue Streak (Minimal Wear)", "currency": 1, "lowest_price": 9.55, "median_price": 9.55, "volume": null}
+{"ts": 1783801036.865748, "market_hash_name": "StatTrak\u2122 AWP | Corticera (Field-Tested)", "currency": 1, "lowest_price": 48.42, "median_price": 48.42, "volume": null}
+{"ts": 1783801036.880967, "market_hash_name": "StatTrak\u2122 Nova | Bloomstick (Well-Worn)", "currency": 1, "lowest_price": 25.84, "median_price": 25.84, "volume": null}
+{"ts": 1783801037.009735, "market_hash_name": "M249 | Nebula Crusader (Minimal Wear)", "currency": 1, "lowest_price": 3.67, "median_price": 3.67, "volume": null}
+{"ts": 1783801037.0149276, "market_hash_name": "M249 | Nebula Crusader (Factory New)", "currency": 1, "lowest_price": 12.34, "median_price": 12.34, "volume": null}
+{"ts": 1783801037.4470701, "market_hash_name": "SG 553 | Ol' Rusty (Battle-Scarred)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783801037.4538426, "market_hash_name": "Galil AR | Connexion (Well-Worn)", "currency": 1, "lowest_price": 0.54, "median_price": 0.54, "volume": null}
+{"ts": 1783801037.4634163, "market_hash_name": "MAC-10 | Allure (Battle-Scarred)", "currency": 1, "lowest_price": 0.52, "median_price": 0.52, "volume": null}
+{"ts": 1783801037.4691043, "market_hash_name": "MAG-7 | Monster Call (Battle-Scarred)", "currency": 1, "lowest_price": 0.54, "median_price": 0.54, "volume": null}
+{"ts": 1783801037.4766128, "market_hash_name": "MP5-SD | Kitbash (Well-Worn)", "currency": 1, "lowest_price": 0.53, "median_price": 0.53, "volume": null}
+{"ts": 1783801037.4841592, "market_hash_name": "Tec-9 | Brother (Battle-Scarred)", "currency": 1, "lowest_price": 0.51, "median_price": 0.51, "volume": null}
+{"ts": 1783801049.6767616, "market_hash_name": "SG 553 | Heavy Metal (Minimal Wear)", "currency": 1, "lowest_price": 0.43, "median_price": 0.43, "volume": null}
+{"ts": 1783801073.4751177, "market_hash_name": "Glock-18 | Night (Factory New)", "currency": 1, "lowest_price": 82.87, "median_price": 82.87, "volume": null}
+{"ts": 1783801078.421191, "market_hash_name": "CZ75-Auto | Tuxedo (Minimal Wear)", "currency": 1, "lowest_price": 1.67, "median_price": 1.67, "volume": null}
+{"ts": 1783801107.4171333, "market_hash_name": "MP9 | Featherweight (Minimal Wear)", "currency": 1, "lowest_price": 0.24, "median_price": 0.24, "volume": null}
+{"ts": 1783801107.426615, "market_hash_name": "M4A1-S | Electrum (Field-Tested)", "currency": 1, "lowest_price": 1.99, "median_price": 1.99, "volume": null}
+{"ts": 1783801107.4464762, "market_hash_name": "MP9 | Urban Sovereign (Field-Tested)", "currency": 1, "lowest_price": 1.29, "median_price": 1.29, "volume": null}
+{"ts": 1783801107.4678347, "market_hash_name": "MAC-10 | Sakkaku (Well-Worn)", "currency": 1, "lowest_price": 0.5, "median_price": 0.5, "volume": null}
+{"ts": 1783801107.478201, "market_hash_name": "R8 Revolver | Banana Cannon (Field-Tested)", "currency": 1, "lowest_price": 0.55, "median_price": 0.55, "volume": null}
+{"ts": 1783801107.7427938, "market_hash_name": "M4A4 | Zubastick (Battle-Scarred)", "currency": 1, "lowest_price": 0.12, "median_price": 0.12, "volume": null}
+{"ts": 1783801108.619525, "market_hash_name": "Dual Berettas | Royal Consorts (Factory New)", "currency": 1, "lowest_price": 69.5, "median_price": 69.5, "volume": null}
+{"ts": 1783801109.7887738, "market_hash_name": "AUG | Momentum (Minimal Wear)", "currency": 1, "lowest_price": 21.51, "median_price": 21.51, "volume": null}
+{"ts": 1783801109.9741144, "market_hash_name": "StatTrak\u2122 AUG | Tom Cat (Minimal Wear)", "currency": 1, "lowest_price": 0.42, "median_price": 0.42, "volume": null}
+{"ts": 1783801109.988934, "market_hash_name": "StatTrak\u2122 P2000 | Acid Etched (Minimal Wear)", "currency": 1, "lowest_price": 2.85, "median_price": 2.85, "volume": null}
+{"ts": 1783801109.9955866, "market_hash_name": "StatTrak\u2122 Sawed-Off | Apocalypto (Minimal Wear)", "currency": 1, "lowest_price": 2.77, "median_price": 2.77, "volume": null}
+{"ts": 1783801110.003679, "market_hash_name": "StatTrak\u2122 SCAR-20 | Enforcer (Minimal Wear)", "currency": 1, "lowest_price": 2.89, "median_price": 2.89, "volume": null}
+{"ts": 1783801110.0141044, "market_hash_name": "StatTrak\u2122 SG 553 | Darkwing (Minimal Wear)", "currency": 1, "lowest_price": 3.07, "median_price": 3.07, "volume": null}
+{"ts": 1783801110.0378811, "market_hash_name": "StatTrak\u2122 SSG 08 | Fever Dream (Minimal Wear)", "currency": 1, "lowest_price": 7.18, "median_price": 7.18, "volume": null}
+{"ts": 1783801111.0152147, "market_hash_name": "Galil AR | Phoenix Blacklight (Factory New)", "currency": 1, "lowest_price": 325.54, "median_price": 325.54, "volume": null}
+{"ts": 1783801111.3175683, "market_hash_name": "SG 553 | Dragon Tech (Minimal Wear)", "currency": 1, "lowest_price": 1.01, "median_price": 1.01, "volume": null}
+{"ts": 1783801112.1918151, "market_hash_name": "StatTrak\u2122 SCAR-20 | Cyrex (Well-Worn)", "currency": 1, "lowest_price": 50.69, "median_price": 50.69, "volume": null}
+{"ts": 1783801112.2013783, "market_hash_name": "StatTrak\u2122 USP-S | Orion (Well-Worn)", "currency": 1, "lowest_price": 136.41, "median_price": 136.41, "volume": null}
+{"ts": 1783801112.5194137, "market_hash_name": "SG 553 | Phantom (Battle-Scarred)", "currency": 1, "lowest_price": 1.22, "median_price": 1.22, "volume": null}
+{"ts": 1783801112.5351994, "market_hash_name": "Zeus x27 | Tosai (Well-Worn)", "currency": 1, "lowest_price": 0.6, "median_price": 0.6, "volume": null}
+{"ts": 1783801112.675723, "market_hash_name": "M4A1-S | Flashback (Minimal Wear)", "currency": 1, "lowest_price": 19.21, "median_price": 19.21, "volume": null}
+{"ts": 1783801112.8214736, "market_hash_name": "StatTrak\u2122 FAMAS | Djinn (Factory New)", "currency": 1, "lowest_price": 59.63, "median_price": 59.63, "volume": null}
+{"ts": 1783801112.828231, "market_hash_name": "StatTrak\u2122 FAMAS | Djinn (Battle-Scarred)", "currency": 1, "lowest_price": 15.49, "median_price": 15.49, "volume": null}
+{"ts": 1783801113.3176377, "market_hash_name": "Dual Berettas | Cobra Strike (Battle-Scarred)", "currency": 1, "lowest_price": 68.21, "median_price": 68.21, "volume": null}
+{"ts": 1783801113.5053155, "market_hash_name": "StatTrak\u2122 G3SG1 | Scavenger (Battle-Scarred)", "currency": 1, "lowest_price": 0.99, "median_price": 0.99, "volume": null}
+{"ts": 1783801113.513476, "market_hash_name": "StatTrak\u2122 G3SG1 | Scavenger (Well-Worn)", "currency": 1, "lowest_price": 1.23, "median_price": 1.23, "volume": null}
+{"ts": 1783801113.5285258, "market_hash_name": "StatTrak\u2122 G3SG1 | Scavenger (Field-Tested)", "currency": 1, "lowest_price": 1.07, "median_price": 1.07, "volume": null}
+{"ts": 1783801113.537305, "market_hash_name": "StatTrak\u2122 MAC-10 | Pipe Down (Well-Worn)", "currency": 1, "lowest_price": 1.08, "median_price": 1.08, "volume": null}
+{"ts": 1783801113.552325, "market_hash_name": "StatTrak\u2122 Galil AR | Signal (Battle-Scarred)", "currency": 1, "lowest_price": 1.04, "median_price": 1.04, "volume": null}
+{"ts": 1783801113.5611756, "market_hash_name": "StatTrak\u2122 MP5-SD | Phosphor (Well-Worn)", "currency": 1, "lowest_price": 7.97, "median_price": 7.97, "volume": null}
+{"ts": 1783801114.2354414, "market_hash_name": "P2000 | Corticera (Factory New)", "currency": 1, "lowest_price": 102.38, "median_price": 102.38, "volume": null}
+{"ts": 1783801114.6988137, "market_hash_name": "MP9 | Storm (Minimal Wear)", "currency": 1, "lowest_price": 5.32, "median_price": 5.32, "volume": null}
+{"ts": 1783801114.7083666, "market_hash_name": "MP9 | Storm (Well-Worn)", "currency": 1, "lowest_price": 1.07, "median_price": 1.07, "volume": null}
+{"ts": 1783801114.7190433, "market_hash_name": "AUG | Surveillance (Well-Worn)", "currency": 1, "lowest_price": 1.73, "median_price": 1.73, "volume": null}
+{"ts": 1783801114.7289376, "market_hash_name": "MP9 | Army Sheen (Minimal Wear)", "currency": 1, "lowest_price": 1.78, "median_price": 1.78, "volume": null}
+{"ts": 1783801114.73722, "market_hash_name": "P250 | Forest Night (Field-Tested)", "currency": 1, "lowest_price": 1.86, "median_price": 1.86, "volume": null}
+{"ts": 1783801114.7515535, "market_hash_name": "Desert Eagle | The Bronze (Minimal Wear)", "currency": 1, "lowest_price": 4.7, "median_price": 4.7, "volume": null}
+{"ts": 1783801114.7656052, "market_hash_name": "Dual Berettas | Switch Board (Field-Tested)", "currency": 1, "lowest_price": 4.11, "median_price": 4.11, "volume": null}
+{"ts": 1783801114.7757492, "market_hash_name": "MAG-7 | Carbon Fiber (Factory New)", "currency": 1, "lowest_price": 4.38, "median_price": 4.38, "volume": null}
+{"ts": 1783801114.783936, "market_hash_name": "MP5-SD | Nitro (Field-Tested)", "currency": 1, "lowest_price": 3.83, "median_price": 3.83, "volume": null}
+{"ts": 1783801114.8798199, "market_hash_name": "Desert Eagle | Fennec Fox (Minimal Wear)", "currency": 1, "lowest_price": 357.53, "median_price": 357.53, "volume": null}
+{"ts": 1783801115.445622, "market_hash_name": "XM1014 | Monster Melt (Factory New)", "currency": 1, "lowest_price": 13.61, "median_price": 13.61, "volume": null}
+{"ts": 1783801156.1789675, "market_hash_name": "StatTrak\u2122 M4A1-S | Vaporwave (Well-Worn)", "currency": 1, "lowest_price": 136.59, "median_price": 136.59, "volume": null}
+{"ts": 1783801156.6461961, "market_hash_name": "P250 | Iron Clad (Battle-Scarred)", "currency": 1, "lowest_price": 0.53, "median_price": 0.53, "volume": null}
+{"ts": 1783801156.6755178, "market_hash_name": "StatTrak\u2122 R8 Revolver | Tango (Well-Worn)", "currency": 1, "lowest_price": 0.55, "median_price": 0.55, "volume": null}
+{"ts": 1783801156.6840966, "market_hash_name": "StatTrak\u2122 Dual Berettas | Hydro Strike (Well-Worn)", "currency": 1, "lowest_price": 2.4, "median_price": 2.4, "volume": null}
+{"ts": 1783801158.230129, "market_hash_name": "MAG-7 | Popdog (Battle-Scarred)", "currency": 1, "lowest_price": 0.34, "median_price": 0.34, "volume": null}
+{"ts": 1783801159.9622993, "market_hash_name": "StatTrak\u2122 XM1014 | Incinegator (Minimal Wear)", "currency": 1, "lowest_price": 63.59, "median_price": 63.59, "volume": null}
+{"ts": 1783801159.969802, "market_hash_name": "StatTrak\u2122 XM1014 | Incinegator (Field-Tested)", "currency": 1, "lowest_price": 8.74, "median_price": 8.74, "volume": null}
+{"ts": 1783801159.9745486, "market_hash_name": "StatTrak\u2122 Five-SeveN | Angry Mob (Battle-Scarred)", "currency": 1, "lowest_price": 72.42, "median_price": 72.42, "volume": null}
+{"ts": 1783801159.9772747, "market_hash_name": "StatTrak\u2122 M4A4 | The Emperor (Battle-Scarred)", "currency": 1, "lowest_price": 77.7, "median_price": 77.7, "volume": null}
+{"ts": 1783801160.1546643, "market_hash_name": "FAMAS | Sundown (Field-Tested)", "currency": 1, "lowest_price": 104.09, "median_price": 104.09, "volume": null}
+{"ts": 1783801160.1672869, "market_hash_name": "MP7 | Teal Blossom (Field-Tested)", "currency": 1, "lowest_price": 91.15, "median_price": 91.15, "volume": null}
+{"ts": 1783801160.1753159, "market_hash_name": "UMP-45 | Day Lily (Field-Tested)", "currency": 1, "lowest_price": 98.39, "median_price": 98.39, "volume": null}
+{"ts": 1783801160.5803127, "market_hash_name": "StatTrak\u2122 Glock-18 | Umbral Rabbit (Well-Worn)", "currency": 1, "lowest_price": 1.07, "median_price": 1.07, "volume": null}
+{"ts": 1783801208.9257739, "market_hash_name": "SG 553 | Heavy Metal (Well-Worn)", "currency": 1, "lowest_price": 0.32, "median_price": 0.32, "volume": null}
+{"ts": 1783801211.2037475, "market_hash_name": "Galil AR | Vandal (Battle-Scarred)", "currency": 1, "lowest_price": 0.76, "median_price": 0.76, "volume": null}
+{"ts": 1783801211.8528721, "market_hash_name": "M4A4 | \u9f8d\u738b (Dragon King) (Factory New)", "currency": 1, "lowest_price": 108.61, "median_price": 108.61, "volume": null}
+{"ts": 1783801211.9279647, "market_hash_name": "StatTrak\u2122 AWP | Elite Build (Field-Tested)", "currency": 1, "lowest_price": 39.59, "median_price": 39.59, "volume": null}
+{"ts": 1783801211.9385712, "market_hash_name": "StatTrak\u2122 AWP | Elite Build (Factory New)", "currency": 1, "lowest_price": 119.72, "median_price": 119.72, "volume": null}
+{"ts": 1783801211.9443834, "market_hash_name": "StatTrak\u2122 AWP | Mortis (Minimal Wear)", "currency": 1, "lowest_price": 12.75, "median_price": 12.75, "volume": null}
+{"ts": 1783801211.9492264, "market_hash_name": "StatTrak\u2122 M4A1-S | Decimator (Battle-Scarred)", "currency": 1, "lowest_price": 35.08, "median_price": 35.08, "volume": null}
+{"ts": 1783801211.9663165, "market_hash_name": "StatTrak\u2122 AK-47 | Aquamarine Revenge (Battle-Scarred)", "currency": 1, "lowest_price": 72.33, "median_price": 72.33, "volume": null}
+{"ts": 1783801211.9682486, "market_hash_name": "StatTrak\u2122 AWP | Hyper Beast (Battle-Scarred)", "currency": 1, "lowest_price": 69.23, "median_price": 69.23, "volume": null}
+{"ts": 1783801211.9735663, "market_hash_name": "StatTrak\u2122 M4A4 | Temukau (Well-Worn)", "currency": 1, "lowest_price": 43.22, "median_price": 43.22, "volume": null}
+{"ts": 1783801229.7422893, "market_hash_name": "UMP-45 | Arctic Wolf (Factory New)", "currency": 1, "lowest_price": 4.64, "median_price": 4.64, "volume": null}
+{"ts": 1783801229.879866, "market_hash_name": "StatTrak\u2122 MP9 | Deadly Poison (Well-Worn)", "currency": 1, "lowest_price": 0.67, "median_price": 0.67, "volume": null}
+{"ts": 1783801229.8851464, "market_hash_name": "StatTrak\u2122 P90 | Grim (Well-Worn)", "currency": 1, "lowest_price": 0.63, "median_price": 0.63, "volume": null}
+{"ts": 1783801229.9939802, "market_hash_name": "StatTrak\u2122 Glock-18 | Weasel (Well-Worn)", "currency": 1, "lowest_price": 1.49, "median_price": 1.49, "volume": null}
+{"ts": 1783801230.0075147, "market_hash_name": "StatTrak\u2122 SCAR-20 | Powercore (Well-Worn)", "currency": 1, "lowest_price": 1.33, "median_price": 1.33, "volume": null}
+{"ts": 1783801231.6210074, "market_hash_name": "USP-S | 27 (Factory New)", "currency": 1, "lowest_price": 13.87, "median_price": 13.87, "volume": null}
+{"ts": 1783801231.6291797, "market_hash_name": "Dual Berettas | Hydro Strike (Minimal Wear)", "currency": 1, "lowest_price": 3.85, "median_price": 3.85, "volume": null}
+{"ts": 1783801231.6374695, "market_hash_name": "MAC-10 | Saib\u0101 Oni (Factory New)", "currency": 1, "lowest_price": 8.48, "median_price": 8.48, "volume": null}
+{"ts": 1783801231.6475127, "market_hash_name": "P90 | Randy Rush (Minimal Wear)", "currency": 1, "lowest_price": 1.75, "median_price": 1.75, "volume": null}
+{"ts": 1783801231.6577938, "market_hash_name": "SSG 08 | Rapid Transit (Minimal Wear)", "currency": 1, "lowest_price": 5.28, "median_price": 5.28, "volume": null}
+{"ts": 1783801232.9348726, "market_hash_name": "StatTrak\u2122 SCAR-20 | Grotto (Factory New)", "currency": 1, "lowest_price": 2.0, "median_price": 2.0, "volume": null}
+{"ts": 1783801232.9460626, "market_hash_name": "StatTrak\u2122 Dual Berettas | Urban Shock (Factory New)", "currency": 1, "lowest_price": 11.12, "median_price": 11.12, "volume": null}
+{"ts": 1783801233.0902884, "market_hash_name": "AWP | Duality (Minimal Wear)", "currency": 1, "lowest_price": 7.56, "median_price": 7.56, "volume": null}
+{"ts": 1783801233.1025205, "market_hash_name": "P2000 | Wicked Sick (Minimal Wear)", "currency": 1, "lowest_price": 8.49, "median_price": 8.49, "volume": null}
+{"ts": 1783801233.2344744, "market_hash_name": "XM1014 | Oxide Blaze (Factory New)", "currency": 1, "lowest_price": 0.66, "median_price": 0.66, "volume": null}
+{"ts": 1783801233.2453358, "market_hash_name": "MAG-7 | SWAG-7 (Factory New)", "currency": 1, "lowest_price": 5.66, "median_price": 5.66, "volume": null}
+{"ts": 1783801233.2532873, "market_hash_name": "Negev | Lionfish (Factory New)", "currency": 1, "lowest_price": 2.71, "median_price": 2.71, "volume": null}
+{"ts": 1783801233.263097, "market_hash_name": "Nova | Wild Six (Factory New)", "currency": 1, "lowest_price": 3.69, "median_price": 3.69, "volume": null}
+{"ts": 1783801233.388048, "market_hash_name": "M4A4 | Neo-Noir (Factory New)", "currency": 1, "lowest_price": 179.13, "median_price": 179.13, "volume": null}
+{"ts": 1783801233.393883, "market_hash_name": "MP7 | Bloodsport (Factory New)", "currency": 1, "lowest_price": 105.74, "median_price": 105.74, "volume": null}
+{"ts": 1783801233.846117, "market_hash_name": "StatTrak\u2122 AUG | Amber Slipstream (Battle-Scarred)", "currency": 1, "lowest_price": 0.49, "median_price": 0.49, "volume": null}
+{"ts": 1783801233.8826704, "market_hash_name": "StatTrak\u2122 AUG | Amber Slipstream (Field-Tested)", "currency": 1, "lowest_price": 0.54, "median_price": 0.54, "volume": null}
+{"ts": 1783801233.8876328, "market_hash_name": "StatTrak\u2122 AUG | Amber Slipstream (Minimal Wear)", "currency": 1, "lowest_price": 0.76, "median_price": 0.76, "volume": null}
+{"ts": 1783801233.8978555, "market_hash_name": "StatTrak\u2122 MP5-SD | Necro Jr. (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783801233.9050202, "market_hash_name": "StatTrak\u2122 MP5-SD | Necro Jr. (Battle-Scarred)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783801233.9149365, "market_hash_name": "StatTrak\u2122 MP5-SD | Necro Jr. (Minimal Wear)", "currency": 1, "lowest_price": 0.33, "median_price": 0.33, "volume": null}
+{"ts": 1783801233.9259388, "market_hash_name": "StatTrak\u2122 AWP | PAW (Field-Tested)", "currency": 1, "lowest_price": 7.41, "median_price": 7.41, "volume": null}
+{"ts": 1783801233.9321935, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Eco (Battle-Scarred)", "currency": 1, "lowest_price": 1.99, "median_price": 1.99, "volume": null}
+{"ts": 1783801233.9405277, "market_hash_name": "StatTrak\u2122 G3SG1 | High Seas (Field-Tested)", "currency": 1, "lowest_price": 2.47, "median_price": 2.47, "volume": null}
+{"ts": 1783801233.9486425, "market_hash_name": "StatTrak\u2122 MP7 | Powercore (Field-Tested)", "currency": 1, "lowest_price": 2.68, "median_price": 2.68, "volume": null}
+{"ts": 1783801233.9540067, "market_hash_name": "StatTrak\u2122 Nova | Toy Soldier (Battle-Scarred)", "currency": 1, "lowest_price": 1.8, "median_price": 1.8, "volume": null}
+{"ts": 1783801233.960168, "market_hash_name": "StatTrak\u2122 G3SG1 | Dream Glade (Battle-Scarred)", "currency": 1, "lowest_price": 0.71, "median_price": 0.71, "volume": null}
+{"ts": 1783801233.9694574, "market_hash_name": "StatTrak\u2122 USP-S | Ticket to Hell (Field-Tested)", "currency": 1, "lowest_price": 1.07, "median_price": 1.07, "volume": null}
+{"ts": 1783801233.9773765, "market_hash_name": "StatTrak\u2122 XM1014 | Zombie Offensive (Field-Tested)", "currency": 1, "lowest_price": 0.75, "median_price": 0.75, "volume": null}
+{"ts": 1783801233.98764, "market_hash_name": "StatTrak\u2122 MAC-10 | Allure (Battle-Scarred)", "currency": 1, "lowest_price": 0.71, "median_price": 0.71, "volume": null}
+{"ts": 1783801233.995559, "market_hash_name": "StatTrak\u2122 MAG-7 | Monster Call (Battle-Scarred)", "currency": 1, "lowest_price": 0.73, "median_price": 0.73, "volume": null}
+{"ts": 1783801234.241792, "market_hash_name": "UMP-45 | Crimson Foil (Battle-Scarred)", "currency": 1, "lowest_price": 4.52, "median_price": 4.52, "volume": null}
+{"ts": 1783801251.815544, "market_hash_name": "MAC-10 | Ensnared (Battle-Scarred)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783801251.8298187, "market_hash_name": "M249 | O.S.I.P.R. (Field-Tested)", "currency": 1, "lowest_price": 0.32, "median_price": 0.32, "volume": null}
+{"ts": 1783801284.10222, "market_hash_name": "MP9 | Broken Record (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783801315.4903197, "market_hash_name": "StatTrak\u2122 P90 | Freight (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783801315.7234871, "market_hash_name": "Tec-9 | Re-Entry (Factory New)", "currency": 1, "lowest_price": 13.66, "median_price": 13.66, "volume": null}
+{"ts": 1783801316.6133592, "market_hash_name": "AUG | Triqua (Battle-Scarred)", "currency": 1, "lowest_price": 0.19, "median_price": 0.19, "volume": null}
+{"ts": 1783801317.2078786, "market_hash_name": "XM1014 | Quicksilver (Field-Tested)", "currency": 1, "lowest_price": 1.02, "median_price": 1.02, "volume": null}
+{"ts": 1783801317.2229364, "market_hash_name": "Sawed-Off | Morris (Minimal Wear)", "currency": 1, "lowest_price": 0.46, "median_price": 0.46, "volume": null}
+{"ts": 1783801317.2444205, "market_hash_name": "Desert Eagle | Naga (Field-Tested)", "currency": 1, "lowest_price": 3.01, "median_price": 3.01, "volume": null}
+{"ts": 1783801317.5948055, "market_hash_name": "MP9 | Sand Scale (Field-Tested)", "currency": 1, "lowest_price": 1.21, "median_price": 1.21, "volume": null}
+{"ts": 1783801317.6159377, "market_hash_name": "G3SG1 | Stinger (Battle-Scarred)", "currency": 1, "lowest_price": 4.3, "median_price": 4.3, "volume": null}
+{"ts": 1783801317.636363, "market_hash_name": "USP-S | Cyrex (Well-Worn)", "currency": 1, "lowest_price": 5.7, "median_price": 5.7, "volume": null}
+{"ts": 1783801318.778792, "market_hash_name": "Zeus x27 | Dragon Snore (Well-Worn)", "currency": 1, "lowest_price": 18.68, "median_price": 18.68, "volume": null}
+{"ts": 1783801318.9144716, "market_hash_name": "MAG-7 | Petroglyph (Well-Worn)", "currency": 1, "lowest_price": 1.31, "median_price": 1.31, "volume": null}
+{"ts": 1783801319.0696735, "market_hash_name": "Negev | Nuclear Waste (Factory New)", "currency": 1, "lowest_price": 7.07, "median_price": 7.07, "volume": null}
+{"ts": 1783801319.0840986, "market_hash_name": "Negev | Nuclear Waste (Minimal Wear)", "currency": 1, "lowest_price": 4.71, "median_price": 4.71, "volume": null}
+{"ts": 1783801319.0968497, "market_hash_name": "Negev | Nuclear Waste (Field-Tested)", "currency": 1, "lowest_price": 2.89, "median_price": 2.89, "volume": null}
+{"ts": 1783801319.251813, "market_hash_name": "USP-S | Overgrowth (Factory New)", "currency": 1, "lowest_price": 149.69, "median_price": 149.69, "volume": null}
+{"ts": 1783801319.3962576, "market_hash_name": "StatTrak\u2122 AWP | Fever Dream (Well-Worn)", "currency": 1, "lowest_price": 23.55, "median_price": 23.55, "volume": null}
+{"ts": 1783801319.4059577, "market_hash_name": "StatTrak\u2122 MP5-SD | Phosphor (Factory New)", "currency": 1, "lowest_price": 27.51, "median_price": 27.51, "volume": null}
+{"ts": 1783801319.6797569, "market_hash_name": "P2000 | Panther Camo (Minimal Wear)", "currency": 1, "lowest_price": 2.7, "median_price": 2.7, "volume": null}
+{"ts": 1783801319.6988974, "market_hash_name": "P2000 | Panther Camo (Factory New)", "currency": 1, "lowest_price": 7.78, "median_price": 7.78, "volume": null}
+{"ts": 1783801319.7058468, "market_hash_name": "P2000 | Panther Camo (Well-Worn)", "currency": 1, "lowest_price": 2.92, "median_price": 2.92, "volume": null}
+{"ts": 1783801319.7157, "market_hash_name": "AUG | Carved Jade (Minimal Wear)", "currency": 1, "lowest_price": 12.24, "median_price": 12.24, "volume": null}
+{"ts": 1783801319.7271752, "market_hash_name": "FAMAS | Dark Water (Field-Tested)", "currency": 1, "lowest_price": 4.2, "median_price": 4.2, "volume": null}
+{"ts": 1783801319.737904, "market_hash_name": "Galil AR | Dusk Ruins (Field-Tested)", "currency": 1, "lowest_price": 5.41, "median_price": 5.41, "volume": null}
+{"ts": 1783801319.750157, "market_hash_name": "Tec-9 | Blast From the Past (Field-Tested)", "currency": 1, "lowest_price": 4.8, "median_price": 4.8, "volume": null}
+{"ts": 1783801320.3404946, "market_hash_name": "AK-47 | Wintergreen (Factory New)", "currency": 1, "lowest_price": 7.97, "median_price": 7.97, "volume": null}
+{"ts": 1783801320.5250406, "market_hash_name": "XM1014 | Teclu Burner (Battle-Scarred)", "currency": 1, "lowest_price": 1.83, "median_price": 1.83, "volume": null}
+{"ts": 1783801320.5426526, "market_hash_name": "XM1014 | Teclu Burner (Factory New)", "currency": 1, "lowest_price": 7.85, "median_price": 7.85, "volume": null}
+{"ts": 1783801320.740152, "market_hash_name": "MAG-7 | Heat (Factory New)", "currency": 1, "lowest_price": 12.52, "median_price": 12.52, "volume": null}
+{"ts": 1783801320.8955643, "market_hash_name": "Tec-9 | Bamboozle (Battle-Scarred)", "currency": 1, "lowest_price": 0.92, "median_price": 0.92, "volume": null}
+{"ts": 1783801320.9068165, "market_hash_name": "Tec-9 | Bamboozle (Factory New)", "currency": 1, "lowest_price": 16.78, "median_price": 16.78, "volume": null}
+{"ts": 1783801321.077179, "market_hash_name": "MAC-10 | Graven (Minimal Wear)", "currency": 1, "lowest_price": 43.96, "median_price": 43.96, "volume": null}
+{"ts": 1783801321.0931137, "market_hash_name": "AWP | Green Energy (Well-Worn)", "currency": 1, "lowest_price": 12.61, "median_price": 12.61, "volume": null}
+{"ts": 1783801321.3818464, "market_hash_name": "SG 553 | Ultraviolet (Factory New)", "currency": 1, "lowest_price": 78.98, "median_price": 78.98, "volume": null}
+{"ts": 1783801321.399821, "market_hash_name": "SG 553 | Ultraviolet (Battle-Scarred)", "currency": 1, "lowest_price": 18.0, "median_price": 18.0, "volume": null}
+{"ts": 1783801359.247944, "market_hash_name": "StatTrak\u2122 SCAR-20 | Trail Blazer (Battle-Scarred)", "currency": 1, "lowest_price": 0.31, "median_price": 0.31, "volume": null}
+{"ts": 1783801359.4898577, "market_hash_name": "MAC-10 | Classic Crate (Well-Worn)", "currency": 1, "lowest_price": 0.4, "median_price": 0.4, "volume": null}
+{"ts": 1783801360.0639484, "market_hash_name": "StatTrak\u2122 SCAR-20 | Trail Blazer (Factory New)", "currency": 1, "lowest_price": 1.73, "median_price": 1.73, "volume": null}
+{"ts": 1783801360.6731894, "market_hash_name": "CZ75-Auto | Honey Paisley (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801362.1676435, "market_hash_name": "M4A4 | Modern Hunter (Well-Worn)", "currency": 1, "lowest_price": 56.57, "median_price": 56.57, "volume": null}
+{"ts": 1783801362.7252195, "market_hash_name": "M249 | Spectrogram (Battle-Scarred)", "currency": 1, "lowest_price": 0.34, "median_price": 0.34, "volume": null}
+{"ts": 1783801362.738015, "market_hash_name": "Glock-18 | Coral Bloom (Battle-Scarred)", "currency": 1, "lowest_price": 0.26, "median_price": 0.26, "volume": null}
+{"ts": 1783801362.753084, "market_hash_name": "AK-47 | Crossfade (Field-Tested)", "currency": 1, "lowest_price": 2.87, "median_price": 2.87, "volume": null}
+{"ts": 1783801362.760916, "market_hash_name": "SCAR-20 | Wild Berry (Well-Worn)", "currency": 1, "lowest_price": 1.69, "median_price": 1.69, "volume": null}
+{"ts": 1783801362.771165, "market_hash_name": "XM1014 | Halftone Shift (Well-Worn)", "currency": 1, "lowest_price": 1.5, "median_price": 1.5, "volume": null}
+{"ts": 1783801362.9004703, "market_hash_name": "Five-SeveN | Angry Mob (Well-Worn)", "currency": 1, "lowest_price": 80.59, "median_price": 80.59, "volume": null}
+{"ts": 1783801362.9167469, "market_hash_name": "AWP | Chromatic Aberration (Well-Worn)", "currency": 1, "lowest_price": 39.07, "median_price": 39.07, "volume": null}
+{"ts": 1783801362.926513, "market_hash_name": "USP-S | Printstream (Battle-Scarred)", "currency": 1, "lowest_price": 45.04, "median_price": 45.04, "volume": null}
+{"ts": 1783801363.4903667, "market_hash_name": "AWP | Neo-Noir (Minimal Wear)", "currency": 1, "lowest_price": 63.54, "median_price": 63.54, "volume": null}
+{"ts": 1783801412.841004, "market_hash_name": "XM1014 | Black Tie (Well-Worn)", "currency": 1, "lowest_price": 1.52, "median_price": 1.52, "volume": null}
+{"ts": 1783801413.4436243, "market_hash_name": "PP-Bizon | Thermal Currents (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801431.8599992, "market_hash_name": "R8 Revolver | Junk Yard (Battle-Scarred)", "currency": 1, "lowest_price": 0.3, "median_price": 0.3, "volume": null}
+{"ts": 1783801432.4129715, "market_hash_name": "MAC-10 | Malachite (Battle-Scarred)", "currency": 1, "lowest_price": 2.46, "median_price": 2.46, "volume": null}
+{"ts": 1783801433.419024, "market_hash_name": "Sawed-Off | Highwayman (Field-Tested)", "currency": 1, "lowest_price": 1.56, "median_price": 1.56, "volume": null}
+{"ts": 1783801433.8748424, "market_hash_name": "StatTrak\u2122 Desert Eagle | Directive (Minimal Wear)", "currency": 1, "lowest_price": 11.07, "median_price": 11.07, "volume": null}
+{"ts": 1783801434.0200853, "market_hash_name": "StatTrak\u2122 UMP-45 | Scaffold (Battle-Scarred)", "currency": 1, "lowest_price": 2.99, "median_price": 2.99, "volume": null}
+{"ts": 1783801434.0303926, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Xiangliu (Battle-Scarred)", "currency": 1, "lowest_price": 23.96, "median_price": 23.96, "volume": null}
+{"ts": 1783801436.5553405, "market_hash_name": "UMP-45 | Oscillator (Field-Tested)", "currency": 1, "lowest_price": 0.33, "median_price": 0.33, "volume": null}
+{"ts": 1783801438.241133, "market_hash_name": "M249 | Shipping Forecast (Battle-Scarred)", "currency": 1, "lowest_price": 24.0, "median_price": 24.0, "volume": null}
+{"ts": 1783801438.466908, "market_hash_name": "Sawed-Off | Kiss\u2665Love (Minimal Wear)", "currency": 1, "lowest_price": 8.37, "median_price": 8.37, "volume": null}
+{"ts": 1783801438.474244, "market_hash_name": "XM1014 | Incinegator (Battle-Scarred)", "currency": 1, "lowest_price": 6.46, "median_price": 6.46, "volume": null}
+{"ts": 1783801484.07292, "market_hash_name": "SG 553 | Aerial (Battle-Scarred)", "currency": 1, "lowest_price": 0.53, "median_price": 0.53, "volume": null}
+{"ts": 1783801507.879312, "market_hash_name": "UMP-45 | Fragment (Battle-Scarred)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783801507.8942313, "market_hash_name": "MP9 | Bioleak (Battle-Scarred)", "currency": 1, "lowest_price": 0.49, "median_price": 0.49, "volume": null}
+{"ts": 1783801508.0706716, "market_hash_name": "StatTrak\u2122 AUG | Tom Cat (Field-Tested)", "currency": 1, "lowest_price": 0.37, "median_price": 0.37, "volume": null}
+{"ts": 1783801508.598072, "market_hash_name": "MP5-SD | Liquidation (Factory New)", "currency": 1, "lowest_price": 1.3, "median_price": 1.3, "volume": null}
+{"ts": 1783801511.0836391, "market_hash_name": "M4A4 | Buzz Kill (Factory New)", "currency": 1, "lowest_price": 841.28, "median_price": 841.28, "volume": null}
+{"ts": 1783801511.1018667, "market_hash_name": "SSG 08 | Dragonfire (Factory New)", "currency": 1, "lowest_price": 530.0, "median_price": 530.0, "volume": null}
+{"ts": 1783801511.257706, "market_hash_name": "P250 | Verdigris (Battle-Scarred)", "currency": 1, "lowest_price": 0.42, "median_price": 0.42, "volume": null}
+{"ts": 1783801511.2714798, "market_hash_name": "UMP-45 | Moonrise (Well-Worn)", "currency": 1, "lowest_price": 0.93, "median_price": 0.93, "volume": null}
+{"ts": 1783801512.0296903, "market_hash_name": "G3SG1 | Stinger (Minimal Wear)", "currency": 1, "lowest_price": 11.04, "median_price": 11.04, "volume": null}
+{"ts": 1783801512.198351, "market_hash_name": "Dual Berettas | Royal Consorts (Minimal Wear)", "currency": 1, "lowest_price": 12.97, "median_price": 12.97, "volume": null}
+{"ts": 1783801513.3765452, "market_hash_name": "StatTrak\u2122 SG 553 | Danger Close (Factory New)", "currency": 1, "lowest_price": 1.62, "median_price": 1.62, "volume": null}
+{"ts": 1783801513.3937342, "market_hash_name": "StatTrak\u2122 P90 | Module (Factory New)", "currency": 1, "lowest_price": 3.55, "median_price": 3.55, "volume": null}
+{"ts": 1783801513.4007585, "market_hash_name": "StatTrak\u2122 P90 | Module (Field-Tested)", "currency": 1, "lowest_price": 1.95, "median_price": 1.95, "volume": null}
+{"ts": 1783801513.411564, "market_hash_name": "StatTrak\u2122 P90 | Freight (Factory New)", "currency": 1, "lowest_price": 1.2, "median_price": 1.2, "volume": null}
+{"ts": 1783801513.4291313, "market_hash_name": "StatTrak\u2122 P90 | Freight (Field-Tested)", "currency": 1, "lowest_price": 0.13, "median_price": 0.13, "volume": null}
+{"ts": 1783801513.4408398, "market_hash_name": "StatTrak\u2122 SCAR-20 | Assault (Well-Worn)", "currency": 1, "lowest_price": 0.42, "median_price": 0.42, "volume": null}
+{"ts": 1783801513.4567826, "market_hash_name": "StatTrak\u2122 MAC-10 | Classic Crate (Well-Worn)", "currency": 1, "lowest_price": 0.24, "median_price": 0.24, "volume": null}
+{"ts": 1783801513.470195, "market_hash_name": "StatTrak\u2122 MAC-10 | Pipe Down (Field-Tested)", "currency": 1, "lowest_price": 1.21, "median_price": 1.21, "volume": null}
+{"ts": 1783801513.4811957, "market_hash_name": "StatTrak\u2122 P250 | Nevermore (Minimal Wear)", "currency": 1, "lowest_price": 3.26, "median_price": 3.26, "volume": null}
+{"ts": 1783801513.494516, "market_hash_name": "StatTrak\u2122 PP-Bizon | Antique (Minimal Wear)", "currency": 1, "lowest_price": 11.22, "median_price": 11.22, "volume": null}
+{"ts": 1783801513.5021696, "market_hash_name": "StatTrak\u2122 MAC-10 | Curse (Minimal Wear)", "currency": 1, "lowest_price": 15.34, "median_price": 15.34, "volume": null}
+{"ts": 1783801513.519832, "market_hash_name": "StatTrak\u2122 Five-SeveN | Buddy (Minimal Wear)", "currency": 1, "lowest_price": 4.2, "median_price": 4.2, "volume": null}
+{"ts": 1783801513.5318167, "market_hash_name": "StatTrak\u2122 M249 | Aztec (Field-Tested)", "currency": 1, "lowest_price": 1.06, "median_price": 1.06, "volume": null}
+{"ts": 1783801513.5438113, "market_hash_name": "StatTrak\u2122 MP5-SD | Agent (Field-Tested)", "currency": 1, "lowest_price": 1.9, "median_price": 1.9, "volume": null}
+{"ts": 1783801513.5576966, "market_hash_name": "StatTrak\u2122 P250 | Inferno (Field-Tested)", "currency": 1, "lowest_price": 1.5, "median_price": 1.5, "volume": null}
+{"ts": 1783801513.5822146, "market_hash_name": "StatTrak\u2122 UMP-45 | Plastique (Field-Tested)", "currency": 1, "lowest_price": 1.24, "median_price": 1.24, "volume": null}
+{"ts": 1783801513.8666832, "market_hash_name": "StatTrak\u2122 MAC-10 | Graven (Well-Worn)", "currency": 1, "lowest_price": 36.23, "median_price": 36.23, "volume": null}
+{"ts": 1783801513.8832538, "market_hash_name": "StatTrak\u2122 USP-S | Ticket to Hell (Factory New)", "currency": 1, "lowest_price": 7.64, "median_price": 7.64, "volume": null}
+{"ts": 1783801514.1059616, "market_hash_name": "XM1014 | Ziggy (Well-Worn)", "currency": 1, "lowest_price": 1.2, "median_price": 1.2, "volume": null}
+{"ts": 1783801514.113507, "market_hash_name": "Galil AR | CAUTION! (Factory New)", "currency": 1, "lowest_price": 117.32, "median_price": 117.32, "volume": null}
+{"ts": 1783801514.4729888, "market_hash_name": "Dual Berettas | Urban Shock (Minimal Wear)", "currency": 1, "lowest_price": 3.85, "median_price": 3.85, "volume": null}
+{"ts": 1783801514.6175733, "market_hash_name": "StatTrak\u2122 USP-S | Monster Mashup (Battle-Scarred)", "currency": 1, "lowest_price": 39.51, "median_price": 39.51, "volume": null}
+{"ts": 1783801514.6257, "market_hash_name": "StatTrak\u2122 AUG | Momentum (Minimal Wear)", "currency": 1, "lowest_price": 26.7, "median_price": 26.7, "volume": null}
+{"ts": 1783801514.6352005, "market_hash_name": "StatTrak\u2122 AUG | Momentum (Battle-Scarred)", "currency": 1, "lowest_price": 6.88, "median_price": 6.88, "volume": null}
+{"ts": 1783801514.8853042, "market_hash_name": "Five-SeveN | Triumvirate (Well-Worn)", "currency": 1, "lowest_price": 3.35, "median_price": 3.35, "volume": null}
+{"ts": 1783801515.873387, "market_hash_name": "AUG | Torque (Battle-Scarred)", "currency": 1, "lowest_price": 7.84, "median_price": 7.84, "volume": null}
+{"ts": 1783801515.8844075, "market_hash_name": "Five-SeveN | Hybrid (Factory New)", "currency": 1, "lowest_price": 5.62, "median_price": 5.62, "volume": null}
+{"ts": 1783801515.89212, "market_hash_name": "Five-SeveN | Hybrid (Well-Worn)", "currency": 1, "lowest_price": 0.45, "median_price": 0.45, "volume": null}
+{"ts": 1783801516.2240403, "market_hash_name": "StatTrak\u2122 AK-47 | Rat Rod (Field-Tested)", "currency": 1, "lowest_price": 16.68, "median_price": 16.68, "volume": null}
+{"ts": 1783801516.2379088, "market_hash_name": "StatTrak\u2122 SG 553 | Colony IV (Well-Worn)", "currency": 1, "lowest_price": 17.98, "median_price": 17.98, "volume": null}
+{"ts": 1783801551.862256, "market_hash_name": "MAC-10 | Classic Crate (Factory New)", "currency": 1, "lowest_price": 6.11, "median_price": 6.11, "volume": null}
+{"ts": 1783801555.1044114, "market_hash_name": "StatTrak\u2122 Desert Eagle | Mecha Industries (Factory New)", "currency": 1, "lowest_price": 39.74, "median_price": 39.74, "volume": null}
+{"ts": 1783801555.1126425, "market_hash_name": "StatTrak\u2122 Desert Eagle | Mecha Industries (Well-Worn)", "currency": 1, "lowest_price": 18.01, "median_price": 18.01, "volume": null}
+{"ts": 1783801555.1245098, "market_hash_name": "StatTrak\u2122 MP5-SD | Phosphor (Battle-Scarred)", "currency": 1, "lowest_price": 7.68, "median_price": 7.68, "volume": null}
+{"ts": 1783801555.1336923, "market_hash_name": "StatTrak\u2122 M4A4 | \u9f8d\u738b (Dragon King) (Factory New)", "currency": 1, "lowest_price": 139.4, "median_price": 139.4, "volume": null}
+{"ts": 1783801555.1442995, "market_hash_name": "StatTrak\u2122 AK-47 | Asiimov (Battle-Scarred)", "currency": 1, "lowest_price": 85.16, "median_price": 85.16, "volume": null}
+{"ts": 1783801555.3057978, "market_hash_name": "StatTrak\u2122 M4A1-S | Electrum (Field-Tested)", "currency": 1, "lowest_price": 6.09, "median_price": 6.09, "volume": null}
+{"ts": 1783801555.3319292, "market_hash_name": "StatTrak\u2122 P250 | Mehndi (Field-Tested)", "currency": 1, "lowest_price": 45.01, "median_price": 45.01, "volume": null}
+{"ts": 1783801556.5937235, "market_hash_name": "StatTrak\u2122 USP-S | Dark Water (Field-Tested)", "currency": 1, "lowest_price": 167.16, "median_price": 167.16, "volume": null}
+{"ts": 1783801556.6108613, "market_hash_name": "StatTrak\u2122 USP-S | Dark Water (Minimal Wear)", "currency": 1, "lowest_price": 169.53, "median_price": 169.53, "volume": null}
+{"ts": 1783801556.9450438, "market_hash_name": "MAC-10 | Disco Tech (Well-Worn)", "currency": 1, "lowest_price": 6.95, "median_price": 6.95, "volume": null}
+{"ts": 1783801556.9586592, "market_hash_name": "MAC-10 | Disco Tech (Minimal Wear)", "currency": 1, "lowest_price": 10.49, "median_price": 10.49, "volume": null}
+{"ts": 1783801556.9695196, "market_hash_name": "M4A1-S | Player Two (Battle-Scarred)", "currency": 1, "lowest_price": 73.59, "median_price": 73.59, "volume": null}
+{"ts": 1783801625.4158938, "market_hash_name": "Glock-18 | Ocean Topo (Battle-Scarred)", "currency": 1, "lowest_price": 0.08, "median_price": 0.08, "volume": null}
+{"ts": 1783801625.4274828, "market_hash_name": "Desert Eagle | Mint Fan (Battle-Scarred)", "currency": 1, "lowest_price": 0.25, "median_price": 0.25, "volume": null}
+{"ts": 1783801625.4327493, "market_hash_name": "MP9 | Cobalt Paisley (Battle-Scarred)", "currency": 1, "lowest_price": 0.26, "median_price": 0.26, "volume": null}
+{"ts": 1783801638.069257, "market_hash_name": "StatTrak\u2122 MAG-7 | Petroglyph (Factory New)", "currency": 1, "lowest_price": 3.74, "median_price": 3.74, "volume": null}
+{"ts": 1783801638.2134323, "market_hash_name": "SG 553 | Safari Print (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801638.5964344, "market_hash_name": "Sawed-Off | Crimson Batik (Factory New)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783801639.5267308, "market_hash_name": "StatTrak\u2122 SCAR-20 | Grotto (Well-Worn)", "currency": 1, "lowest_price": 0.93, "median_price": 0.93, "volume": null}
+{"ts": 1783801639.5352197, "market_hash_name": "StatTrak\u2122 Five-SeveN | Scumbria (Minimal Wear)", "currency": 1, "lowest_price": 0.69, "median_price": 0.69, "volume": null}
+{"ts": 1783801640.5276423, "market_hash_name": "StatTrak\u2122 Dual Berettas | Melondrama (Minimal Wear)", "currency": 1, "lowest_price": 10.36, "median_price": 10.36, "volume": null}
+{"ts": 1783801640.5373743, "market_hash_name": "StatTrak\u2122 FAMAS | Rapid Eye Movement (Minimal Wear)", "currency": 1, "lowest_price": 10.57, "median_price": 10.57, "volume": null}
+{"ts": 1783801640.5446863, "market_hash_name": "StatTrak\u2122 MP7 | Abyssal Apparition (Minimal Wear)", "currency": 1, "lowest_price": 10.31, "median_price": 10.31, "volume": null}
+{"ts": 1783801642.2555418, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Hexane (Well-Worn)", "currency": 1, "lowest_price": 4.27, "median_price": 4.27, "volume": null}
+{"ts": 1783801642.265234, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Hexane (Minimal Wear)", "currency": 1, "lowest_price": 3.41, "median_price": 3.41, "volume": null}
+{"ts": 1783801642.2729077, "market_hash_name": "StatTrak\u2122 SG 553 | Aerial (Battle-Scarred)", "currency": 1, "lowest_price": 0.39, "median_price": 0.39, "volume": null}
+{"ts": 1783801642.2805798, "market_hash_name": "StatTrak\u2122 PP-Bizon | Harvester (Battle-Scarred)", "currency": 1, "lowest_price": 0.35, "median_price": 0.35, "volume": null}
+{"ts": 1783801642.2878063, "market_hash_name": "StatTrak\u2122 Desert Eagle | Crimson Web (Battle-Scarred)", "currency": 1, "lowest_price": 27.6, "median_price": 27.6, "volume": null}
+{"ts": 1783801642.2964263, "market_hash_name": "StatTrak\u2122 P90 | Virus (Battle-Scarred)", "currency": 1, "lowest_price": 4.65, "median_price": 4.65, "volume": null}
+{"ts": 1783801642.3022454, "market_hash_name": "StatTrak\u2122 AUG | Aristocrat (Well-Worn)", "currency": 1, "lowest_price": 3.02, "median_price": 3.02, "volume": null}
+{"ts": 1783801642.3100467, "market_hash_name": "StatTrak\u2122 AWP | Phobos (Field-Tested)", "currency": 1, "lowest_price": 5.88, "median_price": 5.88, "volume": null}
+{"ts": 1783801642.3190563, "market_hash_name": "StatTrak\u2122 P90 | Chopper (Well-Worn)", "currency": 1, "lowest_price": 2.56, "median_price": 2.56, "volume": null}
+{"ts": 1783801642.3277438, "market_hash_name": "StatTrak\u2122 R8 Revolver | Reboot (Battle-Scarred)", "currency": 1, "lowest_price": 1.87, "median_price": 1.87, "volume": null}
+{"ts": 1783801642.338454, "market_hash_name": "StatTrak\u2122 Sawed-Off | Limelight (Battle-Scarred)", "currency": 1, "lowest_price": 2.57, "median_price": 2.57, "volume": null}
+{"ts": 1783801642.4534125, "market_hash_name": "MAC-10 | Ultraviolet (Field-Tested)", "currency": 1, "lowest_price": 4.3, "median_price": 4.3, "volume": null}
+{"ts": 1783801642.4616985, "market_hash_name": "MAC-10 | Ultraviolet (Well-Worn)", "currency": 1, "lowest_price": 4.82, "median_price": 4.82, "volume": null}
+{"ts": 1783801642.4691415, "market_hash_name": "MAC-10 | Ultraviolet (Factory New)", "currency": 1, "lowest_price": 48.23, "median_price": 48.23, "volume": null}
+{"ts": 1783801642.4798617, "market_hash_name": "MAC-10 | Ultraviolet (Minimal Wear)", "currency": 1, "lowest_price": 7.73, "median_price": 7.73, "volume": null}
+{"ts": 1783801642.6924572, "market_hash_name": "CZ75-Auto | Army Sheen (Field-Tested)", "currency": 1, "lowest_price": 3.99, "median_price": 3.99, "volume": null}
+{"ts": 1783801642.7012637, "market_hash_name": "Desert Eagle | Night (Battle-Scarred)", "currency": 1, "lowest_price": 13.01, "median_price": 13.01, "volume": null}
+{"ts": 1783801642.7096677, "market_hash_name": "USP-S | Para Green (Well-Worn)", "currency": 1, "lowest_price": 9.97, "median_price": 9.97, "volume": null}
+{"ts": 1783801658.4480233, "market_hash_name": "SCAR-20 | Blueprint (Minimal Wear)", "currency": 1, "lowest_price": 0.72, "median_price": 0.72, "volume": null}
+{"ts": 1783801659.8948538, "market_hash_name": "SG 553 | Pulse (Well-Worn)", "currency": 1, "lowest_price": 2.49, "median_price": 2.49, "volume": null}
+{"ts": 1783801682.7241104, "market_hash_name": "R8 Revolver | Mauve Aside (Factory New)", "currency": 1, "lowest_price": 0.09, "median_price": 0.09, "volume": null}
+{"ts": 1783801683.4830196, "market_hash_name": "Nova | Currents (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801714.272817, "market_hash_name": "Glock-18 | Off World (Field-Tested)", "currency": 1, "lowest_price": 0.38, "median_price": 0.38, "volume": null}
+{"ts": 1783801714.2855353, "market_hash_name": "Glock-18 | Catacombs (Factory New)", "currency": 1, "lowest_price": 9.26, "median_price": 9.26, "volume": null}
+{"ts": 1783801714.298663, "market_hash_name": "MAC-10 | Malachite (Minimal Wear)", "currency": 1, "lowest_price": 4.29, "median_price": 4.29, "volume": null}
+{"ts": 1783801714.3138092, "market_hash_name": "Sawed-Off | Serenity (Minimal Wear)", "currency": 1, "lowest_price": 3.24, "median_price": 3.24, "volume": null}
+{"ts": 1783801714.626675, "market_hash_name": "P250 | Re.built (Factory New)", "currency": 1, "lowest_price": 1.17, "median_price": 1.17, "volume": null}
+{"ts": 1783801715.621022, "market_hash_name": "G3SG1 | Stinger (Factory New)", "currency": 1, "lowest_price": 16.07, "median_price": 16.07, "volume": null}
+{"ts": 1783801715.9542072, "market_hash_name": "M4A4 | Buzz Kill (Battle-Scarred)", "currency": 1, "lowest_price": 338.13, "median_price": 338.13, "volume": null}
+{"ts": 1783801715.9654744, "market_hash_name": "SSG 08 | Dragonfire (Well-Worn)", "currency": 1, "lowest_price": 372.07, "median_price": 372.07, "volume": null}
+{"ts": 1783801716.4481666, "market_hash_name": "M4A4 | Buzz Kill (Minimal Wear)", "currency": 1, "lowest_price": 183.48, "median_price": 183.48, "volume": null}
+{"ts": 1783801717.4604888, "market_hash_name": "SCAR-20 | Jungle Slipstream (Factory New)", "currency": 1, "lowest_price": 0.83, "median_price": 0.83, "volume": null}
+{"ts": 1783801717.469739, "market_hash_name": "M249 | System Lock (Well-Worn)", "currency": 1, "lowest_price": 0.78, "median_price": 0.78, "volume": null}
+{"ts": 1783801717.4820504, "market_hash_name": "SG 553 | Phantom (Factory New)", "currency": 1, "lowest_price": 5.85, "median_price": 5.85, "volume": null}
+{"ts": 1783801717.493223, "market_hash_name": "Desert Eagle | Naga (Minimal Wear)", "currency": 1, "lowest_price": 5.83, "median_price": 5.83, "volume": null}
+{"ts": 1783801717.4996812, "market_hash_name": "MAC-10 | Malachite (Factory New)", "currency": 1, "lowest_price": 14.92, "median_price": 14.92, "volume": null}
+{"ts": 1783801717.999758, "market_hash_name": "M249 | Bock Blocks (Field-Tested)", "currency": 1, "lowest_price": 0.15, "median_price": 0.15, "volume": null}
+{"ts": 1783801718.3221638, "market_hash_name": "Galil AR | Shattered (Factory New)", "currency": 1, "lowest_price": 48.34, "median_price": 48.34, "volume": null}
+{"ts": 1783801718.3274763, "market_hash_name": "SG 553 | Wave Spray (Factory New)", "currency": 1, "lowest_price": 38.03, "median_price": 38.03, "volume": null}
+{"ts": 1783801718.3450155, "market_hash_name": "Dual Berettas | Black Limba (Factory New)", "currency": 1, "lowest_price": 37.82, "median_price": 37.82, "volume": null}
+{"ts": 1783801718.3547738, "market_hash_name": "Dual Berettas | Black Limba (Battle-Scarred)", "currency": 1, "lowest_price": 5.66, "median_price": 5.66, "volume": null}
+{"ts": 1783801718.5527244, "market_hash_name": "UMP-45 | Primal Saber (Factory New)", "currency": 1, "lowest_price": 36.59, "median_price": 36.59, "volume": null}
+{"ts": 1783801718.7211275, "market_hash_name": "Desert Eagle | Sunset Storm \u58f1 (Factory New)", "currency": 1, "lowest_price": 820.49, "median_price": 820.49, "volume": null}
+{"ts": 1783801718.734744, "market_hash_name": "Desert Eagle | Sunset Storm \u58f1 (Field-Tested)", "currency": 1, "lowest_price": 661.68, "median_price": 661.68, "volume": null}
+{"ts": 1783801719.0684254, "market_hash_name": "M4A4 | Modern Hunter (Minimal Wear)", "currency": 1, "lowest_price": 162.02, "median_price": 162.02, "volume": null}
+{"ts": 1783801720.028487, "market_hash_name": "MP9 | Shredded (Battle-Scarred)", "currency": 1, "lowest_price": 0.19, "median_price": 0.19, "volume": null}
+{"ts": 1783801720.2111456, "market_hash_name": "Dual Berettas | Shred (Minimal Wear)", "currency": 1, "lowest_price": 0.67, "median_price": 0.67, "volume": null}
+{"ts": 1783801720.2238753, "market_hash_name": "Dual Berettas | Shred (Factory New)", "currency": 1, "lowest_price": 1.86, "median_price": 1.86, "volume": null}
+{"ts": 1783801720.2327826, "market_hash_name": "Dual Berettas | Shred (Well-Worn)", "currency": 1, "lowest_price": 0.42, "median_price": 0.42, "volume": null}
+{"ts": 1783801720.2589493, "market_hash_name": "AWP | PAW (Well-Worn)", "currency": 1, "lowest_price": 2.8, "median_price": 2.8, "volume": null}
+{"ts": 1783801775.9945579, "market_hash_name": "StatTrak\u2122 M4A1-S | Vaporwave (Battle-Scarred)", "currency": 1, "lowest_price": 109.28, "median_price": 109.28, "volume": null}
+{"ts": 1783801776.8960671, "market_hash_name": "AWP | Capillary (Battle-Scarred)", "currency": 1, "lowest_price": 0.95, "median_price": 0.95, "volume": null}
+{"ts": 1783801776.9495955, "market_hash_name": "SSG 08 | Fever Dream (Battle-Scarred)", "currency": 1, "lowest_price": 1.13, "median_price": 1.13, "volume": null}
+{"ts": 1783801777.4007866, "market_hash_name": "MP5-SD | Dirt Drop (Battle-Scarred)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801778.6788802, "market_hash_name": "MAG-7 | Justice (Field-Tested)", "currency": 1, "lowest_price": 7.45, "median_price": 7.45, "volume": null}
+{"ts": 1783801779.0503497, "market_hash_name": "StatTrak\u2122 SCAR-20 | Trail Blazer (Field-Tested)", "currency": 1, "lowest_price": 0.38, "median_price": 0.38, "volume": null}
+{"ts": 1783801779.7674396, "market_hash_name": "AK-47 | Neon Rider (Battle-Scarred)", "currency": 1, "lowest_price": 60.24, "median_price": 60.24, "volume": null}
+{"ts": 1783801779.953508, "market_hash_name": "XM1014 | Ancient Lore (Factory New)", "currency": 1, "lowest_price": 43.01, "median_price": 43.01, "volume": null}
+{"ts": 1783801779.9638934, "market_hash_name": "XM1014 | Ancient Lore (Well-Worn)", "currency": 1, "lowest_price": 43.23, "median_price": 43.23, "volume": null}
+{"ts": 1783801779.9722486, "market_hash_name": "MAC-10 | Gold Brick (Factory New)", "currency": 1, "lowest_price": 120.64, "median_price": 120.64, "volume": null}
+{"ts": 1783801779.9799194, "market_hash_name": "MAC-10 | Gold Brick (Well-Worn)", "currency": 1, "lowest_price": 51.6, "median_price": 51.6, "volume": null}
+{"ts": 1783801780.2867925, "market_hash_name": "StatTrak\u2122 USP-S | Cortex (Minimal Wear)", "currency": 1, "lowest_price": 20.18, "median_price": 20.18, "volume": null}
+{"ts": 1783801780.4358525, "market_hash_name": "StatTrak\u2122 Glock-18 | Vogue (Well-Worn)", "currency": 1, "lowest_price": 8.28, "median_price": 8.28, "volume": null}
+{"ts": 1783801780.4566886, "market_hash_name": "StatTrak\u2122 G3SG1 | The Executioner (Battle-Scarred)", "currency": 1, "lowest_price": 9.69, "median_price": 9.69, "volume": null}
+{"ts": 1783801780.4698286, "market_hash_name": "StatTrak\u2122 P90 | Shapewood (Battle-Scarred)", "currency": 1, "lowest_price": 9.71, "median_price": 9.71, "volume": null}
+{"ts": 1783801780.4789388, "market_hash_name": "StatTrak\u2122 Desert Eagle | Conspiracy (Field-Tested)", "currency": 1, "lowest_price": 26.3, "median_price": 26.3, "volume": null}
+{"ts": 1783801780.6720695, "market_hash_name": "MP9 | Green Plaid (Minimal Wear)", "currency": 1, "lowest_price": 5.52, "median_price": 5.52, "volume": null}
+{"ts": 1783801780.6838975, "market_hash_name": "MP7 | Army Recon (Battle-Scarred)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801780.7091477, "market_hash_name": "AUG | Condemned (Battle-Scarred)", "currency": 1, "lowest_price": 0.06, "median_price": 0.06, "volume": null}
+{"ts": 1783801780.7309468, "market_hash_name": "G3SG1 | VariCamo (Well-Worn)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783801780.741914, "market_hash_name": "Galil AR | VariCamo (Well-Worn)", "currency": 1, "lowest_price": 0.06, "median_price": 0.06, "volume": null}
+{"ts": 1783801780.7548728, "market_hash_name": "MP9 | Orange Peel (Battle-Scarred)", "currency": 1, "lowest_price": 0.06, "median_price": 0.06, "volume": null}
+{"ts": 1783801780.7639, "market_hash_name": "USP-S | Forest Leaves (Battle-Scarred)", "currency": 1, "lowest_price": 0.08, "median_price": 0.08, "volume": null}
+{"ts": 1783801780.7699907, "market_hash_name": "G3SG1 | Ancient Ritual (Battle-Scarred)", "currency": 1, "lowest_price": 1.95, "median_price": 1.95, "volume": null}
+{"ts": 1783801780.7884417, "market_hash_name": "MP7 | Tall Grass (Well-Worn)", "currency": 1, "lowest_price": 2.0, "median_price": 2.0, "volume": null}
+{"ts": 1783801840.287505, "market_hash_name": "SCAR-20 | Powercore (Factory New)", "currency": 1, "lowest_price": 12.51, "median_price": 12.51, "volume": null}
+{"ts": 1783801840.941371, "market_hash_name": "P250 | Contaminant (Battle-Scarred)", "currency": 1, "lowest_price": 0.73, "median_price": 0.73, "volume": null}
+{"ts": 1783801860.118311, "market_hash_name": "StatTrak\u2122 UMP-45 | Scaffold (Well-Worn)", "currency": 1, "lowest_price": 2.57, "median_price": 2.57, "volume": null}
+{"ts": 1783801860.1302009, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Xiangliu (Well-Worn)", "currency": 1, "lowest_price": 24.1, "median_price": 24.1, "volume": null}
+{"ts": 1783801863.0349185, "market_hash_name": "StatTrak\u2122 Galil AR | Crimson Tsunami (Well-Worn)", "currency": 1, "lowest_price": 5.24, "median_price": 5.24, "volume": null}
+{"ts": 1783801909.5372229, "market_hash_name": "FAMAS | Byproduct (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783801940.9401677, "market_hash_name": "MAG-7 | Carbon Fiber (Minimal Wear)", "currency": 1, "lowest_price": 4.42, "median_price": 4.42, "volume": null}
+{"ts": 1783801940.960349, "market_hash_name": "SSG 08 | Hand Brake (Well-Worn)", "currency": 1, "lowest_price": 1.26, "median_price": 1.26, "volume": null}
+{"ts": 1783801940.9963179, "market_hash_name": "Sawed-Off | Orange DDPAT (Minimal Wear)", "currency": 1, "lowest_price": 33.94, "median_price": 33.94, "volume": null}
+{"ts": 1783801942.6986518, "market_hash_name": "M4A1-S | Cyrex (Factory New)", "currency": 1, "lowest_price": 282.78, "median_price": 282.78, "volume": null}
+{"ts": 1783801942.7050753, "market_hash_name": "P90 | Asiimov (Factory New)", "currency": 1, "lowest_price": 359.04, "median_price": 359.04, "volume": null}
+{"ts": 1783801942.7297416, "market_hash_name": "P90 | Freight (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783801942.7371845, "market_hash_name": "MAC-10 | Allure (Well-Worn)", "currency": 1, "lowest_price": 0.52, "median_price": 0.52, "volume": null}
+{"ts": 1783801942.7559125, "market_hash_name": "MAG-7 | Monster Call (Well-Worn)", "currency": 1, "lowest_price": 0.52, "median_price": 0.52, "volume": null}
+{"ts": 1783801942.770085, "market_hash_name": "Tec-9 | Brother (Well-Worn)", "currency": 1, "lowest_price": 0.49, "median_price": 0.49, "volume": null}
+{"ts": 1783801943.4262264, "market_hash_name": "P90 | Wave Breaker (Minimal Wear)", "currency": 1, "lowest_price": 1.37, "median_price": 1.37, "volume": null}
+{"ts": 1783801945.9855845, "market_hash_name": "MAC-10 | Case Hardened (Minimal Wear)", "currency": 1, "lowest_price": 35.63, "median_price": 35.63, "volume": null}
+{"ts": 1783801946.9731753, "market_hash_name": "MAC-10 | Gold Brick (Battle-Scarred)", "currency": 1, "lowest_price": 40.15, "median_price": 40.15, "volume": null}
+{"ts": 1783801947.3105712, "market_hash_name": "USP-S | Orion (Factory New)", "currency": 1, "lowest_price": 174.17, "median_price": 174.17, "volume": null}
+{"ts": 1783801947.3245916, "market_hash_name": "USP-S | Orion (Well-Worn)", "currency": 1, "lowest_price": 77.77, "median_price": 77.77, "volume": null}
+{"ts": 1783801947.6534986, "market_hash_name": "USP-S | Flashback (Well-Worn)", "currency": 1, "lowest_price": 0.74, "median_price": 0.74, "volume": null}
+{"ts": 1783801996.313197, "market_hash_name": "MAC-10 | Carnivore (Well-Worn)", "currency": 1, "lowest_price": 0.48, "median_price": 0.48, "volume": null}
+{"ts": 1783801998.0563424, "market_hash_name": "SCAR-20 | Assault (Field-Tested)", "currency": 1, "lowest_price": 0.77, "median_price": 0.77, "volume": null}
+{"ts": 1783801998.2141042, "market_hash_name": "Five-SeveN | Violent Daimyo (Field-Tested)", "currency": 1, "lowest_price": 0.74, "median_price": 0.74, "volume": null}
+{"ts": 1783801998.3681245, "market_hash_name": "FAMAS | Decommissioned (Battle-Scarred)", "currency": 1, "lowest_price": 0.4, "median_price": 0.4, "volume": null}
+{"ts": 1783801998.5412493, "market_hash_name": "P2000 | Red Wing (Field-Tested)", "currency": 1, "lowest_price": 0.19, "median_price": 0.19, "volume": null}
+{"ts": 1783801999.155518, "market_hash_name": "MP7 | Nemesis (Factory New)", "currency": 1, "lowest_price": 28.87, "median_price": 28.87, "volume": null}
+{"ts": 1783802000.2981143, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Yellow Jacket (Minimal Wear)", "currency": 1, "lowest_price": 19.52, "median_price": 19.52, "volume": null}
+{"ts": 1783802000.8510163, "market_hash_name": "StatTrak\u2122 XM1014 | Tranquility (Factory New)", "currency": 1, "lowest_price": 109.88, "median_price": 109.88, "volume": null}
+{"ts": 1783802000.861561, "market_hash_name": "StatTrak\u2122 AK-47 | Wasteland Rebel (Well-Worn)", "currency": 1, "lowest_price": 164.99, "median_price": 164.99, "volume": null}
+{"ts": 1783802068.1857657, "market_hash_name": "Sawed-Off | Crimson Batik (Well-Worn)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783802068.763499, "market_hash_name": "FAMAS | Teardown (Battle-Scarred)", "currency": 1, "lowest_price": 0.2, "median_price": 0.2, "volume": null}
+{"ts": 1783802070.6348343, "market_hash_name": "Five-SeveN | Capillary (Minimal Wear)", "currency": 1, "lowest_price": 0.67, "median_price": 0.67, "volume": null}
+{"ts": 1783802070.6424906, "market_hash_name": "Galil AR | Black Sand (Battle-Scarred)", "currency": 1, "lowest_price": 0.76, "median_price": 0.76, "volume": null}
+{"ts": 1783802070.6471958, "market_hash_name": "Sawed-Off | Yorick (Factory New)", "currency": 1, "lowest_price": 2.73, "median_price": 2.73, "volume": null}
+{"ts": 1783802089.1676848, "market_hash_name": "StatTrak\u2122 P90 | Grim (Minimal Wear)", "currency": 1, "lowest_price": 0.66, "median_price": 0.66, "volume": null}
+{"ts": 1783802089.481621, "market_hash_name": "Five-SeveN | Withered Vine (Well-Worn)", "currency": 1, "lowest_price": 1.21, "median_price": 1.21, "volume": null}
+{"ts": 1783802089.4944553, "market_hash_name": "MP9 | Old Roots (Well-Worn)", "currency": 1, "lowest_price": 1.33, "median_price": 1.33, "volume": null}
+{"ts": 1783802091.6529233, "market_hash_name": "StatTrak\u2122 M249 | System Lock (Battle-Scarred)", "currency": 1, "lowest_price": 0.87, "median_price": 0.87, "volume": null}
+{"ts": 1783802091.6605244, "market_hash_name": "StatTrak\u2122 P2000 | Lifted Spirits (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783802091.6709785, "market_hash_name": "StatTrak\u2122 M4A1-S | Night Terror (Battle-Scarred)", "currency": 1, "lowest_price": 2.94, "median_price": 2.94, "volume": null}
+{"ts": 1783802092.3253257, "market_hash_name": "SSG 08 | Halftone Whorl (Minimal Wear)", "currency": 1, "lowest_price": 0.34, "median_price": 0.34, "volume": null}
+{"ts": 1783802092.3287287, "market_hash_name": "SSG 08 | Halftone Whorl (Field-Tested)", "currency": 1, "lowest_price": 0.25, "median_price": 0.25, "volume": null}
+{"ts": 1783802092.336185, "market_hash_name": "SSG 08 | Halftone Whorl (Battle-Scarred)", "currency": 1, "lowest_price": 0.37, "median_price": 0.37, "volume": null}
+{"ts": 1783802092.3449273, "market_hash_name": "SSG 08 | Halftone Whorl (Well-Worn)", "currency": 1, "lowest_price": 0.22, "median_price": 0.22, "volume": null}
+{"ts": 1783802092.353697, "market_hash_name": "XM1014 | Halftone Shift (Field-Tested)", "currency": 1, "lowest_price": 1.82, "median_price": 1.82, "volume": null}
+{"ts": 1783802111.170777, "market_hash_name": "XM1014 | Halftone Shift (Factory New)", "currency": 1, "lowest_price": 4.52, "median_price": 4.52, "volume": null}
+{"ts": 1783802139.2989104, "market_hash_name": "Sawed-Off | Sage Spray (Field-Tested)", "currency": 1, "lowest_price": 0.57, "median_price": 0.57, "volume": null}
+{"ts": 1783802160.2871835, "market_hash_name": "StatTrak\u2122 AUG | Tom Cat (Battle-Scarred)", "currency": 1, "lowest_price": 0.32, "median_price": 0.32, "volume": null}
+{"ts": 1783802161.8434386, "market_hash_name": "Nova | Rising Sun (Minimal Wear)", "currency": 1, "lowest_price": 1.46, "median_price": 1.46, "volume": null}
+{"ts": 1783802161.8634052, "market_hash_name": "Zeus x27 | Tosai (Minimal Wear)", "currency": 1, "lowest_price": 1.1, "median_price": 1.1, "volume": null}
+{"ts": 1783802162.8126945, "market_hash_name": "StatTrak\u2122 AUG | Tom Cat (Factory New)", "currency": 1, "lowest_price": 1.48, "median_price": 1.48, "volume": null}
+{"ts": 1783802163.8408606, "market_hash_name": "Sawed-Off | Morris (Well-Worn)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783802164.6154895, "market_hash_name": "Glock-18 | Vogue (Battle-Scarred)", "currency": 1, "lowest_price": 4.53, "median_price": 4.53, "volume": null}
+{"ts": 1783802165.1975026, "market_hash_name": "Galil AR | Control (Battle-Scarred)", "currency": 1, "lowest_price": 0.58, "median_price": 0.58, "volume": null}
+{"ts": 1783802166.5509286, "market_hash_name": "StatTrak\u2122 Galil AR | Crimson Tsunami (Battle-Scarred)", "currency": 1, "lowest_price": 4.0, "median_price": 4.0, "volume": null}
+{"ts": 1783802166.8726177, "market_hash_name": "PP-Bizon | Antique (Battle-Scarred)", "currency": 1, "lowest_price": 5.96, "median_price": 5.96, "volume": null}
+{"ts": 1783802166.8940094, "market_hash_name": "PP-Bizon | Antique (Well-Worn)", "currency": 1, "lowest_price": 5.97, "median_price": 5.97, "volume": null}
+{"ts": 1783802167.187265, "market_hash_name": "MAC-10 | Calf Skin (Well-Worn)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783802167.217995, "market_hash_name": "StatTrak\u2122 M4A1-S | Flashback (Factory New)", "currency": 1, "lowest_price": 47.18, "median_price": 47.18, "volume": null}
+{"ts": 1783802167.2311795, "market_hash_name": "StatTrak\u2122 MAC-10 | Cat Fight (Factory New)", "currency": 1, "lowest_price": 11.55, "median_price": 11.55, "volume": null}
+{"ts": 1783802167.2477148, "market_hash_name": "StatTrak\u2122 P2000 | Woodsman (Minimal Wear)", "currency": 1, "lowest_price": 46.58, "median_price": 46.58, "volume": null}
+{"ts": 1783802167.4461477, "market_hash_name": "Glock-18 | Umbral Rabbit (Battle-Scarred)", "currency": 1, "lowest_price": 0.54, "median_price": 0.54, "volume": null}
+{"ts": 1783802167.4594567, "market_hash_name": "Glock-18 | Umbral Rabbit (Factory New)", "currency": 1, "lowest_price": 3.28, "median_price": 3.28, "volume": null}
+{"ts": 1783802168.1829517, "market_hash_name": "StatTrak\u2122 AWP | Ice Coaled (Minimal Wear)", "currency": 1, "lowest_price": 47.84, "median_price": 47.84, "volume": null}
+{"ts": 1783802168.1930025, "market_hash_name": "StatTrak\u2122 AWP | Ice Coaled (Factory New)", "currency": 1, "lowest_price": 99.58, "median_price": 99.58, "volume": null}
+{"ts": 1783802224.038015, "market_hash_name": "P250 | Iron Clad (Field-Tested)", "currency": 1, "lowest_price": 0.85, "median_price": 0.85, "volume": null}
+{"ts": 1783802224.5121121, "market_hash_name": "StatTrak\u2122 P250 | Asiimov (Minimal Wear)", "currency": 1, "lowest_price": 97.08, "median_price": 97.08, "volume": null}
+{"ts": 1783802224.5236356, "market_hash_name": "StatTrak\u2122 Sawed-Off | Devourer (Battle-Scarred)", "currency": 1, "lowest_price": 8.17, "median_price": 8.17, "volume": null}
+{"ts": 1783802224.530323, "market_hash_name": "StatTrak\u2122 Sawed-Off | Devourer (Field-Tested)", "currency": 1, "lowest_price": 10.66, "median_price": 10.66, "volume": null}
+{"ts": 1783802224.5446887, "market_hash_name": "StatTrak\u2122 PP-Bizon | Judgement of Anubis (Minimal Wear)", "currency": 1, "lowest_price": 176.94, "median_price": 176.94, "volume": null}
+{"ts": 1783802224.5532744, "market_hash_name": "StatTrak\u2122 M4A1-S | Chantico's Fire (Field-Tested)", "currency": 1, "lowest_price": 159.42, "median_price": 159.42, "volume": null}
+{"ts": 1783802224.5660021, "market_hash_name": "StatTrak\u2122 Desert Eagle | Code Red (Field-Tested)", "currency": 1, "lowest_price": 93.44, "median_price": 93.44, "volume": null}
+{"ts": 1783802224.8876278, "market_hash_name": "StatTrak\u2122 P90 | Shapewood (Factory New)", "currency": 1, "lowest_price": 49.24, "median_price": 49.24, "volume": null}
+{"ts": 1783802224.9037597, "market_hash_name": "StatTrak\u2122 M4A4 | Royal Paladin (Well-Worn)", "currency": 1, "lowest_price": 109.75, "median_price": 109.75, "volume": null}
+{"ts": 1783802224.9137094, "market_hash_name": "StatTrak\u2122 R8 Revolver | Fade (Field-Tested)", "currency": 1, "lowest_price": 112.55, "median_price": 112.55, "volume": null}
+{"ts": 1783802225.3658483, "market_hash_name": "CZ75-Auto | The Fuschia Is Now (Factory New)", "currency": 1, "lowest_price": 51.26, "median_price": 51.26, "volume": null}
+{"ts": 1783802225.7464843, "market_hash_name": "StatTrak\u2122 P250 | Cartel (Battle-Scarred)", "currency": 1, "lowest_price": 20.25, "median_price": 20.25, "volume": null}
+{"ts": 1783802225.7545757, "market_hash_name": "StatTrak\u2122 AK-47 | Inheritance (Well-Worn)", "currency": 1, "lowest_price": 106.69, "median_price": 106.69, "volume": null}
+{"ts": 1783802225.761785, "market_hash_name": "StatTrak\u2122 AWP | Chrome Cannon (Battle-Scarred)", "currency": 1, "lowest_price": 43.0, "median_price": 43.0, "volume": null}
+{"ts": 1783802296.1848814, "market_hash_name": "R8 Revolver | Mauve Aside (Battle-Scarred)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783802299.6794274, "market_hash_name": "P90 | Virus (Minimal Wear)", "currency": 1, "lowest_price": 7.24, "median_price": 7.24, "volume": null}
+{"ts": 1783802299.6821232, "market_hash_name": "AUG | Bengal Tiger (Battle-Scarred)", "currency": 1, "lowest_price": 18.4, "median_price": 18.4, "volume": null}
+{"ts": 1783802319.72499, "market_hash_name": "USP-S | Bleeding Edge (Battle-Scarred)", "currency": 1, "lowest_price": 1.28, "median_price": 1.28, "volume": null}
+{"ts": 1783802319.736807, "market_hash_name": "Five-SeveN | Buddy (Battle-Scarred)", "currency": 1, "lowest_price": 1.12, "median_price": 1.12, "volume": null}
+{"ts": 1783802319.7447867, "market_hash_name": "M249 | Aztec (Battle-Scarred)", "currency": 1, "lowest_price": 0.6, "median_price": 0.6, "volume": null}
+{"ts": 1783802319.755096, "market_hash_name": "UMP-45 | Plastique (Battle-Scarred)", "currency": 1, "lowest_price": 0.66, "median_price": 0.66, "volume": null}
+{"ts": 1783802321.9678752, "market_hash_name": "StatTrak\u2122 XM1014 | Slipstream (Well-Worn)", "currency": 1, "lowest_price": 0.4, "median_price": 0.4, "volume": null}
+{"ts": 1783802321.9808955, "market_hash_name": "StatTrak\u2122 Glock-18 | Weasel (Minimal Wear)", "currency": 1, "lowest_price": 4.45, "median_price": 4.45, "volume": null}
+{"ts": 1783802321.9896688, "market_hash_name": "StatTrak\u2122 SCAR-20 | Powercore (Minimal Wear)", "currency": 1, "lowest_price": 2.82, "median_price": 2.82, "volume": null}
+{"ts": 1783802339.868621, "market_hash_name": "Desert Eagle | Oxide Blaze (Factory New)", "currency": 1, "lowest_price": 3.24, "median_price": 3.24, "volume": null}
+{"ts": 1783802339.8884954, "market_hash_name": "P2000 | Urban Hazard (Battle-Scarred)", "currency": 1, "lowest_price": 0.13, "median_price": 0.13, "volume": null}
+{"ts": 1783802339.9067106, "market_hash_name": "M249 | Emerald Poison Dart (Factory New)", "currency": 1, "lowest_price": 6.2, "median_price": 6.2, "volume": null}
+{"ts": 1783802339.9216745, "market_hash_name": "XM1014 | Seasons (Factory New)", "currency": 1, "lowest_price": 4.78, "median_price": 4.78, "volume": null}
+{"ts": 1783802377.2865927, "market_hash_name": "Desert Eagle | Urban DDPAT (Well-Worn)", "currency": 1, "lowest_price": 1.81, "median_price": 1.81, "volume": null}
+{"ts": 1783802400.3912723, "market_hash_name": "SG 553 | Traveler (Factory New)", "currency": 1, "lowest_price": 12.4, "median_price": 12.4, "volume": null}
+{"ts": 1783802400.4160357, "market_hash_name": "P250 | Verdigris (Factory New)", "currency": 1, "lowest_price": 4.56, "median_price": 4.56, "volume": null}
+{"ts": 1783802400.4287522, "market_hash_name": "MP5-SD | Gauss (Factory New)", "currency": 1, "lowest_price": 6.49, "median_price": 6.49, "volume": null}
+{"ts": 1783802400.6053448, "market_hash_name": "G3SG1 | Hunter (Factory New)", "currency": 1, "lowest_price": 1.65, "median_price": 1.65, "volume": null}
+{"ts": 1783802400.6219559, "market_hash_name": "Glock-18 | Catacombs (Field-Tested)", "currency": 1, "lowest_price": 1.07, "median_price": 1.07, "volume": null}
+{"ts": 1783802402.1880677, "market_hash_name": "StatTrak\u2122 M4A1-S | Player Two (Minimal Wear)", "currency": 1, "lowest_price": 155.24, "median_price": 155.24, "volume": null}
+{"ts": 1783802402.7152722, "market_hash_name": "Galil AR | Connexion (Battle-Scarred)", "currency": 1, "lowest_price": 0.51, "median_price": 0.51, "volume": null}
+{"ts": 1783802402.7259443, "market_hash_name": "MP5-SD | Kitbash (Battle-Scarred)", "currency": 1, "lowest_price": 0.5, "median_price": 0.5, "volume": null}
+{"ts": 1783802405.54188, "market_hash_name": "StatTrak\u2122 Galil AR | Connexion (Battle-Scarred)", "currency": 1, "lowest_price": 0.68, "median_price": 0.68, "volume": null}
+{"ts": 1783802405.5576835, "market_hash_name": "StatTrak\u2122 MP5-SD | Kitbash (Battle-Scarred)", "currency": 1, "lowest_price": 0.69, "median_price": 0.69, "volume": null}
+{"ts": 1783802406.8082223, "market_hash_name": "CZ75-Auto | Red Astor (Factory New)", "currency": 1, "lowest_price": 8.86, "median_price": 8.86, "volume": null}
+{"ts": 1783802407.5674763, "market_hash_name": "FAMAS | Valence (Well-Worn)", "currency": 1, "lowest_price": 5.14, "median_price": 5.14, "volume": null}
+{"ts": 1783802407.5777724, "market_hash_name": "FAMAS | Valence (Minimal Wear)", "currency": 1, "lowest_price": 9.59, "median_price": 9.59, "volume": null}
+{"ts": 1783802408.5288327, "market_hash_name": "AUG | Amber Fade (Factory New)", "currency": 1, "lowest_price": 9.01, "median_price": 9.01, "volume": null}
+{"ts": 1783802408.5551887, "market_hash_name": "AUG | Amber Fade (Well-Worn)", "currency": 1, "lowest_price": 4.36, "median_price": 4.36, "volume": null}
+{"ts": 1783802408.5747807, "market_hash_name": "AUG | Amber Fade (Minimal Wear)", "currency": 1, "lowest_price": 3.49, "median_price": 3.49, "volume": null}
+{"ts": 1783802408.755813, "market_hash_name": "StatTrak\u2122 Desert Eagle | Kumicho Dragon (Factory New)", "currency": 1, "lowest_price": 155.04, "median_price": 155.04, "volume": null}
+{"ts": 1783802408.7658062, "market_hash_name": "StatTrak\u2122 Desert Eagle | Kumicho Dragon (Minimal Wear)", "currency": 1, "lowest_price": 80.26, "median_price": 80.26, "volume": null}
+{"ts": 1783802408.7825792, "market_hash_name": "StatTrak\u2122 Desert Eagle | Kumicho Dragon (Battle-Scarred)", "currency": 1, "lowest_price": 40.8, "median_price": 40.8, "volume": null}
+{"ts": 1783802409.105128, "market_hash_name": "StatTrak\u2122 AK-47 | Redline (Minimal Wear)", "currency": 1, "lowest_price": 443.75, "median_price": 443.75, "volume": null}
+{"ts": 1783802409.2567034, "market_hash_name": "StatTrak\u2122 AUG | Fleet Flock (Factory New)", "currency": 1, "lowest_price": 46.8, "median_price": 46.8, "volume": null}
+{"ts": 1783802453.6682014, "market_hash_name": "Desert Eagle | Blue Ply (Factory New)", "currency": 1, "lowest_price": 11.26, "median_price": 11.26, "volume": null}
+{"ts": 1783802453.6769328, "market_hash_name": "P2000 | Acid Etched (Factory New)", "currency": 1, "lowest_price": 23.14, "median_price": 23.14, "volume": null}
+{"ts": 1783802453.6973429, "market_hash_name": "Sawed-Off | Apocalypto (Factory New)", "currency": 1, "lowest_price": 6.71, "median_price": 6.71, "volume": null}
+{"ts": 1783802453.7047634, "market_hash_name": "SCAR-20 | Enforcer (Factory New)", "currency": 1, "lowest_price": 6.36, "median_price": 6.36, "volume": null}
+{"ts": 1783802453.717996, "market_hash_name": "SG 553 | Darkwing (Factory New)", "currency": 1, "lowest_price": 7.09, "median_price": 7.09, "volume": null}
+{"ts": 1783802455.1745083, "market_hash_name": "MAG-7 | Justice (Factory New)", "currency": 1, "lowest_price": 51.97, "median_price": 51.97, "volume": null}
+{"ts": 1783802459.0003166, "market_hash_name": "P250 | Apep's Curse (Factory New)", "currency": 1, "lowest_price": 201.41, "median_price": 201.41, "volume": null}
+{"ts": 1783802459.0101106, "market_hash_name": "M4A4 | Eye of Horus (Minimal Wear)", "currency": 1, "lowest_price": 646.44, "median_price": 646.44, "volume": null}
+{"ts": 1783802459.1563313, "market_hash_name": "Glock-18 | Synth Leaf (Factory New)", "currency": 1, "lowest_price": 540.42, "median_price": 540.42, "volume": null}
+{"ts": 1783802459.16205, "market_hash_name": "AUG | Midnight Lily (Factory New)", "currency": 1, "lowest_price": 530.97, "median_price": 530.97, "volume": null}
+{"ts": 1783802459.3199902, "market_hash_name": "StatTrak\u2122 CZ75-Auto | Xiangliu (Factory New)", "currency": 1, "lowest_price": 40.23, "median_price": 40.23, "volume": null}
+{"ts": 1783802459.3347287, "market_hash_name": "StatTrak\u2122 USP-S | Neo-Noir (Well-Worn)", "currency": 1, "lowest_price": 109.76, "median_price": 109.76, "volume": null}
+{"ts": 1783802459.62607, "market_hash_name": "MP7 | Ocean Foam (Minimal Wear)", "currency": 1, "lowest_price": 21.03, "median_price": 21.03, "volume": null}
+{"ts": 1783802536.1678417, "market_hash_name": "MAG-7 | Core Breach (Minimal Wear)", "currency": 1, "lowest_price": 7.0, "median_price": 7.0, "volume": null}
+{"ts": 1783802560.9724605, "market_hash_name": "StatTrak\u2122 AUG | Aristocrat (Field-Tested)", "currency": 1, "lowest_price": 2.48, "median_price": 2.48, "volume": null}
+{"ts": 1783802561.5427043, "market_hash_name": "XM1014 | Oxide Blaze (Field-Tested)", "currency": 1, "lowest_price": 0.16, "median_price": 0.16, "volume": null}
+{"ts": 1783802562.668275, "market_hash_name": "StatTrak\u2122 M4A4 | Desolate Space (Field-Tested)", "currency": 1, "lowest_price": 40.12, "median_price": 40.12, "volume": null}
+{"ts": 1783802562.7888997, "market_hash_name": "Negev | Loudmouth (Minimal Wear)", "currency": 1, "lowest_price": 30.05, "median_price": 30.05, "volume": null}
+{"ts": 1783802575.51512, "market_hash_name": "CZ75-Auto | Circaetus (Factory New)", "currency": 1, "lowest_price": 2.54, "median_price": 2.54, "volume": null}
+{"ts": 1783802605.5538244, "market_hash_name": "P2000 | Grassland (Minimal Wear)", "currency": 1, "lowest_price": 3.91, "median_price": 3.91, "volume": null}
+{"ts": 1783802623.7881255, "market_hash_name": "PP-Bizon | RMX (Well-Worn)", "currency": 1, "lowest_price": 0.12, "median_price": 0.12, "volume": null}
+{"ts": 1783802625.8648214, "market_hash_name": "G3SG1 | Hunter (Well-Worn)", "currency": 1, "lowest_price": 0.2, "median_price": 0.2, "volume": null}
+{"ts": 1783802626.8499398, "market_hash_name": "Desert Eagle | Oxide Blaze (Minimal Wear)", "currency": 1, "lowest_price": 0.9, "median_price": 0.9, "volume": null}
+{"ts": 1783802627.7952452, "market_hash_name": "XM1014 | Banana Leaf (Battle-Scarred)", "currency": 1, "lowest_price": 13.71, "median_price": 13.71, "volume": null}
+{"ts": 1783802632.05526, "market_hash_name": "StatTrak\u2122 PP-Bizon | Harvester (Field-Tested)", "currency": 1, "lowest_price": 0.47, "median_price": 0.47, "volume": null}
+{"ts": 1783802632.0751812, "market_hash_name": "StatTrak\u2122 PP-Bizon | Harvester (Minimal Wear)", "currency": 1, "lowest_price": 0.7, "median_price": 0.7, "volume": null}
+{"ts": 1783802632.092476, "market_hash_name": "StatTrak\u2122 P90 | Chopper (Field-Tested)", "currency": 1, "lowest_price": 1.9, "median_price": 1.9, "volume": null}
+{"ts": 1783802634.6172721, "market_hash_name": "StatTrak\u2122 UMP-45 | K.O. Factory (Factory New)", "currency": 1, "lowest_price": 35.49, "median_price": 35.49, "volume": null}
+{"ts": 1783802634.7772813, "market_hash_name": "P250 | Visions (Factory New)", "currency": 1, "lowest_price": 16.16, "median_price": 16.16, "volume": null}
+{"ts": 1783802634.7900786, "market_hash_name": "P250 | Visions (Minimal Wear)", "currency": 1, "lowest_price": 7.07, "median_price": 7.07, "volume": null}
+{"ts": 1783802681.0389662, "market_hash_name": "Desert Eagle | Golden Koi (Minimal Wear)", "currency": 1, "lowest_price": 301.6, "median_price": 301.6, "volume": null}
+{"ts": 1783802766.134129, "market_hash_name": "P90 | Cocoa Rampage (Minimal Wear)", "currency": 1, "lowest_price": 1.46, "median_price": 1.46, "volume": null}
+{"ts": 1783802766.9976573, "market_hash_name": "USP-S | Target Acquired (Minimal Wear)", "currency": 1, "lowest_price": 305.87, "median_price": 305.87, "volume": null}
+{"ts": 1783802769.504122, "market_hash_name": "StatTrak\u2122 M4A1-S | Leaded Glass (Factory New)", "currency": 1, "lowest_price": 59.15, "median_price": 59.15, "volume": null}
+{"ts": 1783802769.5086825, "market_hash_name": "StatTrak\u2122 M4A1-S | Leaded Glass (Battle-Scarred)", "currency": 1, "lowest_price": 15.18, "median_price": 15.18, "volume": null}
+{"ts": 1783802769.5151558, "market_hash_name": "StatTrak\u2122 AK-47 | The Empress (Well-Worn)", "currency": 1, "lowest_price": 138.21, "median_price": 138.21, "volume": null}
+{"ts": 1783802769.6269152, "market_hash_name": "StatTrak\u2122 UMP-45 | Grand Prix (Field-Tested)", "currency": 1, "lowest_price": 1.83, "median_price": 1.83, "volume": null}
+{"ts": 1783802769.6344411, "market_hash_name": "StatTrak\u2122 Tec-9 | Avalanche (Factory New)", "currency": 1, "lowest_price": 30.99, "median_price": 30.99, "volume": null}
+{"ts": 1783802769.638899, "market_hash_name": "StatTrak\u2122 Five-SeveN | Monkey Business (Field-Tested)", "currency": 1, "lowest_price": 16.84, "median_price": 16.84, "volume": null}
+{"ts": 1783802769.6434276, "market_hash_name": "StatTrak\u2122 MP5-SD | Phosphor (Minimal Wear)", "currency": 1, "lowest_price": 20.4, "median_price": 20.4, "volume": null}
+{"ts": 1783802769.6486251, "market_hash_name": "StatTrak\u2122 UMP-45 | Momentum (Factory New)", "currency": 1, "lowest_price": 17.65, "median_price": 17.65, "volume": null}
+{"ts": 1783802769.6535447, "market_hash_name": "StatTrak\u2122 P90 | Shapewood (Minimal Wear)", "currency": 1, "lowest_price": 14.89, "median_price": 14.89, "volume": null}
+{"ts": 1783802769.9384062, "market_hash_name": "SSG 08 | Bloodshot (Well-Worn)", "currency": 1, "lowest_price": 23.43, "median_price": 23.43, "volume": null}
+{"ts": 1783802788.543698, "market_hash_name": "StatTrak\u2122 XM1014 | Seasons (Well-Worn)", "currency": 1, "lowest_price": 3.0, "median_price": 3.0, "volume": null}
+{"ts": 1783802789.0622013, "market_hash_name": "StatTrak\u2122 AWP | Fever Dream (Minimal Wear)", "currency": 1, "lowest_price": 34.34, "median_price": 34.34, "volume": null}
+{"ts": 1783802789.0736332, "market_hash_name": "StatTrak\u2122 AK-47 | Bloodsport (Factory New)", "currency": 1, "lowest_price": 577.86, "median_price": 577.86, "volume": null}
+{"ts": 1783802789.0838552, "market_hash_name": "StatTrak\u2122 USP-S | Neo-Noir (Factory New)", "currency": 1, "lowest_price": 154.15, "median_price": 154.15, "volume": null}
+{"ts": 1783802789.832811, "market_hash_name": "StatTrak\u2122 M4A1-S | Decimator (Well-Worn)", "currency": 1, "lowest_price": 43.12, "median_price": 43.12, "volume": null}
+{"ts": 1783802791.0157552, "market_hash_name": "M4A1-S | Rose Hex (Well-Worn)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783802791.0285115, "market_hash_name": "Five-SeveN | Buddy (Well-Worn)", "currency": 1, "lowest_price": 1.04, "median_price": 1.04, "volume": null}
+{"ts": 1783802807.8483055, "market_hash_name": "Five-SeveN | Flame Test (Field-Tested)", "currency": 1, "lowest_price": 0.22, "median_price": 0.22, "volume": null}
+{"ts": 1783802839.6110437, "market_hash_name": "Sawed-Off | Crimson Batik (Minimal Wear)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783802860.881528, "market_hash_name": "USP-S | Cyrex (Battle-Scarred)", "currency": 1, "lowest_price": 4.74, "median_price": 4.74, "volume": null}
+{"ts": 1783802862.533754, "market_hash_name": "Five-SeveN | Dark Polymer (Minimal Wear)", "currency": 1, "lowest_price": 0.33, "median_price": 0.33, "volume": null}
+{"ts": 1783802866.5020888, "market_hash_name": "Tec-9 | Cracked Opal (Battle-Scarred)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783802867.1783178, "market_hash_name": "MP7 | Mischief (Battle-Scarred)", "currency": 1, "lowest_price": 0.3, "median_price": 0.3, "volume": null}
+{"ts": 1783802868.2552745, "market_hash_name": "Zeus x27 | Tosai (Battle-Scarred)", "currency": 1, "lowest_price": 0.57, "median_price": 0.57, "volume": null}
+{"ts": 1783802869.5516956, "market_hash_name": "USP-S | Purple DDPAT (Well-Worn)", "currency": 1, "lowest_price": 6.09, "median_price": 6.09, "volume": null}
+{"ts": 1783802869.5629327, "market_hash_name": "USP-S | Purple DDPAT (Minimal Wear)", "currency": 1, "lowest_price": 8.02, "median_price": 8.02, "volume": null}
+{"ts": 1783802869.6178746, "market_hash_name": "USP-S | Purple DDPAT (Factory New)", "currency": 1, "lowest_price": 46.07, "median_price": 46.07, "volume": null}
+{"ts": 1783802869.63541, "market_hash_name": "XM1014 | Elegant Vines (Field-Tested)", "currency": 1, "lowest_price": 23.23, "median_price": 23.23, "volume": null}
+{"ts": 1783802870.083172, "market_hash_name": "StatTrak\u2122 PP-Bizon | Antique (Battle-Scarred)", "currency": 1, "lowest_price": 11.0, "median_price": 11.0, "volume": null}
+{"ts": 1783802870.101156, "market_hash_name": "StatTrak\u2122 MAC-10 | Tatter (Battle-Scarred)", "currency": 1, "lowest_price": 9.17, "median_price": 9.17, "volume": null}
+{"ts": 1783802924.3687627, "market_hash_name": "MAC-10 | Classic Crate (Battle-Scarred)", "currency": 1, "lowest_price": 0.17, "median_price": 0.17, "volume": null}
+{"ts": 1783802929.963934, "market_hash_name": "P90 | Shallow Grave (Factory New)", "currency": 1, "lowest_price": 88.73, "median_price": 88.73, "volume": null}
+{"ts": 1783803014.1999993, "market_hash_name": "UMP-45 | Crime Scene (Factory New)", "currency": 1, "lowest_price": 155.62, "median_price": 155.62, "volume": null}
+{"ts": 1783803014.6344736, "market_hash_name": "StatTrak\u2122 AWP | Chrome Cannon (Field-Tested)", "currency": 1, "lowest_price": 54.38, "median_price": 54.38, "volume": null}
+{"ts": 1783803014.7349346, "market_hash_name": "M4A4 | Hellfire (Well-Worn)", "currency": 1, "lowest_price": 104.54, "median_price": 104.54, "volume": null}
+{"ts": 1783803014.9946365, "market_hash_name": "P90 | Blue Tac (Factory New)", "currency": 1, "lowest_price": 0.05, "median_price": 0.05, "volume": null}
+{"ts": 1783803015.0019038, "market_hash_name": "SCAR-20 | Storm (Factory New)", "currency": 1, "lowest_price": 20.75, "median_price": 20.75, "volume": null}
+{"ts": 1783803015.0054398, "market_hash_name": "UMP-45 | Indigo (Minimal Wear)", "currency": 1, "lowest_price": 3.83, "median_price": 3.83, "volume": null}
+{"ts": 1783803015.0132964, "market_hash_name": "Five-SeveN | Sky Blue (Minimal Wear)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783803015.0178323, "market_hash_name": "Galil AR | Robin's Egg (Minimal Wear)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783803015.0237188, "market_hash_name": "M4A4 | Naval Shred Camo (Minimal Wear)", "currency": 1, "lowest_price": 0.13, "median_price": 0.13, "volume": null}
+{"ts": 1783803015.0345726, "market_hash_name": "XM1014 | Gum Wall Camo (Minimal Wear)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783803015.04325, "market_hash_name": "Nova | Green Apple (Factory New)", "currency": 1, "lowest_price": 15.16, "median_price": 15.16, "volume": null}
+{"ts": 1783803015.2023818, "market_hash_name": "Glock-18 | Snack Attack (Minimal Wear)", "currency": 1, "lowest_price": 44.65, "median_price": 44.65, "volume": null}
+{"ts": 1783803032.0262477, "market_hash_name": "P90 | Nostalgia (Well-Worn)", "currency": 1, "lowest_price": 5.48, "median_price": 5.48, "volume": null}
+{"ts": 1783803034.6315722, "market_hash_name": "StatTrak\u2122 AUG | Stymphalian (Battle-Scarred)", "currency": 1, "lowest_price": 4.4, "median_price": 4.4, "volume": null}
+{"ts": 1783803034.6389318, "market_hash_name": "StatTrak\u2122 M4A4 | Neo-Noir (Battle-Scarred)", "currency": 1, "lowest_price": 39.09, "median_price": 39.09, "volume": null}
+{"ts": 1783803034.647048, "market_hash_name": "StatTrak\u2122 MP7 | Bloodsport (Battle-Scarred)", "currency": 1, "lowest_price": 32.42, "median_price": 32.42, "volume": null}
+{"ts": 1783803050.7331173, "market_hash_name": "StatTrak\u2122 Sawed-Off | Kiss\u2665Love (Battle-Scarred)", "currency": 1, "lowest_price": 4.72, "median_price": 4.72, "volume": null}
+{"ts": 1783803050.747104, "market_hash_name": "StatTrak\u2122 Sawed-Off | Kiss\u2665Love (Minimal Wear)", "currency": 1, "lowest_price": 10.92, "median_price": 10.92, "volume": null}
+{"ts": 1783803050.7576172, "market_hash_name": "StatTrak\u2122 Sawed-Off | Kiss\u2665Love (Factory New)", "currency": 1, "lowest_price": 33.71, "median_price": 33.71, "volume": null}
+{"ts": 1783803050.9426725, "market_hash_name": "StatTrak\u2122 MAC-10 | Toybox (Battle-Scarred)", "currency": 1, "lowest_price": 18.22, "median_price": 18.22, "volume": null}
+{"ts": 1783803050.9536228, "market_hash_name": "StatTrak\u2122 Glock-18 | Snack Attack (Well-Worn)", "currency": 1, "lowest_price": 21.83, "median_price": 21.83, "volume": null}
+{"ts": 1783803050.967386, "market_hash_name": "StatTrak\u2122 Glock-18 | Snack Attack (Battle-Scarred)", "currency": 1, "lowest_price": 22.31, "median_price": 22.31, "volume": null}
+{"ts": 1783803051.4238014, "market_hash_name": "FAMAS | Waters of Nephthys (Factory New)", "currency": 1, "lowest_price": 258.46, "median_price": 258.46, "volume": null}
+{"ts": 1783803077.2753477, "market_hash_name": "Sawed-Off | Crimson Batik (Field-Tested)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783803103.0387728, "market_hash_name": "M4A4 | Eye of Horus (Battle-Scarred)", "currency": 1, "lowest_price": 280.02, "median_price": 280.02, "volume": null}
+{"ts": 1783803103.4787474, "market_hash_name": "SSG 08 | Dragonfire (Battle-Scarred)", "currency": 1, "lowest_price": 242.97, "median_price": 242.97, "volume": null}
+{"ts": 1783803106.8403058, "market_hash_name": "USP-S | Silent Shot (Battle-Scarred)", "currency": 1, "lowest_price": 0.33, "median_price": 0.33, "volume": null}
+{"ts": 1783803107.3098452, "market_hash_name": "Galil AR | Galigator (Factory New)", "currency": 1, "lowest_price": 6.69, "median_price": 6.69, "volume": null}
+{"ts": 1783803107.3212514, "market_hash_name": "Desert Eagle | Firebreathing (Factory New)", "currency": 1, "lowest_price": 8.55, "median_price": 8.55, "volume": null}
+{"ts": 1783803107.8818798, "market_hash_name": "Sawed-Off | Fusion (Battle-Scarred)", "currency": 1, "lowest_price": 0.11, "median_price": 0.11, "volume": null}
+{"ts": 1783803111.0800097, "market_hash_name": "SCAR-20 | Jungle Slipstream (Minimal Wear)", "currency": 1, "lowest_price": 0.36, "median_price": 0.36, "volume": null}
+{"ts": 1783803111.7007601, "market_hash_name": "Galil AR | Akoben (Battle-Scarred)", "currency": 1, "lowest_price": 0.39, "median_price": 0.39, "volume": null}
+{"ts": 1783803111.7141175, "market_hash_name": "Desert Eagle | Calligraffiti (Factory New)", "currency": 1, "lowest_price": 14.05, "median_price": 14.05, "volume": null}
+{"ts": 1783803111.750614, "market_hash_name": "MAC-10 | Saib\u0101 Oni (Battle-Scarred)", "currency": 1, "lowest_price": 1.45, "median_price": 1.45, "volume": null}
+{"ts": 1783803111.766565, "market_hash_name": "P90 | Randy Rush (Battle-Scarred)", "currency": 1, "lowest_price": 0.9, "median_price": 0.9, "volume": null}
+{"ts": 1783803111.7809222, "market_hash_name": "SSG 08 | Rapid Transit (Battle-Scarred)", "currency": 1, "lowest_price": 1.18, "median_price": 1.18, "volume": null}
+{"ts": 1783803112.7978532, "market_hash_name": "M4A1-S | Control Panel (Well-Worn)", "currency": 1, "lowest_price": 7.01, "median_price": 7.01, "volume": null}
+{"ts": 1783803112.8189416, "market_hash_name": "Tec-9 | Remote Control (Well-Worn)", "currency": 1, "lowest_price": 3.03, "median_price": 3.03, "volume": null}
+{"ts": 1783803113.4991832, "market_hash_name": "MAG-7 | Core Breach (Factory New)", "currency": 1, "lowest_price": 21.01, "median_price": 21.01, "volume": null}
+{"ts": 1783803114.7704642, "market_hash_name": "AUG | Fleet Flock (Minimal Wear)", "currency": 1, "lowest_price": 17.65, "median_price": 17.65, "volume": null}
+{"ts": 1783803114.995001, "market_hash_name": "StatTrak\u2122 AUG | Fleet Flock (Field-Tested)", "currency": 1, "lowest_price": 12.95, "median_price": 12.95, "volume": null}
+{"ts": 1783803115.0033207, "market_hash_name": "StatTrak\u2122 AUG | Fleet Flock (Minimal Wear)", "currency": 1, "lowest_price": 17.6, "median_price": 17.6, "volume": null}
+{"ts": 1783803168.8433483, "market_hash_name": "SSG 08 | Sans Comic (Field-Tested)", "currency": 1, "lowest_price": 0.03, "median_price": 0.03, "volume": null}
+{"ts": 1783803172.5460043, "market_hash_name": "Negev | Prototype (Minimal Wear)", "currency": 1, "lowest_price": 0.35, "median_price": 0.35, "volume": null}
+{"ts": 1783803172.5556889, "market_hash_name": "SSG 08 | Fever Dream (Minimal Wear)", "currency": 1, "lowest_price": 2.82, "median_price": 2.82, "volume": null}
+{"ts": 1783803172.7256632, "market_hash_name": "StatTrak\u2122 R8 Revolver | Tango (Factory New)", "currency": 1, "lowest_price": 6.53, "median_price": 6.53, "volume": null}
+{"ts": 1783803173.789567, "market_hash_name": "StatTrak\u2122 MP5-SD | Statics (Well-Worn)", "currency": 1, "lowest_price": 0.34, "median_price": 0.34, "volume": null}
+{"ts": 1783803256.5024054, "market_hash_name": "M249 | System Lock (Factory New)", "currency": 1, "lowest_price": 2.44, "median_price": 2.44, "volume": null}
+{"ts": 1783803259.3792248, "market_hash_name": "AUG | Bengal Tiger (Minimal Wear)", "currency": 1, "lowest_price": 38.98, "median_price": 38.98, "volume": null}
+{"ts": 1783803277.6298785, "market_hash_name": "StatTrak\u2122 Galil AR | Crimson Tsunami (Field-Tested)", "currency": 1, "lowest_price": 4.71, "median_price": 4.71, "volume": null}
+{"ts": 1783803280.5588162, "market_hash_name": "P250 | Bullfrog (Well-Worn)", "currency": 1, "lowest_price": 0.1, "median_price": 0.1, "volume": null}
+{"ts": 1783803300.2535138, "market_hash_name": "MP9 | Latte Rush (Factory New)", "currency": 1, "lowest_price": 161.0, "median_price": 161.0, "volume": null}
+{"ts": 1783803301.616169, "market_hash_name": "AUG | Luxe Trim (Factory New)", "currency": 1, "lowest_price": 7.34, "median_price": 7.34, "volume": null}
+{"ts": 1783803301.6240084, "market_hash_name": "AUG | Luxe Trim (Field-Tested)", "currency": 1, "lowest_price": 0.39, "median_price": 0.39, "volume": null}
+{"ts": 1783803301.6347444, "market_hash_name": "R8 Revolver | Tango (Field-Tested)", "currency": 1, "lowest_price": 0.32, "median_price": 0.32, "volume": null}
+{"ts": 1783803301.6466248, "market_hash_name": "USP-S | 27 (Minimal Wear)", "currency": 1, "lowest_price": 0.58, "median_price": 0.58, "volume": null}
+{"ts": 1783803301.661939, "market_hash_name": "USP-S | 27 (Well-Worn)", "currency": 1, "lowest_price": 0.23, "median_price": 0.23, "volume": null}
+{"ts": 1783803301.6819494, "market_hash_name": "MAC-10 | Saib\u0101 Oni (Minimal Wear)", "currency": 1, "lowest_price": 3.96, "median_price": 3.96, "volume": null}
+{"ts": 1783803320.4314783, "market_hash_name": "FAMAS | Byproduct (Factory New)", "currency": 1, "lowest_price": 0.06, "median_price": 0.06, "volume": null}
+{"ts": 1783803348.574778, "market_hash_name": "M4A4 | \u9f8d\u738b (Dragon King) (Minimal Wear)", "currency": 1, "lowest_price": 38.57, "median_price": 38.57, "volume": null}
+{"ts": 1783803349.5594735, "market_hash_name": "P250 | Verdigris (Minimal Wear)", "currency": 1, "lowest_price": 0.48, "median_price": 0.48, "volume": null}
+{"ts": 1783803351.4132812, "market_hash_name": "Desert Eagle | Bronze Deco (Battle-Scarred)", "currency": 1, "lowest_price": 0.76, "median_price": 0.76, "volume": null}
+{"ts": 1783803355.496821, "market_hash_name": "MAC-10 | Oceanic (Factory New)", "currency": 1, "lowest_price": 1.73, "median_price": 1.73, "volume": null}
+{"ts": 1783803357.54808, "market_hash_name": "StatTrak\u2122 SG 553 | Phantom (Factory New)", "currency": 1, "lowest_price": 4.94, "median_price": 4.94, "volume": null}
+{"ts": 1783803357.5677605, "market_hash_name": "StatTrak\u2122 SG 553 | Phantom (Battle-Scarred)", "currency": 1, "lowest_price": 1.48, "median_price": 1.48, "volume": null}
+{"ts": 1783803359.3458152, "market_hash_name": "StatTrak\u2122 AUG | Momentum (Factory New)", "currency": 1, "lowest_price": 48.12, "median_price": 48.12, "volume": null}
+{"ts": 1783803360.6079257, "market_hash_name": "StatTrak\u2122 Negev | dev_texture (Battle-Scarred)", "currency": 1, "lowest_price": 0.7, "median_price": 0.7, "volume": null}
+{"ts": 1783803360.6216269, "market_hash_name": "StatTrak\u2122 Negev | dev_texture (Minimal Wear)", "currency": 1, "lowest_price": 1.82, "median_price": 1.82, "volume": null}
+{"ts": 1783803360.6445706, "market_hash_name": "StatTrak\u2122 Galil AR | Chromatic Aberration (Battle-Scarred)", "currency": 1, "lowest_price": 6.85, "median_price": 6.85, "volume": null}
+{"ts": 1783803361.2752278, "market_hash_name": "Galil AR | CAUTION! (Minimal Wear)", "currency": 1, "lowest_price": 69.47, "median_price": 69.47, "volume": null}
