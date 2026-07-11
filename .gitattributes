@@ -1,0 +1,8 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Split-log archive chunks (see src/split_archive.py) are compressed binaries -- byte
+# fidelity matters (concatenating them must reproduce the original log exactly), so no
+# text/EOL handling ever.
+*.jsonl.gz binary
+*.joblib binary

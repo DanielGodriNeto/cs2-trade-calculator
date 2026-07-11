@@ -1,0 +1,30 @@
+# cache/ is disposable, TTL'd data re-downloaded/re-fetched from Steam and the ByMykel/CSGO-API
+# feed (see src/data.py, src/steam_prices.py, src/thirdparty_prices.py) -- never worth tracking.
+cache/
+
+# Python
+__pycache__/
+*.pyc
+
+# EXCEPTION to "data/ is tracked": these append-only logs outgrow GitHub's hard 100 MB
+# per-file limit within a day or two of running the sim loop (the reliability log alone
+# grows ~200 MB/day). They're carried in git as small dated .jsonl.gz chunks under
+# data/archive/ instead -- run `python -m src.main split-data` before committing (and
+# `split-data --restore` on a fresh clone to rebuild them; see src/split_archive.py).
+data/market_reliability_log.jsonl
+data/sons/son_*/simulations.jsonl
+# scratch files left behind by interrupted atomic writes
+data/**/*.tmp
+data/*.tmp
+
+# data/ is DELIBERATELY NOT ignored here -- it's your accumulated outcomes, price history,
+# and trained ML model (see src/outcomes.py, src/price_history.py, src/learning.py). It's
+# plain JSON/JSONL text (diff- and merge-friendly,
+# except the .joblib model file), which is exactly what makes committing it to git a
+# reasonable way to carry your training data across machines -- see the README's
+# "Training across multiple machines" section.
+
+# Archives from `export-data` land in the project root by default -- keep them out of git
+# unless you specifically want to check one in as a point-in-time backup (in which case,
+# `git add -f` that one file).
+/data-archive-*.zip

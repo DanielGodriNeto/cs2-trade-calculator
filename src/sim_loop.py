@@ -1,0 +1,1075 @@
+"""Population of independent "sons" running the guided random-trade simulation in parallel.
+
+Each son is a full instance of the same search loop -- draw random candidates
+(random_trade.py), simulate them (simulate.py, cache first, live Steam fetch on a miss), log
+every trial to its OWN
+data/sons/son_N/simulations.jsonl, and train its OWN surrogate model
+(data/sons/son_N/model/sim_roi_model.joblib) -- but each son has a different search
+personality (agents.py), starting from a different `temperature` controlling how strongly it
+trusts that model when choosing which random candidates to actually simulate each round (see
+random_trade.generate_batch/_softmax_weighted_sample): low temperature sons mostly exploit
+their own model's top picks, high temperature sons mostly keep exploring broadly. Those
+personalities SELF-TUNE over time (adaptive.py): every few rounds each son A/B-tests a small
+tweak of its own search parameters against a ROI-first + collection-novelty reward and keeps
+the tweak only if it measurably helped, within bounds that keep the four agents distinct and
+exploration alive. Candidate selection also carries a UCB novelty bonus for collections a son
+has rarely simulated (checkpoint["coverage"]), so unexplored territory always competes for the
+simulate() budget. Running several of these side by side means a son that plateaus in a local
+optimum doesn't stall the whole search -- the others keep going, and the plateaued one can be
+individually nudged or fully reset (see nudge()/full_reset() below) without touching the others.
+
+Each son also tracks a `history` of (round, best-ROI-so-far) snapshots and a
+`rounds_since_improvement` counter, so the dashboard can show whether a son is actually making
+progress or has flatlined (`stuck`), rather than just a static status string.
+
+IMPORTANT: this must never feed anything back into learning.py/data/outcomes.jsonl -- see
+that module's own docstring for why. Each son's
+own sim_learning.py model only ever reads that SAME son's own simulations.jsonl -- never
+another son's, and never the real outcomes.jsonl.
+"""
+import json
+import random
+import threading
+import time
+from pathlib import Path
+
+from . import adaptive as adaptive_mod
+from . import agents as agents_mod
+from . import data as data_mod
+from . import evolution as evolution_mod
+from . import invalid_skins as invalid_skins_mod
+from . import market_reliability as market_reliability_mod
+from . import mutation as mutation_mod
+from . import random_trade as random_trade_mod
+from . import ranking as ranking_mod
+from . import recovery as recovery_mod
+from . import sim_blacklist as sim_blacklist_mod
+from . import simulate as simulate_mod
+from . import steam_prices as steam_prices_mod
+from . import sim_learning as sim_learning_mod
+from . import verify_queue as verify_queue_mod
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+SONS_DIR = DATA_DIR / "sons"
+
+N_SONS = len(agents_mod.AGENT_PROFILES)
+# Kept for backward compat with the one existing reader (web/server.py's /api/constants) --
+# now DERIVED per-agent from memory_weight (see agents.py.base_temperature) instead of a
+# hardcoded list. Order matches son_id 0..N_SONS-1.
+SON_TEMPERATURES = [agents_mod.base_temperature(agents_mod.profile_for(i)) for i in range(N_SONS)]
+
+BATCH_SIZE = 200          # random candidates drawn per round before scoring/filtering
+SIMULATE_PER_ROUND = 40   # of that batch, how many actually get simulate.simulate() called
+BEST_KEPT = 50            # best-known simulations kept per son's checkpoint
+HISTORY_KEEP = 300        # progress-history snapshots kept per son (older ones trimmed)
+ROUND_COOLDOWN_SECONDS = 10  # idle pause between rounds when the round finished cleanly (a
+# round with live-fetch cache misses can itself take much longer than this, rate-limited by
+# steam_prices.py -- this constant only governs the gap AFTER a round completes)
+
+IMPROVEMENT_EPSILON_PP = 1.0    # a new best-ROI must beat the old one by more than this (percentage
+# points) to count as a real improvement -- guards against resetting the stuck-counter on noise
+STUCK_THRESHOLD_ROUNDS = 15     # rounds without a real improvement before a son is flagged "stuck"
+NUDGE_DURATION_ROUNDS = 5       # how many rounds a Nudge's temperature boost lasts
+NUDGE_KICK_FACTOR = 3.0         # temporary temperature multiplier applied by Nudge
+
+
+def son_dir(son_id: int) -> Path:
+    return SONS_DIR / f"son_{son_id}"
+
+
+def son_checkpoint_file(son_id: int) -> Path:
+    return son_dir(son_id) / "checkpoint.json"
+
+
+def son_sims_file(son_id: int) -> Path:
+    return son_dir(son_id) / "simulations.jsonl"
+
+
+def son_model_dir(son_id: int) -> Path:
+    return son_dir(son_id) / "model"
+
+
+def son_invalid_file(son_id: int) -> Path:
+    return son_dir(son_id) / "invalid_simulations.jsonl"
+
+
+def son_round_history_file(son_id: int) -> Path:
+    """Uncapped, append-only mirror of checkpoint.json's `history` list (which is deliberately
+    trimmed to the last HISTORY_KEEP=300 rounds to keep the checkpoint small/fast to rewrite
+    every round). A long-running son can pass 300 rounds -- once it does, the checkpoint quietly
+    drops its earliest progress forever. This file never trims, so a full round-by-round ROI/
+    profit/confidence history survives for as long as the son has run, for later analysis (price
+    trend charts, medium-term ROI progress, etc.) even after the checkpoint itself has moved on --
+    same "never truncate, append only" convention as simulations.jsonl/invalid_simulations.jsonl."""
+    return son_dir(son_id) / "round_history.jsonl"
+
+
+def _empty_checkpoint() -> dict:
+    # cumulative_cost/cumulative_expected_profit: running totals across EVERY valid simulated
+    # candidate this son has ever produced (not just its curated best-known list) -- summing
+    # each record's own cost/expected_profit as if every single one had actually been bought,
+    # since this codebase always computes exact probability-weighted expected value rather than
+    # sampling a random outcome (see simulate.py's module docstring). Purely a hypothetical
+    # "what if you blindly bought everything this bot proposed" counter for the dashboard --
+    # never influences ranking/training/best-known selection, see run_round().
+    # adaptive: this son's self-tuning search-parameter state (initialized lazily by
+    # adaptive.ensure_state since it depends on the son's own agent profile -- this function is
+    # profile-agnostic). coverage: unit-share-weighted count of valid sims per collection,
+    # feeding adaptive.novelty_bonus's UCB selection bonus. Both are per-son search state, so
+    # they belong in the checkpoint (wiped by full_reset) rather than any shared file.
+    return {"round": 0, "n_simulated": 0, "n_invalid": 0, "n_low_volume": 0,
+            "n_simulated_at_last_train": 0, "best": [],
+            "history": [], "best_roi_ever": None, "rounds_since_improvement": 0,
+            "nudge_rounds_remaining": 0, "updated_at": None,
+            "cumulative_cost": 0.0, "cumulative_expected_profit": 0.0,
+            "adaptive": None, "coverage": {}, "recovery": None}
+
+
+def load_checkpoint(path: Path) -> dict:
+    if not path.exists():
+        return _empty_checkpoint()
+    try:
+        cp = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return _empty_checkpoint()
+    for k, v in _empty_checkpoint().items():
+        cp.setdefault(k, v)
+    return cp
+
+
+def save_checkpoint(path: Path, cp: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cp["updated_at"] = time.time()
+    path.write_text(json.dumps(cp), encoding="utf-8")
+
+
+def _consider_best(cp: dict, record, profile: "agents_mod.AgentProfile") -> None:
+    """Skips a record flagged low_volume_warning entirely when THIS agent cares enough about
+    liquidity to reject it outright (liquidity_importance > 0.5 -- e.g. the ROI Accountant
+    always does; the Discovery Agent, which deliberately explores illiquid corners, doesn't).
+    Also skips a stale-priced record for a cautious agent (risk_tolerance < 0.35) -- it isn't
+    willing to bank a find as "best" when the cost basis wasn't even freshly priced. A
+    thinly-traded/stale price shouldn't be presented as a "best find" any more than it should
+    be trained on (see simulate.SimulationRecord's own docstring for why); the record is still
+    preserved in simulations.jsonl either way (see run_round) -- only the curated best-known
+    list is agent-personality-gated. Stores the full input_mix/output_distribution (not just a
+    summary) so the dashboard's per-skin image/wear breakdown never needs to re-read the raw
+    jsonl by id."""
+    if record.low_volume_warning and profile.liquidity_importance > 0.5:
+        return
+    if record.cost_basis_source == "stale" and profile.risk_tolerance < 0.35:
+        return
+    # market_reliability.py's unified Excluded state -- applies regardless of THIS agent's own
+    # personality (unlike the two checks above), since "excluded from Elite Population" per
+    # spec is a market-fact gate, not a per-agent risk-tolerance judgment call.
+    if market_reliability_mod.any_unit_excluded(record.input_mix, record.output_distribution,
+                                                 currency=1, stattrak=record.stattrak):
+        return
+    entry = {"id": record.id, "primary_collection": record.primary_collection,
+             "from_rarity": record.from_rarity, "to_rarity": record.to_rarity,
+             "stattrak": record.stattrak, "cost": record.cost,
+             "expected_roi_pct": record.expected_roi_pct, "cost_basis_source": record.cost_basis_source,
+             "input_mix": record.input_mix, "output_distribution": record.output_distribution,
+             "agent": record.agent, "confidence_score": record.confidence_score,
+             "verified_roi_pct": record.verified_roi_pct, "verified_at": record.verified_at}
+    # A trade-up the user already executed and blacklisted should never be re-admitted, no
+    # matter how good its ROI keeps looking each round (see sim_blacklist.py). This also drops
+    # any already-stored blacklisted entries from this son's in-memory best list, so a son that
+    # banked one before it was blacklisted self-cleans on its next round (the running son owns
+    # this checkpoint object and persists it after the round -- no cross-thread disk write).
+    if sim_blacklist_mod.is_blacklisted(entry):
+        return
+    cp["best"] = [e for e in cp["best"] if not sim_blacklist_mod.is_blacklisted(e)]
+    # Auto-dedupe by composition: a son re-simulates the exact same skin/wear/count combination
+    # over and over (each run gets a fresh id -- see simulate._new_id), so without this its best
+    # list fills up with many copies of one trade-up -- the "it just places the same trade in
+    # multiple times" problem. Keep only ONE entry per signature, replacing the stored copy only
+    # when this run scores a higher ROI (so the best-priced instance of the combination wins).
+    sig = sim_blacklist_mod.signature_of(entry)
+    existing = next((e for e in cp["best"] if sim_blacklist_mod.signature_of(e) == sig), None)
+    if existing is not None:
+        if entry["expected_roi_pct"] <= existing["expected_roi_pct"]:
+            return
+        cp["best"].remove(existing)
+    cp["best"].append(entry)
+    cp["best"].sort(key=lambda e: e["expected_roi_pct"], reverse=True)
+    del cp["best"][BEST_KEPT:]
+
+
+def list_best_simulations(son_id: int | None = None, collection_filter: str | None = None) -> list:
+    """Reads checkpoint(s) straight off disk -- no running loop required. son_id=None merges
+    across every son (tagging each entry with its son id) for a combined leaderboard; used by
+    the CLI's `best-simulations` command and the web dashboard's combined table.
+
+    Ranked by ranking.rank()'s weighted composite score (60% ROI / 15% profit / 10% liquidity
+    / 10% confidence / 5% discovery), not raw ROI alone -- "a smaller but reliable profit
+    should beat fake high ROI" per spec. The raw expected_roi_pct field is still present on
+    every returned entry (ranking.rank() adds fields, never removes any), so callers that only
+    care about the plain number don't need to change."""
+    son_ids = [son_id] if son_id is not None else list(range(N_SONS))
+    out = []
+    for sid in son_ids:
+        cp = load_checkpoint(son_checkpoint_file(sid))
+        # Hide blacklisted ("already done") trade-ups immediately, even ones a son banked before
+        # the user blacklisted them and hasn't cycled out of its checkpoint yet (see sim_blacklist).
+        out.extend({**e, "son": sid} for e in cp["best"] if not sim_blacklist_mod.is_blacklisted(e))
+    if collection_filter:
+        out = [e for e in out if collection_filter.lower() in e["primary_collection"].lower()]
+    # Cross-son dedupe: the same composition can be independently banked by several sons, so
+    # after ranking keep only the single best-ranked instance of each signature -- one row per
+    # unique trade-up in the opportunities table, never the same one repeated across agents
+    # (mirrors _consider_best's within-son dedupe above).
+    ranked = ranking_mod.rank(out)
+    seen: set = set()
+    deduped = []
+    for e in ranked:
+        sig = sim_blacklist_mod.signature_of(e)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        deduped.append(e)
+    return deduped
+
+
+_archive_cache: dict = {}  # sims_file -> {"pos": bytes already folded in, "by_sig": {sig: entry}}
+# Backs list_all_opportunities() below -- see that function's docstring for why this exists
+# separately from the BEST_KEPT=50-capped checkpoint "best" list.
+_archive_cache_lock = threading.Lock()  # web/server.py's ThreadingHTTPServer spawns a new
+# thread per request, and the archive/xlsx-export endpoints both reach _update_archive_cache
+# directly (no per-son thread involved) -- without a lock, two concurrent requests could race
+# on the read-check-mutate sequence below (e.g. both reading a stale cache["pos"] before either
+# writes it back).
+
+
+def _record_to_entry(record) -> dict:
+    """Same field subset _consider_best stores on a checkpoint 'best' entry, so archive rows
+    render through the exact same dashboard/export code as the curated best-known list."""
+    return {"id": record.id, "primary_collection": record.primary_collection,
+            "from_rarity": record.from_rarity, "to_rarity": record.to_rarity,
+            "stattrak": record.stattrak, "cost": record.cost,
+            "expected_roi_pct": record.expected_roi_pct, "cost_basis_source": record.cost_basis_source,
+            "input_mix": record.input_mix, "output_distribution": record.output_distribution,
+            "agent": record.agent, "confidence_score": record.confidence_score,
+            "verified_roi_pct": record.verified_roi_pct, "verified_at": record.verified_at}
+
+
+def _update_archive_cache(sims_file: Path) -> dict:
+    """Incrementally folds only the bytes appended to sims_file since the last call into a
+    signature-deduped {sig: entry} map (keeping whichever instance of a repeated composition
+    scored the higher ROI) -- a plain byte-offset tail-read, NOT a full re-parse of the whole
+    file, so this stays cheap even once simulations.jsonl has accumulated tens of thousands of
+    lines over weeks of runtime. Mirrors the mtime-cache idiom used elsewhere in this codebase
+    (e.g. learning._collection_roi_lookup) but keyed on a byte offset instead, since we need to
+    resume mid-file rather than just detect "did it change".
+
+    A hard full_reset() truncates/recreates the son's sims_file -- detected below (current size
+    < the cached offset) and treated as a cold start, discarding this son's stale archive
+    entries along with it."""
+    with _archive_cache_lock:
+        cache = _archive_cache.setdefault(sims_file, {"pos": 0, "by_sig": {}})
+        if not sims_file.exists():
+            cache["pos"], cache["by_sig"] = 0, {}
+            return cache["by_sig"]
+        size = sims_file.stat().st_size
+        if size < cache["pos"]:
+            cache["pos"], cache["by_sig"] = 0, {}
+        if size == cache["pos"]:
+            return cache["by_sig"]
+        with open(sims_file, encoding="utf-8") as f:
+            f.seek(cache["pos"])
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = simulate_mod.SimulationRecord(**json.loads(line))
+                except (json.JSONDecodeError, TypeError):
+                    continue  # a torn trailing line from a read racing a concurrent append --
+                    # same skip-corrupt-lines convention as simulate.load_simulations(); picked
+                    # up whole on the next call once the writer's flush completes.
+                entry = _record_to_entry(record)
+                sig = sim_blacklist_mod.signature_of(entry)
+                existing = cache["by_sig"].get(sig)
+                if existing is None or entry["expected_roi_pct"] > existing["expected_roi_pct"]:
+                    cache["by_sig"][sig] = entry
+        cache["pos"] = size
+        return cache["by_sig"]
+
+
+def list_all_opportunities(son_id: int | None = None, collection_filter: str | None = None,
+                            min_roi: float | None = None) -> list:
+    """EVERY unique trade-up composition this population has ever successfully simulated,
+    across every round it has ever run -- unlike list_best_simulations() (backed by the
+    checkpoint's "best" list, capped at BEST_KEPT=50 per son with lower-ranked finds permanently
+    dropped via `del cp["best"][BEST_KEPT:]`), this reads the full, append-only
+    simulations.jsonl per son (never truncated, see simulate.log_simulation), so nothing the ML
+    ever proposed is lost from view -- only saved from disk, via _update_archive_cache's
+    incremental tail-read.
+
+    Same composition-signature dedupe (best ROI instance of a repeat wins) and blacklist-hiding
+    as list_best_simulations, but deliberately NOT gated by an agent's own personality
+    (_consider_best's liquidity_importance/risk_tolerance admission checks) -- those control
+    what a son considers ITS OWN best finds, not what belongs in a complete record of everything
+    proposed. Backs the dashboard's paginated "browse all opportunities" panel and the
+    spreadsheet export; callers should paginate/limit the result themselves rather than render
+    this whole (potentially large) list at once."""
+    son_ids = [son_id] if son_id is not None else list(range(N_SONS))
+    out = []
+    for sid in son_ids:
+        by_sig = _update_archive_cache(son_sims_file(sid))
+        out.extend({**e, "son": sid} for e in by_sig.values() if not sim_blacklist_mod.is_blacklisted(e))
+    if collection_filter:
+        out = [e for e in out if collection_filter.lower() in (e["primary_collection"] or "").lower()]
+    if min_roi is not None:
+        out = [e for e in out if e["expected_roi_pct"] >= min_roi]
+    ranked = ranking_mod.rank(out)
+    seen: set = set()
+    deduped = []
+    for e in ranked:
+        sig = sim_blacklist_mod.signature_of(e)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        deduped.append(e)
+    return deduped
+
+
+def load_round_history(son_id: int, max_points: int = 500) -> list:
+    """Reads this son's FULL round-by-round history straight from round_history.jsonl --
+    unlike checkpoint.json's `history` field (capped at HISTORY_KEEP=300, see
+    son_round_history_file's docstring), this file never trims, so it's the durable source for
+    a long-running son's complete ROI/profit progress. Downsampled with a simple fixed stride to
+    at most max_points entries (evenly spaced across the full run, always including the very
+    last point) so a son with tens of thousands of rounds still returns a small, fast payload --
+    this is for a lifetime trend chart, not a row-by-row audit (list_all_opportunities already
+    covers the "every single one" need for opportunities specifically)."""
+    path = son_round_history_file(son_id)
+    if not path.exists():
+        return []
+    rows = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue  # a torn trailing line from a read racing a concurrent append
+    if len(rows) <= max_points:
+        return rows
+    stride = len(rows) / max_points
+    sampled = [rows[int(i * stride)] for i in range(max_points - 1)]
+    sampled.append(rows[-1])
+    return sampled
+
+
+def most_profitable_collections(limit: int = 10) -> list:
+    """Aggregates every son's CURATED best-known entries (list_best_simulations(), same source
+    the dashboard's main opportunity table already uses -- no extra jsonl scanning) grouped by
+    primary_collection. Ranked by average expected ROI % across every entry seen for that
+    collection (not a single lucky outlier), with entry count and total expected profit
+    (ranking.rank()'s own profit_amount = cost * roi/100) as supporting context."""
+    entries = list_best_simulations()
+    groups: dict = {}
+    for e in entries:
+        key = e["primary_collection"] or "(unknown)"
+        g = groups.setdefault(key, {"collection": key, "count": 0, "total_roi_pct": 0.0,
+                                     "best_roi_pct": float("-inf"), "total_expected_profit": 0.0})
+        g["count"] += 1
+        g["total_roi_pct"] += e["expected_roi_pct"]
+        g["best_roi_pct"] = max(g["best_roi_pct"], e["expected_roi_pct"])
+        g["total_expected_profit"] += e.get("profit_amount", 0.0)
+    out = [{"collection": g["collection"], "count": g["count"],
+            "avg_roi_pct": g["total_roi_pct"] / g["count"], "best_roi_pct": g["best_roi_pct"],
+            "total_expected_profit": g["total_expected_profit"]} for g in groups.values()]
+    out.sort(key=lambda g: g["avg_roi_pct"], reverse=True)
+    return out[:limit]
+
+
+def most_profitable_skins(limit: int = 10) -> list:
+    """Aggregates the OUTPUT skins appearing across every son's curated best-known entries,
+    weighting each appearance by its own landing probability (prob_pct) -- a skin that only
+    lands 3% of the time in one mix contributes proportionally less than one that's the sole
+    (100%) output of another. Ranked by total probability-weighted expected profit summed
+    across every best-known entry it appears in, since that's the number that actually answers
+    "which skin has been the most reliably profitable to land," not just "which skin shows up
+    most often" or "which skin has the single biggest net_profit on paper."""
+    entries = list_best_simulations()
+    groups: dict = {}
+    for e in entries:
+        for o in e.get("output_distribution") or []:
+            if o.get("net_profit") is None or not o.get("prob_pct"):
+                continue
+            key = (o["skin"], o["wear"])
+            g = groups.setdefault(key, {"skin": o["skin"], "wear": o["wear"], "image": o.get("image", ""),
+                                         "appearances": 0, "weighted_profit": 0.0})
+            g["appearances"] += 1
+            g["weighted_profit"] += o["net_profit"] * o["prob_pct"] / 100.0
+    out = list(groups.values())
+    out.sort(key=lambda g: g["weighted_profit"], reverse=True)
+    return out[:limit]
+
+
+def _effective_temperature(base_temperature: float, cp: dict) -> float:
+    boosted = cp["nudge_rounds_remaining"] > 0
+    return base_temperature * (NUDGE_KICK_FACTOR if boosted else 1.0)
+
+
+class SimulationLoopState:
+    """One son. Thread-control wrapper (pause/stop/wake events, checkpoint lock), scoped
+    to this son's own directory/temperature/RNG."""
+
+    def __init__(self, son_id: int):
+        self.son_id = son_id
+        self.profile = agents_mod.profile_for(son_id)
+        self.base_temperature = agents_mod.base_temperature(self.profile)
+        self.sims_file = son_sims_file(son_id)
+        self.model_dir = son_model_dir(son_id)
+        self.invalid_file = son_invalid_file(son_id)
+        self.checkpoint_file = son_checkpoint_file(son_id)
+        self.round_history_file = son_round_history_file(son_id)
+        self.lock = threading.Lock()
+        self.status = "idle"  # idle | running | paused | stopped
+        self.progress = {"current": 0, "total": 0}
+        self.checkpoint = load_checkpoint(self.checkpoint_file)
+        self.rng = random.Random()
+        self.error = None  # last run_round() exception message, if the most recent attempt
+        # failed (see sim_loop()) -- cleared on the next successful round. Surfaced on the
+        # dashboard via snapshot() so a failure is visible instead of silently stalling.
+        self.wake_event = threading.Event()
+        self.stop_event = threading.Event()
+        self.pause_event = threading.Event()
+
+    def abort_requested(self) -> bool:
+        return self.stop_event.is_set() or self.pause_event.is_set()
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            cp = self.checkpoint
+            # "profile" reports the LIVE self-tuned values for the five adaptive search params
+            # (falling back to the static base profile for a son that hasn't run a round yet)
+            # and the static values for the three deliberately-fixed ones -- so the dashboard's
+            # radar chart/parameter displays show what each agent is ACTUALLY doing right now,
+            # drifting in real time as adaptations are adopted. See adaptive.py.
+            adaptive = cp.get("adaptive")
+            if adaptive:
+                live = adaptive_mod.live_params(adaptive)
+            else:
+                live = {p: getattr(self.profile, p) for p in adaptive_mod.ADAPTIVE_PARAMS}
+            live_temperature = agents_mod.temperature_for(live["memory_weight"])
+            return {
+                "son_id": self.son_id,
+                "agent_name": self.profile.name,
+                "agent_purpose": self.profile.purpose,
+                "profile": {
+                    "exploration_rate": live["exploration_rate"],
+                    "risk_tolerance": self.profile.risk_tolerance,
+                    "collection_mixing_bias": live["collection_mixing_bias"],
+                    "wear_optimization_bias": live["wear_optimization_bias"],
+                    "liquidity_importance": self.profile.liquidity_importance,
+                    "roi_weight": self.profile.roi_weight,
+                    "mutation_strength": live["mutation_strength"],
+                    "memory_weight": live["memory_weight"],
+                },
+                "adaptive": adaptive_mod.summary(adaptive, self.profile) if adaptive else None,
+                "recovery": recovery_mod.summary(cp.get("recovery")),
+                "is_meta_agent": self.son_id in agents_mod.META_AGENT_IDS,
+                "coverage_collections": len(cp.get("coverage") or {}),
+                "temperature": live_temperature,
+                "effective_temperature": _effective_temperature(live_temperature, cp),
+                "status": self.status,
+                "error": self.error,
+                "progress": dict(self.progress),
+                "round": cp["round"],
+                "n_simulated": cp["n_simulated"],
+                "n_invalid": cp["n_invalid"],
+                # n_low_volume is a SUBSET of n_simulated (priced fine, just thin-liquidity) --
+                # n_trainable = n_simulated - n_low_volume is what sim_learning.train() actually
+                # fits on. cp.get(...) defaults handle checkpoints saved before this field existed.
+                "n_low_volume": cp.get("n_low_volume", 0),
+                "n_trainable": cp["n_simulated"] - cp.get("n_low_volume", 0),
+                "best_roi_ever": cp["best_roi_ever"],
+                "rounds_since_improvement": cp["rounds_since_improvement"],
+                "stuck": cp["rounds_since_improvement"] >= STUCK_THRESHOLD_ROUNDS,
+                "nudge_rounds_remaining": cp["nudge_rounds_remaining"],
+                "cumulative_cost": cp["cumulative_cost"],
+                "cumulative_expected_profit": cp["cumulative_expected_profit"],
+                "history": cp["history"][-60:],  # cap payload size for the dashboard sparkline
+                "updated_at": cp["updated_at"],
+                "sim_model_status": sim_learning_mod.get_model_status(self.model_dir),
+            }
+
+
+def create_population() -> list:
+    return [SimulationLoopState(son_id) for son_id in range(N_SONS)]
+
+
+# --- Anti-convergence: prevent all agents from settling on the same strategy ----------
+
+CONVERGENCE_MIN_AGENTS = 3          # spec: "if 3+ agents converge on the same strategies"
+CONVERGENCE_CHECKS_REQUIRED = 3     # consecutive watch_loop checks before actually nudging --
+# avoids reacting to a one-off coincidence (agents can share a region for a check or two by
+# chance even when genuinely still exploring independently)
+CONVERGENCE_CHECK_INTERVAL_SECONDS = 60
+
+
+def _convergence_signature(entry: dict) -> tuple:
+    """A coarse fingerprint of a checkpoint best-entry's SEARCH REGION -- primary
+    collection, rarity pair, and the primary collection's rounded share of total inputs
+    (nearest 0.2) -- deliberately NOT the exact skin/wear mix, since mutation.py
+    constantly varies that even within one agent's own repeated visits to the same
+    underlying strategy. Two entries with the same signature represent "the same idea,"
+    which is what the spec's anti-convergence system cares about."""
+    primary = entry.get("primary_collection", "")
+    from_r, to_r = entry.get("from_rarity", ""), entry.get("to_rarity", "")
+    input_mix = entry.get("input_mix") or []
+    total = sum(u.get("count", 0) for u in input_mix) or 1
+    primary_units = sum(u.get("count", 0) for u in input_mix if u.get("collection") == primary)
+    ratio_bucket = round((primary_units / total) * 5) / 5
+    return primary, from_r, to_r, ratio_bucket
+
+
+def detect_convergence(sons: list) -> dict:
+    """Looks at each son's CURRENT #1 best-known entry (its top strategy right now) and
+    groups sons that share the same _convergence_signature. Returns only groups of 2+ --
+    purely descriptive; ConvergenceWatcher below is what decides whether a group is big
+    enough (CONVERGENCE_MIN_AGENTS) and persistent enough (CONVERGENCE_CHECKS_REQUIRED)
+    to actually act on."""
+    groups: dict = {}
+    for s in sons:
+        with s.lock:
+            best = list(s.checkpoint["best"])
+        if not best:
+            continue
+        sig = _convergence_signature(best[0])
+        groups.setdefault(sig, []).append(s.son_id)
+    return {sig: ids for sig, ids in groups.items() if len(ids) >= 2}
+
+
+class ConvergenceWatcher:
+    """Tracks how many CONSECUTIVE checks have found the same over-converged signature
+    (CONVERGENCE_MIN_AGENTS+ sons sharing it), and once that streak reaches
+    CONVERGENCE_CHECKS_REQUIRED, automatically nudge()s every son sharing it -- the exact
+    same soft-retry temperature/exploration boost a user can already trigger by hand (see
+    nudge() above), just triggered automatically instead of by a click. Nudging resets
+    that signature's streak, giving the nudge a few rounds to actually diverge things
+    before this could re-trigger on the same signature."""
+
+    def __init__(self):
+        self._streaks: dict = {}
+        self.last_check_at = None
+        self.last_nudged: list = []  # most recent first, each {"signature", "son_ids", "at"}
+
+    def check(self, sons: list) -> dict:
+        self.last_check_at = time.time()
+        converged = detect_convergence(sons)
+        nudged_this_check = []
+        for sig in list(self._streaks):
+            if sig not in converged or len(converged[sig]) < CONVERGENCE_MIN_AGENTS:
+                del self._streaks[sig]  # no longer converged -- streak broken
+        for sig, son_ids in converged.items():
+            if len(son_ids) < CONVERGENCE_MIN_AGENTS:
+                continue
+            self._streaks[sig] = self._streaks.get(sig, 0) + 1
+            if self._streaks[sig] >= CONVERGENCE_CHECKS_REQUIRED:
+                for s in sons:
+                    if s.son_id in son_ids:
+                        nudge(s)
+                nudged_this_check.append({"signature": list(sig), "son_ids": list(son_ids), "at": time.time()})
+                self._streaks[sig] = 0
+        if nudged_this_check:
+            self.last_nudged = (nudged_this_check + self.last_nudged)[:20]
+        return {"converged_groups": {str(k): v for k, v in converged.items()}, "nudged": nudged_this_check}
+
+    def snapshot(self) -> dict:
+        return {"last_check_at": self.last_check_at, "last_nudged": list(self.last_nudged[:5]),
+                "active_streaks": {str(k): v for k, v in self._streaks.items()}}
+
+
+def watch_convergence(sons: list, watcher: "ConvergenceWatcher", stop_event: threading.Event,
+                       interval: float = CONVERGENCE_CHECK_INTERVAL_SECONDS) -> None:
+    """Background loop: re-checks detect_convergence() every `interval` seconds until
+    stop_event is set. Cheap -- just reads each son's already-in-memory checkpoint, no
+    network/disk I/O beyond nudge()'s own checkpoint save when it actually fires."""
+    while not stop_event.wait(timeout=interval):
+        watcher.check(sons)
+
+
+# --- Round-robin scheduler: "run all sons, one round each, in turn" --------------------
+
+ROUND_ROBIN_POLL_SECONDS = 1.0  # comfortably below ROUND_COOLDOWN_SECONDS, so a finished son
+# is handed off to the next one long before it would otherwise start a second round on its own
+
+
+class RoundRobinScheduler:
+    """Alternative to letting every son run continuously/concurrently: takes over each son's own
+    pause_event and cycles through the population in order, giving each one exactly ONE round
+    before pausing it and unpausing the next (wrapping back to son 0 after the last). All four
+    still make progress "at the same time" from the user's point of view -- one Start button
+    covers the whole population -- but never more than one son is actually mid-round, so they
+    don't all hit the (rate-limited, see thirdparty_prices.py) price lookups at once. Individual
+    per-son Start/Pause/Stop/Nudge/Full-reset (see server.py) are unaffected by this and can
+    still be used mid-cycle; doing so just races with the scheduler's own pause/resume calls on
+    that one son.
+    """
+
+    def __init__(self, sons: list):
+        self.sons = sons
+        self.enabled = False
+        self.active_index = 0
+        self._turn_start_round = 0
+        self._lock = threading.Lock()
+
+    def _activate(self, index: int) -> None:
+        self.active_index = index
+        son = self.sons[index]
+        with son.lock:
+            self._turn_start_round = son.checkpoint["round"]
+            son.pause_event.clear()
+        son.wake_event.set()
+
+    def start(self) -> None:
+        with self._lock:
+            for son in self.sons:
+                son.pause_event.set()
+            self.enabled = True
+            self._activate(0)
+
+    def stop(self) -> None:
+        with self._lock:
+            self.enabled = False
+            self.sons[self.active_index].pause_event.set()
+            self.sons[self.active_index].wake_event.set()
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {"enabled": self.enabled,
+                    "active_son_id": self.sons[self.active_index].son_id if self.enabled else None}
+
+    def tick(self) -> None:
+        """Called periodically by watch_round_robin. Once the currently-active son has completed
+        at least one full round since its turn started, hands off to the next son in order --
+        also wakes it immediately (rather than waiting out its own ROUND_COOLDOWN_SECONDS idle
+        timer) so the handoff is prompt. Also hands off immediately if the active son is
+        currently in "error" status (see sim_loop()) -- a son whose round keeps failing would
+        otherwise never satisfy round_now > _turn_start_round, stalling every other son in the
+        population behind it forever."""
+        with self._lock:
+            if not self.enabled:
+                return
+            son = self.sons[self.active_index]
+            with son.lock:
+                round_now = son.checkpoint["round"]
+                errored = son.status == "error"
+            if round_now > self._turn_start_round or errored:
+                son.pause_event.set()
+                son.wake_event.set()
+                self._activate((self.active_index + 1) % len(self.sons))
+
+
+def watch_round_robin(scheduler: "RoundRobinScheduler", stop_event: threading.Event,
+                       interval: float = ROUND_ROBIN_POLL_SECONDS) -> None:
+    """Background loop: ticks the scheduler every `interval` seconds until stop_event is set --
+    cheap, just an in-memory checkpoint-round comparison, no network/disk I/O of its own."""
+    while not stop_event.wait(timeout=interval):
+        scheduler.tick()
+
+
+def nudge(state: SimulationLoopState) -> None:
+    """Soft retry: reseeds this son's RNG and temporarily multiplies its temperature by
+    NUDGE_KICK_FACTOR for the next NUDGE_DURATION_ROUNDS rounds (pushing it to explore more
+    broadly), and gives it a fresh rounds_since_improvement window. Its logged simulations,
+    trained model, and best-known list are all left completely untouched."""
+    with state.lock:
+        state.rng = random.Random()
+        state.checkpoint["nudge_rounds_remaining"] = NUDGE_DURATION_ROUNDS
+        state.checkpoint["rounds_since_improvement"] = 0
+        save_checkpoint(state.checkpoint_file, state.checkpoint)
+
+
+def full_reset(state: SimulationLoopState) -> None:
+    """Hard retry: wipes this son's logged simulations, trained model, and checkpoint entirely,
+    and reseeds its RNG -- a genuine from-scratch restart for this ONE lineage. Other sons are
+    completely unaffected."""
+    with state.lock:
+        state.rng = random.Random()
+        state.sims_file.parent.mkdir(parents=True, exist_ok=True)
+        state.sims_file.write_text("", encoding="utf-8")
+        if state.invalid_file.exists():
+            state.invalid_file.write_text("", encoding="utf-8")
+        model_file = state.model_dir / sim_learning_mod.MODEL_FILENAME
+        meta_file = state.model_dir / sim_learning_mod.META_FILENAME
+        model_file.unlink(missing_ok=True)
+        meta_file.unlink(missing_ok=True)
+        sim_learning_mod.forget(state.model_dir, state.sims_file)
+        _archive_cache.pop(state.sims_file, None)  # drop this son's stale opportunity-archive
+        # cache too -- _update_archive_cache would self-heal on the next call anyway (truncated
+        # size < cached pos), but dropping it explicitly here matches sim_learning.forget's
+        # same-reset "don't serve stale cached state" contract instead of relying on that.
+        state.checkpoint = _empty_checkpoint()
+        save_checkpoint(state.checkpoint_file, state.checkpoint)
+
+
+def reset_all(population: list) -> None:
+    """Hard retry for the WHOLE population at once -- runs full_reset() on every son, wiping
+    every agent's logged simulations, trained model, and checkpoint back to a clean slate.
+    Each son is still reset independently through the same per-son full_reset(), so this never
+    merges or crosses any son's data with another's (see
+    feedback_sim_data_must_never_touch_real_outcomes) -- it's just the "Restart all training &
+    data" button doing what four individual Full-reset clicks would do."""
+    for son in population:
+        full_reset(son)
+
+
+def run_round(state: SimulationLoopState, currency: int = 1) -> None:
+    """Runs one batch of candidates for this son, then advances/retrains/updates its progress
+    bookkeeping. Pausing/stopping mid-batch just stops early -- every candidate is drawn
+    independently, so there's nothing to resume "partway through"; the next round just draws a
+    fresh batch."""
+    # Tags this son's own dedicated thread so every steam_prices call it makes from here on
+    # (this round AND every later one -- the tag is thread-local and this thread never runs
+    # another son's code) shows up broken out by son in steam_prices.get_stats()["by_label"] --
+    # see steam_prices.set_attribution's docstring. Cheap (a plain attribute set); safe to call
+    # every round.
+    steam_prices_mod.set_attribution(f"son_{state.son_id}")
+
+    # Meta agents' base personalities are refreshed by the Evolution Manager while running
+    # (behavioral crossover, see evolution.refresh_meta_agents) -- re-fetch so the refresh
+    # takes effect on the next round instead of the next restart. mtime-cached, cheap.
+    if state.son_id in agents_mod.META_AGENT_IDS:
+        state.profile = agents_mod.profile_for(state.son_id)
+
+    skins = data_mod.load_skins()
+    idx = data_mod.collections_index(skins)
+
+    with state.lock:
+        # Live self-tuned search params (adaptive.py) -- NOT the static profile values, which
+        # are only this agent's starting personality. Initialized lazily here because
+        # _empty_checkpoint is profile-agnostic. Temperature is derived from the LIVE
+        # memory_weight, so the exploit-vs-explore dial itself adapts over time.
+        adaptive = adaptive_mod.ensure_state(state.checkpoint, state.profile)
+        live = adaptive_mod.live_params(adaptive)
+        hp = adaptive_mod.hyperparams(adaptive)
+        # Exploration Recovery Mode (recovery.py): while active, layers progressive
+        # multiplicative pressure on the live params + adds novelty/temperature multipliers --
+        # derived only, vanishes the moment the mode exits. Inactive: params pass through
+        # untouched with both multipliers at 1.0.
+        recovery_state = recovery_mod.ensure_state(state.checkpoint)
+        live = recovery_mod.apply(live, recovery_state, STUCK_THRESHOLD_ROUNDS)
+        temperature = _effective_temperature(agents_mod.temperature_for(live["memory_weight"]),
+                                             state.checkpoint) * live["temperature_multiplier"]
+        # Copied so candidate scoring below can read it lock-free; the authoritative dict is
+        # only ever mutated by this son's own thread (in the valid-record branch, under lock).
+        coverage = dict(state.checkpoint["coverage"])
+
+    model_status = sim_learning_mod.get_model_status(state.model_dir)
+    # Selection score = model-predicted ROI + a UCB novelty bonus for collections this son has
+    # rarely/never simulated (see adaptive.novelty_bonus), scaled by the live exploration_rate.
+    # ROI stays the dominant term once a model exists, but an unexplored collection always
+    # carries real selection weight -- a powerful trade-up hiding where the model has no data
+    # can't be starved out of the simulate() budget forever. Before a model is trained, the
+    # novelty bonus alone scores the batch (softmax-selected), so even the very first rounds
+    # spread across collections instead of blindly taking the first SIMULATE_PER_ROUND draws.
+    coverage_total = sum(coverage.values())
+    exploration = live["exploration_rate"]
+    novelty_multiplier = live["novelty_multiplier"]  # >1.0 only in Recovery Mode
+    novelty_ucb_pp = hp["novelty_ucb_pp"]            # evolvable, see adaptive.HYPERPARAM_BOUNDS
+
+    def _novelty(c):
+        return (exploration * novelty_multiplier
+                * adaptive_mod.novelty_bonus(c, coverage, coverage_total, ucb_pp=novelty_ucb_pp))
+
+    if model_status["trained"]:
+        def score_fn(c):
+            pred = sim_learning_mod.predict_expected_roi(c, state.model_dir, state.sims_file)
+            return (pred if pred is not None else 0.0) + _novelty(c)
+    else:
+        score_fn = _novelty
+    keep_top_k = SIMULATE_PER_ROUND
+    # exploration_rate scales how large a pool this agent casts before narrowing down to
+    # SIMULATE_PER_ROUND -- the "adaptive search budget" stand-in for the spec's literal
+    # Monte-Carlo trial-count idea, which doesn't apply here (see rules_engine.py/module
+    # docstrings: this codebase computes exact expected value, never samples an outcome).
+    # keep_top_k/the actual simulate() budget below is UNCHANGED by this -- only the cheap,
+    # cache-free candidate-construction pool grows for more exploratory agents.
+    batch_size = max(50, round(BATCH_SIZE * (0.5 + exploration)))
+    # Skins with no obtainable price on Steam or any third-party site (invalid_skins.py, marked
+    # by simulate.py) are excluded from candidate construction entirely, so this son never wastes
+    # a round proposing -- or a simulate() call pricing -- a trade-up it already knows can't be
+    # valued. Loaded once per round (a plain in-memory set); entries past their recheck window
+    # drop out on their own so a relisted skin gets retried. Currency-scoped to match.
+    invalid_names = invalid_skins_mod.active_invalid_names(currency)
+    # Also exclude skins that CAN'T legally be trade-up inputs at all -- souvenir-only skins
+    # with no non-souvenir copy on any market (see tradability.py). Unlike invalid_skins'
+    # learned-one-miss-at-a-time registry, this is known up front from the bulk price feeds
+    # (zero live requests, cached until the feed refreshes), so no round is ever wasted
+    # proposing a contract the game itself would refuse.
+    from . import tradability as tradability_mod
+    invalid_names = invalid_names | tradability_mod.untradeable_market_names(currency)
+    # Everything currently warm in steam_prices' cache (a plain in-memory dict scan, no network
+    # -- iter_cached_entries() is the same helper dead_skin.py's weekly review already reuses),
+    # scoped to this currency -- biases generate_batch's candidate construction toward skin/wear
+    # combos already known to be priceable instead of ones that would need a fresh live Steam
+    # fetch to even find out (see random_trade.WARM_CACHE_BIAS). Loaded once per round, same
+    # cadence as invalid_names above.
+    warm_names = {name for name, cur, _data, _fetched_at in steam_prices_mod.iter_cached_entries()
+                  if cur == currency}
+    candidates = random_trade_mod.generate_batch(
+        idx, batch_size, rng=state.rng, score_fn=score_fn, keep_top_k=keep_top_k, temperature=temperature,
+        filler_count_decay=agents_mod.filler_decay_for(live["collection_mixing_bias"]),
+        wear_bias=live["wear_optimization_bias"], invalid_names=invalid_names, warm_names=warm_names)
+
+    # mutation_strength-controlled share of this round's batch comes from mutating this
+    # agent's OWN current best finds (mutation.py) instead of fresh random draws -- the
+    # "improve existing successful trade-ups" half of the search. Only kicks in once the
+    # agent actually has a best-known list to mutate from; total candidate count (and so
+    # the simulate() budget below) is unchanged either way, only the MIX shifts.
+    with state.lock:
+        best_entries = list(state.checkpoint["best"])
+    # Evolution Manager hooks (all neutral when disabled -- see evolution.py):
+    #   - cross-agent knowledge sharing: other agents' elite genomes join this son's mutation
+    #     pool, so its (unchanged) mutation operators also improve on siblings' discoveries;
+    #   - adaptive mutation: the species this son works in mutate harder while stagnant.
+    evolution_on = evolution_mod.enabled()
+    shared_parents = evolution_mod.parents_for(state.son_id, rng=state.rng) if evolution_on else []
+    mutation_pool = best_entries + shared_parents
+    effective_mutation = min(1.0, live["mutation_strength"]
+                              * (evolution_mod.mutation_boost(state.son_id) if evolution_on else 1.0))
+    n_mutated = round(len(candidates) * effective_mutation) if mutation_pool else 0
+    # Genome lineage: which best/elite parent each mutated candidate came from -- filled by
+    # mutate_batch, read at admission time below (evolution.record_child).
+    parent_by_candidate: dict = {}
+    if n_mutated:
+        mutated = mutation_mod.mutate_batch(mutation_pool, idx, state.rng, n_mutated,
+                                             track_parents=parent_by_candidate if evolution_on else None)
+        if mutated:
+            candidates = mutated + candidates[len(mutated):]
+
+    with state.lock:
+        state.status = "running"
+        state.progress = {"current": 0, "total": len(candidates)}
+
+    # Per-round aggregates over every VALID simulated candidate this round (not just the ones
+    # that made the curated best-known list) -- feeds the dashboard's "stats over rounds" chart
+    # (avg_input_float/avg_roi_pct/avg_confidence) alongside the existing best-ROI-so-far line.
+    round_floats, round_rois, round_confidences = [], [], []
+
+    for i, candidate in enumerate(candidates, 1):
+        if state.stop_event.is_set():
+            with state.lock:
+                state.status = "stopped"
+            return
+        if state.pause_event.is_set():
+            with state.lock:
+                state.status = "paused"
+            return
+        record = simulate_mod.simulate(candidate, currency=currency, abort_check=state.abort_requested)
+        if isinstance(record, simulate_mod.SimulationRecord):
+            record.agent = state.son_id  # simulate.py itself is agent-agnostic (reused by every
+            # son) -- this is the one place that actually knows which agent ran it.
+            simulate_mod.log_simulation(record, state.sims_file)
+            round_floats.append(record.avg_input_float)
+            round_rois.append(record.expected_roi_pct)
+            round_confidences.append(record.confidence_score or 0.0)
+            with state.lock:
+                cp = state.checkpoint
+                cp["n_simulated"] += 1
+                # Priced successfully but thin-volume (see dead_skin.py) -- sim_learning.train()
+                # excludes these from the training set entirely (its own `rows` filter), so
+                # n_simulated alone overstates how much of this son's data is actually feeding
+                # its model. Tracked separately so the dashboard can show trainable vs excluded
+                # instead of conflating "simulated" with "trainable".
+                if record.low_volume_warning:
+                    cp["n_low_volume"] = cp.get("n_low_volume", 0) + 1
+                # "If you'd bought literally every trade this bot ever proposed" -- see
+                # _empty_checkpoint's docstring. Every valid record counts here regardless of
+                # whether it was good enough for the curated best-known list.
+                cp["cumulative_cost"] += record.cost
+                cp["cumulative_expected_profit"] += record.expected_profit
+                # Self-tuning bookkeeping: fold this sim into the collection-coverage counts
+                # (drives the UCB novelty bonus above) and the current measurement window
+                # (drives end_round()'s adopt/revert reward -- see adaptive.py). "novel" =
+                # its primary collection was still under-explored BEFORE this sim.
+                novel = adaptive_mod.update_coverage(cp["coverage"], record)
+                adaptive_mod.note_valid(cp["adaptive"], record.expected_roi_pct,
+                                        record.low_volume_warning, novel)
+                _consider_best(cp, record, state.profile)
+                # Auto-verify queue (see verify_queue.py): a cheap, non-blocking, in-memory
+                # enqueue only -- the actual live third-party call happens on a SEPARATE
+                # consumer thread, never inline in this loop.
+                admitted = next((e for e in cp["best"] if e["id"] == record.id), None)
+                if admitted is not None:
+                    verify_queue_mod.maybe_enqueue(state.son_id, admitted)
+                    # Genome lineage (evolution.py): this admitted find was a mutation child of
+                    # a tracked parent -- record the parent->child edge in the audit trail.
+                    parent_id = parent_by_candidate.get(id(candidate))
+                    if parent_id is not None:
+                        evolution_mod.record_child(record.id, parent_id, state.son_id,
+                                                    record.expected_roi_pct)
+        else:  # InvalidSimulation -- not every input/output priced; logged separately, never
+            # trained on or ranked (see simulate.py's own docstring for why)
+            simulate_mod.log_invalid(record, state.invalid_file)
+            with state.lock:
+                state.checkpoint["n_invalid"] += 1
+                adaptive_mod.note_invalid(state.checkpoint["adaptive"])
+        with state.lock:
+            state.progress = {"current": i, "total": len(candidates)}
+
+    with state.lock:
+        cp = state.checkpoint
+        cp["round"] += 1
+        current_best = cp["best"][0]["expected_roi_pct"] if cp["best"] else None
+        if current_best is not None and (cp["best_roi_ever"] is None
+                                          or current_best > cp["best_roi_ever"] + IMPROVEMENT_EPSILON_PP):
+            cp["best_roi_ever"] = current_best
+            cp["rounds_since_improvement"] = 0
+        else:
+            cp["rounds_since_improvement"] += 1
+        cp["nudge_rounds_remaining"] = max(0, cp["nudge_rounds_remaining"] - 1)
+        # One step of the self-tuning state machine (adaptive.py): advances the measurement
+        # window and, every ADAPT_WINDOW_ROUNDS rounds, either starts a trial tweak of this
+        # son's search params or adopts/reverts the one just measured. Persisted with the
+        # checkpoint save below, same as every other per-round counter.
+        adaptive_mod.end_round(cp["adaptive"], state.profile, state.rng)
+        # Exploration Recovery Mode state machine -- AFTER rounds_since_improvement was
+        # updated above, so entry/exit/escalation decisions see this round's outcome.
+        recovery_mod.end_round(state.son_id, cp, state.profile, state.rng)
+        history_entry = {
+            "round": cp["round"], "n_simulated": cp["n_simulated"],
+            "best_roi_ever": cp["best_roi_ever"],
+            # This round's averages across every valid candidate simulated this round (None if
+            # the whole round came up empty/invalid) -- see round_floats/round_rois/
+            # round_confidences above.
+            "avg_input_float": (sum(round_floats) / len(round_floats)) if round_floats else None,
+            "avg_roi_pct": (sum(round_rois) / len(round_rois)) if round_rois else None,
+            "avg_confidence": (sum(round_confidences) / len(round_confidences)) if round_confidences else None,
+            "cumulative_cost": cp["cumulative_cost"],
+            "cumulative_expected_profit": cp["cumulative_expected_profit"],
+            "at": time.time(),
+        }
+        cp["history"].append(history_entry)
+        del cp["history"][:-HISTORY_KEEP]
+        save_checkpoint(state.checkpoint_file, cp)
+        try:
+            state.round_history_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(state.round_history_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(history_entry) + "\n")
+        except OSError:
+            pass  # best-effort durable log -- never let a disk hiccup here fail the round itself
+        state.status = "idle"
+        n_simulated = cp["n_simulated"]
+        n_at_last_train = cp["n_simulated_at_last_train"]
+
+    if (n_simulated - n_at_last_train >= sim_learning_mod.RETRAIN_TRIGGER_DELTA
+            and n_simulated >= sim_learning_mod.MIN_TRAINING_SAMPLES):
+        result = sim_learning_mod.train(state.model_dir, state.sims_file)
+        # Only advance the "since last train" counter on an actual successful fit. train()
+        # refuses below MIN_TRAINING_SAMPLES *volume-confirmed* rows (low_volume_warning ones
+        # are excluded -- see its docstring), which is a materially smaller count than
+        # n_simulated for a son hitting a lot of thin-liquidity skins. Advancing this counter
+        # unconditionally (the old behavior) meant a refused attempt bought itself another full
+        # RETRAIN_TRIGGER_DELTA (25) simulations before trying again -- if the volume-confirmed
+        # share of new rows stays low, that compounds into a long, misleading "stuck at
+        # untrained" stretch even though plenty of raw candidates were being simulated. Retrying
+        # every round on failure instead lets the model train the moment the cumulative
+        # volume-confirmed count actually crosses the threshold.
+        if result.trained:
+            with state.lock:
+                state.checkpoint["n_simulated_at_last_train"] = n_simulated
+                save_checkpoint(state.checkpoint_file, state.checkpoint)
+
+
+def sim_loop(state: SimulationLoopState, max_rounds: int | None = None, currency: int = 1) -> None:
+    """Runs rounds back-to-back for one son, with the same pause/stop/resume handling every
+    other background loop in this app uses."""
+    rounds_done = 0
+    while True:
+        if state.stop_event.is_set():
+            with state.lock:
+                state.status = "stopped"
+                state.stop_event.clear()
+            return
+        if state.pause_event.is_set():
+            with state.lock:
+                state.status = "paused"
+            state.wake_event.wait()
+            state.wake_event.clear()
+            with state.lock:
+                state.pause_event.clear()
+            continue
+
+        try:
+            run_round(state, currency=currency)
+            with state.lock:
+                state.error = None
+        except Exception as e:
+            # Never let an exception from a single bad round (e.g. a transient OSError from a
+            # locked file, see invalid_skins.py/dead_skin.py) silently kill this daemon thread --
+            # that already happened once before (a missing sklearn install) with nothing visible
+            # on the dashboard. Surface it via state.error/status="error" instead, then retry
+            # after the normal cooldown -- self-heals if the failure was transient.
+            with state.lock:
+                state.status = "error"
+                state.error = f"{type(e).__name__}: {e}"
+            state.wake_event.wait(timeout=ROUND_COOLDOWN_SECONDS)
+            state.wake_event.clear()
+            continue
+        rounds_done += 1
+
+        with state.lock:
+            status_after = state.status
+        if status_after == "paused":
+            state.wake_event.wait()
+            state.wake_event.clear()
+            with state.lock:
+                state.pause_event.clear()
+            continue
+        if status_after == "stopped" or state.stop_event.is_set():
+            with state.lock:
+                state.status = "stopped"
+                state.stop_event.clear()
+            return
+        if max_rounds is not None and rounds_done >= max_rounds:
+            with state.lock:
+                state.status = "stopped"
+            return
+        state.wake_event.wait(timeout=ROUND_COOLDOWN_SECONDS)
+        state.wake_event.clear()
+
+
+def run_foreground(max_rounds: int | None = None, currency: int = 1) -> None:
+    """CLI entry point (`python -m src.main simulate-population`) -- runs all N_SONS sons as
+    background threads in this one process, plus a lightweight anti-convergence watcher
+    thread (see ConvergenceWatcher/watch_convergence above); Ctrl+C stops all of them."""
+    sons = create_population()
+    threads = [threading.Thread(target=sim_loop, args=(s,),
+                                 kwargs={"max_rounds": max_rounds, "currency": currency}, daemon=True)
+               for s in sons]
+    convergence_watcher = ConvergenceWatcher()
+    convergence_stop = threading.Event()
+    watcher_thread = threading.Thread(target=watch_convergence, args=(sons, convergence_watcher, convergence_stop),
+                                       daemon=True)
+    print(f"Starting a population of {len(sons)} guided-simulation sons "
+          f"(temperatures {SON_TEMPERATURES}) -- checkpoints under {SONS_DIR}\n"
+          f"Ctrl+C to stop all of them (progress is saved after every round).\n")
+    for t in threads:
+        t.start()
+    watcher_thread.start()
+    try:
+        while any(t.is_alive() for t in threads):
+            time.sleep(1)
+    except KeyboardInterrupt:
+        for s in sons:
+            s.stop_event.set()
+            s.wake_event.set()
+        for t in threads:
+            t.join(timeout=5)
+        convergence_stop.set()
+        print("\nStopped -- checkpoints saved.")
+        return
+    convergence_stop.set()
+    for s in sons:
+        snap = s.snapshot()
+        print(f"Son {s.son_id} ({snap['agent_name']}, temp {s.base_temperature}): "
+              f"{snap['n_simulated']} simulated, best ROI ever {snap['best_roi_ever']}")
