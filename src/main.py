@@ -44,6 +44,7 @@ from . import pattern_db as pattern_db_mod
 from . import pattern_scanner as pattern_scanner_mod
 from . import user_overrides as user_overrides_mod
 from . import backup_engine as backup_engine_mod
+from . import watch_loop as watch_loop_mod
 from .steam_prices import CURRENCIES, get_price, market_hash_name as build_market_hash_name
 
 
@@ -378,6 +379,11 @@ def cmd_train_model(args):
 
 def cmd_retrain_loop(args):
     retrain_loop_mod.run_foreground(poll_interval=args.poll_interval)
+
+
+def cmd_watch(args):
+    watch_loop_mod.run_foreground(poll_interval=args.interval, roi_threshold=args.roi_threshold,
+                                   pattern_threshold=args.pattern_threshold)
 
 
 def cmd_price_report(args):
@@ -1221,6 +1227,26 @@ def build_parser():
     p_backup.add_argument("--run-now", dest="run_now", action="store_true",
                            help="Run a full backup cycle now, skipping the 6h delta check")
     p_backup.set_defaults(func=cmd_backup)
+
+    p_watch = sub.add_parser(
+        "watch",
+        help="Leave running: repeatedly scans for high-ROI trade-ups and cheap rare patterns, "
+             "sends a phone push notification (ntfy.sh, see src/alerts.py) on new hits, and "
+             "drives the GitHub auto-backup + Google Sheets export each cycle (see "
+             "src/watch_loop.py)")
+    p_watch.add_argument("--interval", type=float, default=watch_loop_mod.DEFAULT_POLL_INTERVAL_SECONDS,
+                          help=f"Seconds between scan cycles (default "
+                               f"{watch_loop_mod.DEFAULT_POLL_INTERVAL_SECONDS:.0f})")
+    p_watch.add_argument("--roi-threshold", dest="roi_threshold", type=float,
+                          default=watch_loop_mod.DEFAULT_ROI_THRESHOLD_PCT,
+                          help=f"Alert on trade-ups at or above this ROI%% (default "
+                               f"{watch_loop_mod.DEFAULT_ROI_THRESHOLD_PCT:.0f})")
+    p_watch.add_argument("--pattern-threshold", dest="pattern_threshold", type=float,
+                          default=watch_loop_mod.DEFAULT_PATTERN_THRESHOLD_PCT,
+                          help=f"Alert on rare patterns priced at or below this %% under their "
+                               f"documented collector value (default "
+                               f"{watch_loop_mod.DEFAULT_PATTERN_THRESHOLD_PCT:.0f})")
+    p_watch.set_defaults(func=cmd_watch)
 
     return p
 
