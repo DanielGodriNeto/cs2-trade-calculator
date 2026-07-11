@@ -62,6 +62,12 @@ _FEEDS = {
 _lock = threading.Lock()
 _feeds: dict = {}  # feed name -> {"_fetched_at": epoch, "data": {...}} (mirrors the disk files)
 _last_failure: dict = {}  # feed name -> epoch of last failed fetch attempt
+_inflight: set = set()  # feeds a thread is CURRENTLY downloading -- other threads serve stale
+# data immediately instead of each starting their own 60s download. Without this, anything
+# that consults a feed on a hot concurrent path (the dashboard's 3s poll walking
+# has_market_listing across every best-list output, several sim sons cache-missing at once)
+# could stampede dozens of parallel multi-MB fetches the moment the TTL lapsed, drowning the
+# whole server for minutes (observed live 2026-07-11).
 _converted_maps: dict = {}  # (feed, currency) -> {"_from_fetch": epoch, "map": {name: price}}
 # -- rebuilt only when the underlying feed actually re-fetched, not on every call
 
@@ -156,10 +162,16 @@ def _load_feed(feed: str) -> dict | None:
         cooling_down = feed in _last_failure and (now - _last_failure[feed]) < FAILURE_COOLDOWN_SECONDS
         if fresh or cooling_down:
             return entry["data"] if entry else None
+        if feed in _inflight:
+            # Another thread is already refreshing this feed -- stale-beats-empty, and one
+            # download at a time (see _inflight's comment above).
+            return entry["data"] if entry else None
+        _inflight.add(feed)
 
     fetched = _fetch(feed)  # deliberately outside _lock: a 60s download must not block
     # get_skinport_map()/get_steam_entry() callers that only need the already-loaded data
     with _lock:
+        _inflight.discard(feed)
         if fetched is not None:
             entry = {"_fetched_at": time.time(), "data": fetched}
             _feeds[feed] = entry
@@ -173,6 +185,12 @@ def _load_feed(feed: str) -> dict | None:
         _last_failure[feed] = time.time()
         entry = _feeds.get(feed)
         return entry["data"] if entry else None
+
+
+def rate_for(currency: int) -> float:
+    """Public alias for _rate_for -- user_overrides.py converts user-entered override prices
+    between currencies through the same rates feed every bulk price conversion here uses."""
+    return _rate_for(currency)
 
 
 def _rate_for(currency: int) -> float:

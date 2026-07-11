@@ -290,6 +290,20 @@ def flush_cache():
         _write_cache_to_disk()
 
 
+def clear_cache() -> int:
+    """Wipes every cached skin/wear price, in-memory and on disk. This is a re-fetchable
+    market snapshot, not simulated/outcome data -- the next lookup for any skin just goes
+    back to the bulk mirror / a live fetch, same as a cold start. Returns how many entries
+    were removed. Used by the dashboard's global 'Reset all data' button."""
+    global _cache, _dirty_writes
+    n = len(_cache)
+    _cache = {}
+    _dirty_writes = 0
+    if PRICE_CACHE_FILE.exists():
+        PRICE_CACHE_FILE.unlink()
+    return n
+
+
 def _parse_money(s: str | None) -> float | None:
     """Parses Steam's localized price strings across currencies/formats, e.g.
     "$41.51" (USD), "R$ 123,45" (BRL), "1.234,56 €" (EUR-style), "¥1,234" (JPY --
@@ -346,9 +360,18 @@ def _interruptible_sleep(seconds: float, abort_check=None):
 
 def get_price(market_hash_name: str, currency: int = 1, abort_check=None) -> dict | None:
     """Returns {"lowest_price": float|None, "median_price": float|None, "volume": int|None}.
-    Served from the 24h disk cache, then the csgotrader bulk mirror (bulk_prices.py -- the
+    A user price override (user_overrides.py) wins over EVERY other source; otherwise served
+    from the 24h disk cache, then the csgotrader bulk mirror (bulk_prices.py -- the
     default live source now), then, ONLY if configure_steam_live_fallback(True) was called,
     the original per-item Steam priceoverview request (_live_steam_fetch)."""
+    # User override first: the whole point of a manual price is that it beats whatever the
+    # market data says (bugged mirror entries, souvenir conflation, ...). Never cached, never
+    # recorded in price_history -- it's the user's own number, not an observation.
+    from . import user_overrides
+    override = user_overrides.get_override_entry(market_hash_name, currency)
+    if override is not None:
+        return override
+
     if not _cache:
         _load_cache()
 
@@ -538,6 +561,13 @@ def get_cached_price(market_hash_name: str, currency: int = 1) -> tuple[dict | N
     reached when a caller skips this function and goes straight to a live fetch (which
     simulate._price() never does -- see that module)."""
     global _cache
+    # Same override-wins rule as get_price() -- simulate._price() checks this function FIRST
+    # for every unit, so without this hook an overridden skin whose cache entry is warm would
+    # keep pricing off the stale market number.
+    from . import user_overrides
+    override = user_overrides.get_override_entry(market_hash_name, currency)
+    if override is not None:
+        return override, "fresh"
     if not _cache:
         _load_cache()
     key = f"{currency}:{market_hash_name}"

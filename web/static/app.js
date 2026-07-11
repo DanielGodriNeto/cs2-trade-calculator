@@ -44,6 +44,9 @@ const state = {
   // state (not just the DOM) per this dashboard's poll-survival rule -- the builder section
   // isn't rebuilt by the 3s poll, but every render still reads from here so it never can be.
   lastMispriced: [],  // most recent /api/mispriced-skins payload (Market intelligence panel)
+  lastWearAnomalies: [],  // most recent /api/wear-anomalies payload (Market intelligence panel)
+  lastSkinBlacklist: [],   // most recent /api/skin-blacklist payload (permanent user blacklist)
+  lastPriceOverrides: [],  // most recent /api/price-overrides payload (manual price overrides)
   simMaeHistory: {},  // son_id -> [{round, mae, trained_at}], accumulated client-side across
   // polls this session -- sim_learning.get_model_status()/sim_roi_model_meta.json only ever
   // persists the CURRENT model's validation_mae, never a history of past trainings, so this is
@@ -99,10 +102,12 @@ async function loadCurrencies() {
   document.getElementById("oc-currency").innerHTML = options;
   document.getElementById("ph-currency").innerHTML = options;
   document.getElementById("mb-currency").innerHTML = options;
+  document.getElementById("po-currency").innerHTML = options;
   document.getElementById("ph-currency").value = "1"; // default USD -- otherwise the browser
   // picks the first <option> in DOM order, which is whatever sorts first alphabetically
   document.getElementById("oc-currency").value = "1";
   document.getElementById("mb-currency").value = "1";
+  document.getElementById("po-currency").value = "1";
 }
 
 // ---- Methodology / live constants -----------------------------------------------------
@@ -345,9 +350,9 @@ async function pollStatus() {
       loadModelStatus(), loadRetrainLoopStatus(), loadOutcomes(),
       loadPriceScanStatus(), loadRoundRobinStatus(), loadSimPopulationStatus(), loadBestSimulations(),
       loadConvergenceStatus(), loadVerifyQueueStatus(), loadDeadSkins(), loadInvalidSkins(),
-      loadSimLeaderboards(), loadBlacklist(), loadMispricedSkins(), loadMarketReliability(),
+      loadSimLeaderboards(), loadBlacklist(), loadMispricedSkins(), loadWearAnomalies(), loadMarketReliability(),
       loadEvolutionStatus(), loadRecoveryLog(), loadPatternsStatus(), loadPatternOpportunities(),
-      loadBackupStatus(),
+      loadBackupStatus(), loadSkinBlacklist(), loadPriceOverrides(),
     ]);
     renderOverview();
   } catch (e) {
@@ -577,6 +582,129 @@ function renderMispricedSkins(rows) {
     </tr>`).join("");
 }
 
+// ---- Skin blacklist (permanent) + manual price overrides (Market intelligence) ----------
+// Tables re-render on the 3s poll like the other Market-intel lists; the FORMS live in static
+// HTML and are never rebuilt, so typing survives the poll (this dashboard's poll-survival rule).
+
+async function loadSkinBlacklist() {
+  const res = await fetch("/api/skin-blacklist");
+  state.lastSkinBlacklist = await res.json();
+  renderSkinBlacklist(state.lastSkinBlacklist);
+}
+
+function renderSkinBlacklist(rows) {
+  const table = document.getElementById("skin-blacklist-table");
+  const emptyEl = document.getElementById("skin-blacklist-empty");
+  if (!table || !emptyEl) return;
+  if (!rows.length) {
+    table.style.display = "none";
+    emptyEl.style.display = "block";
+    emptyEl.textContent = "No skins blacklisted. Entries here NEVER expire on their own -- add one above when you've personally confirmed a skin's price data is garbage (e.g. it only really trades above Steam's price cap).";
+    return;
+  }
+  table.style.display = "";
+  emptyEl.style.display = "none";
+  table.querySelector("tbody").innerHTML = rows.map(d => `
+    <tr>
+      <td>${d.skin}</td>
+      <td>${d.note || "-"}</td>
+      <td>${d.added_at ? fmtTime(d.added_at) : "-"}</td>
+      <td><button class="secondary bl-remove-btn" data-skin="${encodeURIComponent(d.skin)}">Remove</button></td>
+    </tr>`).join("");
+  table.querySelectorAll(".bl-remove-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      await fetch("/api/skin-blacklist/remove", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skin: decodeURIComponent(btn.dataset.skin) }),
+      });
+      await loadSkinBlacklist();
+      loadBestSimulations();  // hidden rows may reappear immediately
+    });
+  });
+}
+
+async function loadPriceOverrides() {
+  const res = await fetch("/api/price-overrides");
+  state.lastPriceOverrides = await res.json();
+  renderPriceOverrides(state.lastPriceOverrides);
+}
+
+function renderPriceOverrides(rows) {
+  const table = document.getElementById("price-overrides-table");
+  const emptyEl = document.getElementById("price-overrides-empty");
+  if (!table || !emptyEl) return;
+  if (!rows.length) {
+    table.style.display = "none";
+    emptyEl.style.display = "block";
+    emptyEl.textContent = "No price overrides stored. Set one above to force your own price for a skin+wear everywhere -- existing opportunities are re-priced/re-ROI'd immediately.";
+    return;
+  }
+  table.style.display = "";
+  emptyEl.style.display = "none";
+  table.querySelector("tbody").innerHTML = rows.map(d => `
+    <tr>
+      <td>${d.market_hash_name}</td>
+      <td class="num">${d.price != null ? d.price.toFixed(2) : "-"}</td>
+      <td>${(state.currencies.find(c => c.code === d.currency) || {}).name || d.currency}</td>
+      <td>${d.added_at ? fmtTime(d.added_at) : "-"}</td>
+      <td><button class="secondary po-remove-btn" data-name="${encodeURIComponent(d.market_hash_name)}">Remove</button></td>
+    </tr>`).join("");
+  table.querySelectorAll(".po-remove-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      await fetch("/api/price-overrides/remove", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ market_hash_name: decodeURIComponent(btn.dataset.name) }),
+      });
+      await loadPriceOverrides();
+      loadBestSimulations();  // repriced rows revert to their as-simulated numbers
+    });
+  });
+}
+
+function _flashPanelMsg(id, text, isError) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = "block";
+  el.textContent = text;
+  el.style.color = isError ? "var(--loss, #e05555)" : "";
+  setTimeout(() => { el.style.display = "none"; }, 6000);
+}
+
+async function loadWearAnomalies() {
+  const res = await fetch("/api/wear-anomalies");
+  state.lastWearAnomalies = await res.json();
+  renderWearAnomalies(state.lastWearAnomalies);
+}
+
+async function clearWearAnomalies() {
+  if (!confirm("Erase all wear-anomaly marks? Safe -- any price still inverted against its own better wears will be re-flagged by the next positive-ROI scan that touches it.")) return;
+  await fetch("/api/wear-anomalies/clear", { method: "POST" });
+  await loadWearAnomalies();
+}
+
+function renderWearAnomalies(rows) {
+  const table = document.getElementById("wear-anomalies-table");
+  const emptyEl = document.getElementById("wear-anomalies-empty");
+  if (!table || !emptyEl) return;
+  if (!rows.length) {
+    table.style.display = "none";
+    emptyEl.style.display = "block";
+    emptyEl.textContent = "No wear-order inversions on record -- marks appear when a positive-ROI scan finds an output skin priced above its own better (less worn) condition, which is always a bad data point rather than real revenue.";
+    return;
+  }
+  table.style.display = "";
+  emptyEl.style.display = "none";
+  table.querySelector("tbody").innerHTML = rows.map(d => `
+    <tr>
+      <td>${d.market_hash_name}</td>
+      <td class="num"><span class="profit-negative">${d.price != null ? fmtCurrency(d.price) : "-"}</span></td>
+      <td class="num">${d.better_price != null ? fmtCurrency(d.better_price) + " (" + (d.better_wear || "?") + ")" : "-"}</td>
+      <td class="num">${d.inversion_pct != null ? d.inversion_pct.toFixed(1) + "%" : "-"}</td>
+      <td>${d.active ? "active (excluded from recommendations)" : "expired -- due for re-check"}</td>
+      <td>${d.marked_at ? fmtTime(d.marked_at) : "-"}</td>
+    </tr>`).join("");
+}
+
 async function loadMarketReliability() {
   const res = await fetch("/api/market-reliability");
   state.lastMarketReliability = await res.json();
@@ -777,14 +905,22 @@ function renderPatternsStatus(ps) {
   const parts = [
     `${s.status}${s.current_target ? ` -- checking ${s.current_target}` : ""}`,
     `${s.n_targets || 0} scan targets from the knowledge base`,
-    `${s.queries || 0} queries | ${s.listings_seen || 0} listings seen | ${s.matches || 0} matches | ${s.opportunities_live || 0} live opportunities`,
-    `last success ${fmtTime(s.last_success_at)}`,
+    `CSFloat: ${s.queries || 0} queries | ${s.listings_seen || 0} listings | last success ${fmtTime(s.last_success_at)}`,
+    `Steam Market: ${s.steam_queries || 0} queries | ${s.steam_listings_seen || 0} listings | ${s.inspects_resolved || 0} inspect links resolved | last success ${fmtTime(s.steam_last_success_at)}`,
+    `${s.matches || 0} matches | ${s.opportunities_live || 0} live opportunities`,
   ];
-  if (s.last_error) parts.push(`last error: ${s.last_error}`);
+  if (s.steam_blocked_until && s.steam_blocked_until * 1000 > Date.now()) {
+    parts.push(`⏳ Steam source cooling down after a rate limit -- resumes ${fmtTime(s.steam_blocked_until)} (CSFloat scanning continues meanwhile)`);
+  }
+  if (s.last_error) parts.push(`CSFloat last error: ${s.last_error}`);
+  if (s.steam_last_error) parts.push(`Steam last error: ${s.steam_last_error}`);
+  if (s.inspect_last_error) parts.push(`inspect last error: ${s.inspect_last_error}`);
   if (!s.csfloat_key_configured && s.csfloat_key_note) parts.push(`⚠ ${s.csfloat_key_note}`);
   el.textContent = parts.join(" | ");
   document.getElementById("patterns-scan-start-btn").disabled = s.status === "scanning";
   document.getElementById("patterns-scan-pause-btn").disabled = s.status !== "scanning";
+
+  renderPatternsTopbar(s);
 
   const dbEl = document.getElementById("pattern-db-status");
   const k = ps.knowledge || {};
@@ -793,6 +929,40 @@ function renderPatternsStatus(ps) {
     dbEl.textContent = `knowledge version ${k.knowledge_version} | ${k.n_entries} documented patterns (${byType}) | `
       + `last verified ${fmtTime(k.last_verified_at)}${k.refresh_due ? " (refresh due)" : ""}`
       + (k.remote_verification_note ? ` | ${k.remote_verification_note}` : "");
+  }
+}
+
+// Mirrors the Rare Patterns scanner's own network health (CSFloat + Steam Market inspect
+// queries -- a completely separate rate-limited path from the Steam price cache the row above
+// tracks) into the global topbar, same as renderNetworkStats does for the price cache. Runs off
+// the same 3s poll (loadPatternsStatus is in the pollStatus Promise.all), so it stays current
+// from any tab, not just when scrolled to the Rare Patterns page.
+function renderPatternsTopbar(s) {
+  const headline = document.getElementById("patterns-health-headline");
+  if (!headline) return;
+  document.getElementById("pat-stat-csfloat-queries").textContent = s.queries || 0;
+  document.getElementById("pat-stat-steam-queries").textContent = s.steam_queries || 0;
+  document.getElementById("pat-stat-matches").textContent = s.matches || 0;
+
+  const now = Date.now() / 1000;
+  const steamCoolingDown = s.steam_blocked_until && s.steam_blocked_until > now;
+
+  if (s.status !== "scanning") {
+    headline.textContent = "Rare Patterns scanner: idle -- not running (start it on the Rare Patterns page)";
+    headline.className = "health-headline health-idle";
+  } else if (steamCoolingDown) {
+    const remaining = Math.ceil(s.steam_blocked_until - now);
+    headline.textContent = `⏳ Rare Patterns: Steam Market cooling down after a rate limit -- resumes in ${remaining}s (CSFloat continues meanwhile)`;
+    headline.className = "health-headline health-warn";
+  } else if (s.last_error) {
+    headline.textContent = `⚠ Rare Patterns: CSFloat error -- ${s.last_error}`;
+    headline.className = "health-headline health-warn";
+  } else if (s.steam_last_error) {
+    headline.textContent = `⚠ Rare Patterns: Steam Market error -- ${s.steam_last_error}`;
+    headline.className = "health-headline health-warn";
+  } else {
+    headline.textContent = "✓ Rare Patterns scanner running normally";
+    headline.className = "health-headline health-ok";
   }
 }
 
@@ -1749,6 +1919,27 @@ function wireVerifyButtons(tbody, sims) {
   });
 }
 
+// Once a composition has been through Stage-2 verification (live Skinport/Buff163/CSFloat
+// cross-check, see verify_queue.py), the verified number is the more trustworthy one -- shown
+// here as the PRIMARY ROI value instead of leaving the headline column stuck on the original
+// (possibly bugged/inflated) simulated estimate forever. The predicted number is kept alongside,
+// small, for transparency about what changed. Before verification, this is identical to the old
+// plain expected_roi_pct display. Shared by renderBestSimulations and renderOpportunityArchive
+// so both tables update the same way.
+function _roiCell(s) {
+  const verified = s.verified_roi_pct;
+  const predicted = s.expected_roi_pct;
+  const primary = verified != null ? verified : predicted;
+  const cls = primary >= 0 ? "profit-positive" : "profit-negative";
+  const overrideTag = s.repriced_by_override
+    ? ` <span class="tag-drought" title="Recomputed with your manual price override(s): ${s.repriced_by_override.join(", ")}">repriced</span>`
+    : "";
+  const predictedNote = verified != null
+    ? ` <span class="muted-inline" title="Original simulated estimate before Skinport/Buff163/CSFloat verification">(predicted ${fmtMoney(predicted)}%)</span>`
+    : "";
+  return `<td class="num ${cls}">${fmtMoney(primary)}%${overrideTag}${predictedNote}</td>`;
+}
+
 function renderBestSimulations(simsAll) {
   const sims = _applyOpportunityFilters(simsAll);
   const tbody = document.querySelector("#best-simulations-table tbody");
@@ -1769,7 +1960,7 @@ function renderBestSimulations(simsAll) {
       <td>${s.to_rarity}</td>
       <td>${s.stattrak ? "Yes" : "No"}</td>
       <td class="num">${fmtMoney(s.cost)}</td>
-      <td class="num ${s.expected_roi_pct >= 0 ? "profit-positive" : "profit-negative"}">${fmtMoney(s.expected_roi_pct)}%</td>
+      ${_roiCell(s)}
       <td class="num">${verifiedCell}</td>
       <td class="num">${s.composite_score != null ? s.composite_score.toFixed(1) : "-"}</td>
       <td>${_riskBadge(s.confidence_score)}</td>
@@ -1908,7 +2099,7 @@ function renderOpportunityArchive(data) {
       <td>${s.to_rarity}</td>
       <td>${s.stattrak ? "Yes" : "No"}</td>
       <td class="num">${fmtMoney(s.cost)}</td>
-      <td class="num ${s.expected_roi_pct >= 0 ? "profit-positive" : "profit-negative"}">${fmtMoney(s.expected_roi_pct)}%</td>
+      ${_roiCell(s)}
       <td class="num">${verifiedCell}</td>
       <td class="num">${s.composite_score != null ? s.composite_score.toFixed(1) : "-"}</td>
       <td>${_riskBadge(s.confidence_score)}</td>
@@ -1943,6 +2134,7 @@ function renderOpportunityArchive(data) {
 
 document.getElementById("invalid-skins-clear-btn").addEventListener("click", clearInvalidSkins);
 document.getElementById("mispriced-skins-clear-btn").addEventListener("click", clearMispricedSkins);
+document.getElementById("wear-anomalies-clear-btn").addEventListener("click", clearWearAnomalies);
 
 // "Verify top 50" (Results page): force-queue the leaderboard's top rows into the Stage-2
 // verification queue -- drained one at a time by the same consumer as the automatic queue, so
@@ -2952,6 +3144,20 @@ document.getElementById("reset-all-btn").addEventListener("click", async (e) => 
     e.target.disabled = false;
   }
 });
+document.getElementById("reset-all-data-btn").addEventListener("click", async (e) => {
+  const typed = prompt("This wipes EVERY regenerable cache/registry app-wide: the ML sim population (all agents' simulations, models and progress), rare-pattern scan results, the Steam price cache, and the invalid-skin/mispriced-skin/wear-anomaly/dead-skin registries.\n\nYour real logged trade history, the real ROI model, and your permanent skin blacklist/price overrides are NOT touched.\n\nCannot be undone. Type RESET to confirm:");
+  if (typed !== "RESET") return;
+  e.target.disabled = true;
+  try {
+    const res = await fetch("/api/reset-all-data", { method: "POST" });
+    const data = await res.json();
+    alert("Reset complete. Removed: " + Object.entries(data.removed || {})
+      .map(([k, v]) => `${k}=${v}`).join(", "));
+    location.reload();
+  } finally {
+    e.target.disabled = false;
+  }
+});
 document.getElementById("train-now-btn").addEventListener("click", async () => {
   const btn = document.getElementById("train-now-btn");
   btn.disabled = true;
@@ -2995,42 +3201,101 @@ document.getElementById("export-data-btn").addEventListener("click", () => {
   window.location.href = "/api/export-data";
 });
 
-// ---- Skin price history & prediction ---------------------------------------------------
-let phSuggestTimer = null;
-document.getElementById("ph-skin").addEventListener("input", (e) => {
-  clearTimeout(phSuggestTimer);
-  const q = e.target.value.trim();
-  const box = document.getElementById("ph-suggestions");
-  if (q.length < 2) {
-    box.style.display = "none";
-    return;
-  }
-  phSuggestTimer = setTimeout(async () => {
-    const res = await fetch(`/api/skins?q=${encodeURIComponent(q)}`);
-    const skins = await res.json();
-    skins.forEach(s => { state.skinImageCache[s.name] = s.image; });
-    if (!skins.length) {
+// ---- Shared /api/skins autocomplete (price history, skin blacklist, price overrides) -----
+function wireSkinAutocomplete(inputId, boxId, formId) {
+  let timer = null;
+  document.getElementById(inputId).addEventListener("input", (e) => {
+    clearTimeout(timer);
+    const q = e.target.value.trim();
+    const box = document.getElementById(boxId);
+    if (q.length < 2) {
       box.style.display = "none";
       return;
     }
-    box.innerHTML = skins.map(s => `
-      <div class="suggestion-item" data-name="${encodeURIComponent(s.name)}">
-        ${s.image ? `<img class="skin-thumb" src="${s.image}" alt="" loading="lazy" onerror="this.style.display='none'">` : ""}${s.name}
-      </div>`).join("");
-    box.style.display = "block";
-    box.querySelectorAll(".suggestion-item").forEach(el => {
-      el.addEventListener("click", () => {
-        document.getElementById("ph-skin").value = decodeURIComponent(el.dataset.name);
+    timer = setTimeout(async () => {
+      const res = await fetch(`/api/skins?q=${encodeURIComponent(q)}`);
+      const skins = await res.json();
+      skins.forEach(s => { state.skinImageCache[s.name] = s.image; });
+      if (!skins.length) {
         box.style.display = "none";
+        return;
+      }
+      box.innerHTML = skins.map(s => `
+        <div class="suggestion-item" data-name="${encodeURIComponent(s.name)}">
+          ${s.image ? `<img class="skin-thumb" src="${s.image}" alt="" loading="lazy" onerror="this.style.display='none'">` : ""}${s.name}
+        </div>`).join("");
+      box.style.display = "block";
+      box.querySelectorAll(".suggestion-item").forEach(el => {
+        el.addEventListener("click", () => {
+          document.getElementById(inputId).value = decodeURIComponent(el.dataset.name);
+          box.style.display = "none";
+        });
       });
-    });
-  }, 250);
-});
-document.addEventListener("click", (e) => {
-  if (!e.target.closest("#price-history-form")) {
-    const box = document.getElementById("ph-suggestions");
-    if (box) box.style.display = "none";
+    }, 250);
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(`#${formId}`)) {
+      const box = document.getElementById(boxId);
+      if (box) box.style.display = "none";
+    }
+  });
+}
+
+// ---- Skin price history & prediction ---------------------------------------------------
+wireSkinAutocomplete("ph-skin", "ph-suggestions", "price-history-form");
+
+// ---- Skin blacklist + price override forms (Market intelligence) ------------------------
+wireSkinAutocomplete("bl-skin", "bl-suggestions", "skin-blacklist-form");
+wireSkinAutocomplete("po-skin", "po-suggestions", "price-override-form");
+
+document.getElementById("skin-blacklist-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const skin = document.getElementById("bl-skin").value.trim();
+  if (!skin) return;
+  if (!confirm(`Permanently blacklist "${skin}"?\n\nEvery existing trade-up opportunity containing it (as input OR output) disappears, and the agents/scans/manual builder refuse it until you remove it from the list.`)) return;
+  const res = await fetch("/api/skin-blacklist", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skin, note: document.getElementById("bl-note").value.trim() }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    _flashPanelMsg("skin-blacklist-msg", data.error || "failed", true);
+    return;
   }
+  document.getElementById("bl-skin").value = "";
+  document.getElementById("bl-note").value = "";
+  _flashPanelMsg("skin-blacklist-msg", `Blacklisted ${data.entry.skin} -- existing opportunities containing it are hidden now.`);
+  await loadSkinBlacklist();
+  loadBestSimulations();
+});
+
+document.getElementById("price-override-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const skin = document.getElementById("po-skin").value.trim();
+  const price = parseFloat(document.getElementById("po-price").value);
+  if (!skin || !(price > 0)) {
+    _flashPanelMsg("price-override-msg", "Skin name and a positive price are required.", true);
+    return;
+  }
+  const res = await fetch("/api/price-overrides", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      skin, price,
+      wear: document.getElementById("po-wear").value,
+      stattrak: document.getElementById("po-stattrak").checked,
+      currency: parseInt(document.getElementById("po-currency").value || "1", 10),
+    }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    _flashPanelMsg("price-override-msg", data.error || "failed", true);
+    return;
+  }
+  document.getElementById("po-skin").value = "";
+  document.getElementById("po-price").value = "";
+  _flashPanelMsg("price-override-msg", `Override set: ${data.entry.market_hash_name} = ${data.entry.price} -- existing opportunities re-priced.`);
+  await loadPriceOverrides();
+  loadBestSimulations();
 });
 
 document.getElementById("price-history-form").addEventListener("submit", async (e) => {

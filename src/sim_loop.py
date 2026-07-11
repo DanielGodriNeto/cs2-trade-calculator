@@ -35,9 +35,11 @@ from pathlib import Path
 
 from . import adaptive as adaptive_mod
 from . import agents as agents_mod
+from . import bulk_prices as bulk_prices_mod
 from . import data as data_mod
 from . import evolution as evolution_mod
 from . import invalid_skins as invalid_skins_mod
+from . import user_overrides as user_overrides_mod
 from . import market_reliability as market_reliability_mod
 from . import mutation as mutation_mod
 from . import random_trade as random_trade_mod
@@ -47,6 +49,7 @@ from . import sim_blacklist as sim_blacklist_mod
 from . import simulate as simulate_mod
 from . import steam_prices as steam_prices_mod
 from . import sim_learning as sim_learning_mod
+from . import verified_low_roi as verified_low_roi_mod
 from . import verify_queue as verify_queue_mod
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -143,6 +146,61 @@ def save_checkpoint(path: Path, cp: dict) -> None:
     path.write_text(json.dumps(cp), encoding="utf-8")
 
 
+def _entry_output_unsellable(entry: dict) -> bool:
+    """True when this best-list/archive entry's REVENUE rests on an output priced with no
+    Steam sale evidence behind it -- the retroactive half of the "AWP | Gungnir" fix (see
+    simulate._price's allow_thirdparty note): entries banked BEFORE outputs became
+    steam-only-priced can still carry a third-party-fallback output price, so they're hidden
+    here rather than waiting for an agent to happen to re-simulate the composition.
+
+    A priced output whose exact market_hash_name shows no Steam median sale in ANY of the
+    mirror's 24h-90d windows (bulk_prices.has_market_listing is False -- None, feed down,
+    never filters) could not have gotten that price from Steam. A user price override on that
+    name is exempt: the user's own number is authoritative wherever it came from."""
+    stattrak = bool(entry.get("stattrak"))
+    for o in entry.get("output_distribution") or []:
+        if o.get("price") is None or not (o.get("prob_pct") or 0):
+            continue
+        name = steam_prices_mod.market_hash_name(o.get("skin", ""), o.get("wear", ""), stattrak)
+        if user_overrides_mod.get_override_price(name) is not None:
+            continue
+        if bulk_prices_mod.has_market_listing(name) is False:
+            return True
+    return False
+
+
+def _entry_uses_unreal_collection(entry: dict) -> bool:
+    """True when any leg of this entry references a "collection" the skin database no longer
+    considers real (see data.valid_collection_names / data._is_real_collection) -- catches
+    entries a son banked BEFORE that filter existed (e.g. the upstream feed's "Limited Edition
+    Item" placeholder bucket, a handful of unrelated promotional skins with no genuine
+    drop-pool collection), the same retroactive-cleanup shape _entry_output_unsellable already
+    uses for the Gungnir fix. Checks every distinct collection actually referenced in
+    input_mix (a mixed-collection candidate can have several), not just primary_collection."""
+    valid = data_mod.valid_collection_names()
+    collections = {u.get("collection") for u in (entry.get("input_mix") or []) if u.get("collection")}
+    collections.add(entry.get("primary_collection"))
+    return any(c and c not in valid for c in collections)
+
+
+def _entry_hidden(entry: dict) -> bool:
+    """Every reason an existing best-list/archive entry must not be shown or re-admitted:
+    the user marked the composition done (sim_blacklist), the user permanently blacklisted a
+    skin it touches (user_overrides), its revenue rests on a non-Steam-sellable output
+    (see _entry_output_unsellable), it references a collection the skin database no longer
+    treats as real (see _entry_uses_unreal_collection), or a PRIOR Stage-2 verification already
+    proved this exact composition isn't actually profitable (verified_low_roi.py) -- without
+    this last check a fresh, unverified re-simulation of the same bugged composition would keep
+    resurfacing and keep getting queued for another live Skinport/Buff163/CSFloat check of an
+    answer this tool already has. Shared by _consider_best (admission + self-clean) and both
+    list functions (immediate hiding, no re-simulation needed)."""
+    return (sim_blacklist_mod.is_blacklisted(entry)
+            or user_overrides_mod.entry_contains_blacklisted_skin(entry)
+            or _entry_output_unsellable(entry)
+            or _entry_uses_unreal_collection(entry)
+            or verified_low_roi_mod.is_marked(sim_blacklist_mod.signature_of(entry)))
+
+
 def _consider_best(cp: dict, record, profile: "agents_mod.AgentProfile") -> None:
     """Skips a record flagged low_volume_warning entirely when THIS agent cares enough about
     liquidity to reject it outright (liquidity_importance > 0.5 -- e.g. the ROI Accountant
@@ -173,26 +231,40 @@ def _consider_best(cp: dict, record, profile: "agents_mod.AgentProfile") -> None
              "agent": record.agent, "confidence_score": record.confidence_score,
              "verified_roi_pct": record.verified_roi_pct, "verified_at": record.verified_at}
     # A trade-up the user already executed and blacklisted should never be re-admitted, no
-    # matter how good its ROI keeps looking each round (see sim_blacklist.py). This also drops
-    # any already-stored blacklisted entries from this son's in-memory best list, so a son that
-    # banked one before it was blacklisted self-cleans on its next round (the running son owns
-    # this checkpoint object and persists it after the round -- no cross-thread disk write).
-    if sim_blacklist_mod.is_blacklisted(entry):
+    # matter how good its ROI keeps looking each round (see sim_blacklist.py) -- and the same
+    # goes for one touching a user-blacklisted SKIN, or one whose revenue rests on an output
+    # with no Steam sale evidence (see _entry_hidden). This also drops any already-stored
+    # hidden entries from this son's in-memory best list, so a son that banked one before the
+    # rule/blacklist applied self-cleans on its next round (the running son owns this
+    # checkpoint object and persists it after the round -- no cross-thread disk write).
+    if _entry_hidden(entry):
         return
-    cp["best"] = [e for e in cp["best"] if not sim_blacklist_mod.is_blacklisted(e)]
+    cp["best"] = [e for e in cp["best"] if not _entry_hidden(e)]
     # Auto-dedupe by composition: a son re-simulates the exact same skin/wear/count combination
     # over and over (each run gets a fresh id -- see simulate._new_id), so without this its best
     # list fills up with many copies of one trade-up -- the "it just places the same trade in
     # multiple times" problem. Keep only ONE entry per signature, replacing the stored copy only
-    # when this run scores a higher ROI (so the best-priced instance of the combination wins).
+    # when this run scores a higher EFFECTIVE ROI (verified-aware, see ranking.effective_roi --
+    # so the best-priced instance of the combination wins).
     sig = sim_blacklist_mod.signature_of(entry)
     existing = next((e for e in cp["best"] if sim_blacklist_mod.signature_of(e) == sig), None)
     if existing is not None:
-        if entry["expected_roi_pct"] <= existing["expected_roi_pct"]:
+        # A prior Stage-2 verification (verify_queue.py) already measured this exact
+        # composition's real cross-marketplace ROI -- carry it forward onto the fresh
+        # re-simulation instead of silently discarding it. Without this, a fresh unverified
+        # re-simulation would erase the verification the moment its (possibly still-inflated,
+        # bugged) raw ROI looks better, and the same composition would get queued for another
+        # live Skinport/Buff163/CSFloat check next round even though this tool already knows
+        # the verified answer (see verified_low_roi.py).
+        if existing.get("verified_roi_pct") is not None:
+            entry["verified_roi_pct"] = existing["verified_roi_pct"]
+            entry["price_confidence"] = existing.get("price_confidence")
+            entry["verified_at"] = existing.get("verified_at")
+        if ranking_mod.effective_roi(entry) <= ranking_mod.effective_roi(existing):
             return
         cp["best"].remove(existing)
     cp["best"].append(entry)
-    cp["best"].sort(key=lambda e: e["expected_roi_pct"], reverse=True)
+    cp["best"].sort(key=ranking_mod.effective_roi, reverse=True)
     del cp["best"][BEST_KEPT:]
 
 
@@ -210,9 +282,14 @@ def list_best_simulations(son_id: int | None = None, collection_filter: str | No
     out = []
     for sid in son_ids:
         cp = load_checkpoint(son_checkpoint_file(sid))
-        # Hide blacklisted ("already done") trade-ups immediately, even ones a son banked before
-        # the user blacklisted them and hasn't cycled out of its checkpoint yet (see sim_blacklist).
-        out.extend({**e, "son": sid} for e in cp["best"] if not sim_blacklist_mod.is_blacklisted(e))
+        # Hide blacklisted ("already done") trade-ups, user-blacklisted-skin trade-ups, and
+        # non-Steam-sellable-output entries immediately, even ones a son banked before the rule
+        # applied and hasn't cycled out of its checkpoint yet (see _entry_hidden) -- and apply
+        # any active manual price overrides (cost/ROI recomputed on a copy, see
+        # user_overrides.repriced_entry_copy) BEFORE ranking so Min-ROI filters see the
+        # corrected numbers.
+        out.extend({**user_overrides_mod.repriced_entry_copy(e), "son": sid}
+                   for e in cp["best"] if not _entry_hidden(e))
     if collection_filter:
         out = [e for e in out if collection_filter.lower() in e["primary_collection"].lower()]
     # Cross-son dedupe: the same composition can be independently banked by several sons, so
@@ -317,7 +394,10 @@ def list_all_opportunities(son_id: int | None = None, collection_filter: str | N
     out = []
     for sid in son_ids:
         by_sig = _update_archive_cache(son_sims_file(sid))
-        out.extend({**e, "son": sid} for e in by_sig.values() if not sim_blacklist_mod.is_blacklisted(e))
+        # Same hiding + override-repricing as list_best_simulations -- repriced_entry_copy
+        # never mutates the cached entry, so removing an override later reverts automatically.
+        out.extend({**user_overrides_mod.repriced_entry_copy(e), "son": sid}
+                   for e in by_sig.values() if not _entry_hidden(e))
     if collection_filter:
         out = [e for e in out if collection_filter.lower() in (e["primary_collection"] or "").lower()]
     if min_roi is not None:
@@ -807,6 +887,10 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
     # proposing a contract the game itself would refuse.
     from . import tradability as tradability_mod
     invalid_names = invalid_names | tradability_mod.untradeable_market_names(currency)
+    # And the user's PERMANENT skin blacklist (user_overrides.py) -- cheap cached expansion to
+    # market_hash_names. simulate.simulate() hard-gates these anyway (mutation/evolution can
+    # reintroduce a skin the generator excluded), this just stops the budget being wasted.
+    invalid_names = invalid_names | user_overrides_mod.blacklisted_market_names()
     # Everything currently warm in steam_prices' cache (a plain in-memory dict scan, no network
     # -- iter_cached_entries() is the same helper dead_skin.py's weekly review already reuses),
     # scoped to this currency -- biases generate_batch's candidate construction toward skin/wear

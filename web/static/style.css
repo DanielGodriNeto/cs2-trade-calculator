@@ -49,6 +49,7 @@ header h1 { margin-bottom: 2px; color: var(--accent); }
 .topbar-nav a.active { color: #10131a; background: var(--accent); }
 .topbar-stats { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; color: var(--muted); }
 .topbar-stats .health-headline { margin-bottom: 0; }
+.topbar-stats-secondary { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.95em; }
 #stat-catalogued { color: var(--text); font-weight: 600; }
 
 [data-view] { display: block; }

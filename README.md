@@ -139,7 +139,21 @@ a separate integration requiring API keys from that marketplace, and is a good
     the telemetry files every 6h and commits+pushes a structured archive to a configured git
     repo only when something actually changed. See
     [Automated GitHub backup engine](#automated-github-backup-engine) below.
-28. **Premium spreadsheet workstation** (`/api/export/xlsx`, "Export full spreadsheet" button) --
+28. **Steam-sellable revenue only** (2026-07) -- an output skin's revenue must be backed by
+    actual Steam sale evidence: outputs are never priced from the Skinport/Buff163 fallback
+    anymore. A skin that only trades ABOVE Steam's price cap (e.g. AWP | Gungnir: zero Steam
+    sales in any mirror window, $6k-12k third-party listings) used to be "sold" in the math at
+    a price it can never fetch on Steam, producing absurd fake ROI. Existing best-list entries
+    contaminated this way are hidden retroactively. See
+    [Steam-sellable outputs](#steam-sellable-outputs-the-gungnir-fix) below.
+29. **Permanent skin blacklist & manual price overrides** (2026-07, "Market intelligence"
+    panels / `skin-blacklist` & `price-override` CLI commands) -- user-managed and PERMANENT
+    (unlike every self-healing registry here): blacklist a skin to ban it everywhere (inputs
+    AND outputs, existing trade-ups removed), or set your own price for a skin+wear to
+    override every source and have existing trade-ups' ROI recomputed. See
+    [Permanent skin blacklist & manual price overrides](#permanent-skin-blacklist--manual-price-overrides)
+    below.
+30. **Premium spreadsheet workstation** (`/api/export/xlsx`, "Export full spreadsheet" button) --
     the one-click Excel workbook now opens with three polished, chart-driven sheets (📊 Executive
     Dashboard, 🚀 Live Opportunities, 🛡 Reliability & Audit) in front of the original full-detail
     sheets. Local .xlsx by choice -- see `src/xlsx_export.py`'s docstring for why this replaces a
@@ -206,6 +220,97 @@ same exclusion set `invalid_skins.py` already feeds, but known ahead of time ins
 learned one failed pricing at a time), and the manual builder rejects them with a
 per-skin reason. Degrades gracefully: if the bulk feed is unreachable, nothing is filtered --
 an outage must never brand the whole catalog untradeable.
+
+3. **Real collection, not a data-fallback bucket** (`src/data.py`, 2026-07-11): a skin's
+   "collection" as reported by the upstream feed isn't always a genuine Valve collection with a
+   real drop pool. Every actual CS2 collection -- weapon-case sets and no-case Community/map
+   collections alike -- is named `"The <X> Collection"`; the one exception found in the feed,
+   `"Limited Edition Item"`, is a fallback tag the upstream API applies to a handful of
+   unrelated XP-Shop/promotional skins (e.g. Desert Eagle | Heat Treated, AK-47 | Aphrodite --
+   different weapons, no shared case) that have no real collection at all. Trusting it as a
+   normal collection let the scanner and the guided simulation build "trade-ups" between skins
+   that were never really part of the same drop pool. `data.load_skins()` now drops any
+   collection tag that doesn't match the real naming pattern (`data._is_real_collection`) --
+   general, not a per-skin exclusion -- so a skin whose only tagged collection is a placeholder
+   correctly has no trade-up-eligible collection at all, same as one with zero collections.
+   Already-banked opportunities that reference a since-invalidated collection self-clean out of
+   every best/archive list the next time they're read (`sim_loop._entry_uses_unreal_collection`).
+
+## Steam-sellable outputs (the Gungnir fix)
+
+Every revenue number in this tool means "sell on the Steam Market, minus the 13% fee" -- so an
+output's price must be backed by actual **Steam sale evidence**. `simulate.py` used to fall
+back to the cheapest Skinport/Buff163 listing when Steam had no price for an output, which
+quietly broke that contract for a whole class of skins: anything that only really trades
+**above Steam's price cap**. Verified live (2026-07-11): the mirror's Steam feed carries
+`AWP | Gungnir` with every sale window (24h-90d) null -- zero Steam sales at any wear -- while
+Skinport/Buff163 list it at $6,200-$12,600. Trade-ups producing it were "selling" it at those
+prices, inflating expected ROI by thousands of percent, and nothing flagged it because the
+price was real -- just not realizable on the market the math assumes.
+
+The fix (`simulate._price(allow_thirdparty=False)`, applied to every output):
+
+- **Outputs are priced from Steam-confirmed data only** (cache / mirror / live fetch). No
+  Steam price = that output contributes no revenue; if nothing on the output side has a Steam
+  price, the whole candidate is invalid -- same "refuse rather than fabricate" rule as
+  everywhere else. Such outputs are tagged `not_sellable_on_steam` in their row for
+  visibility when the Steam feed positively confirms the absence.
+- **Inputs keep the third-party fallback** -- buying an input on another marketplace and
+  trading it in is real; selling an output above Steam's cap on Steam is not.
+- **Retroactive**: existing best-list/archive entries whose revenue rests on an output with
+  no Steam sale evidence (`bulk_prices.has_market_listing` is False for that exact
+  market_hash_name) are hidden from the opportunity lists immediately and evicted from
+  checkpoints by the same self-clean `_consider_best` already runs -- no re-simulation
+  needed. A user [price override](#permanent-skin-blacklist--manual-price-overrides) on the
+  output is exempt (your own number is authoritative). Feed outage degrades to no filtering,
+  never to "everything is unsellable".
+
+The classic `tradeups` scan was never affected (it prices outputs via the Steam mirror only);
+this closes the gap in the simulation population, the manual builder, and everything else
+that goes through `simulate.py`.
+
+## Permanent skin blacklist & manual price overrides
+
+Every protective registry above (dead skins, invalid skins, mispriced marks, wear anomalies,
+market reliability) is deliberately temporary and self-healing -- right for transient market
+weirdness, useless when you've personally confirmed a skin's data is garbage and want it gone
+for good. `src/user_overrides.py` adds the user-managed, **PERMANENT** counterpart: nothing
+here expires, decays, or re-checks -- entries change only when you add or remove them
+(dashboard "Market intelligence" panels, `/api/skin-blacklist` + `/api/price-overrides`
+endpoints, or the `skin-blacklist` / `price-override` CLI commands).
+
+**Skin blacklist** (`data/user_skin_blacklist.json`, keyed by bare skin name, all wears and
+StatTrak variants at once). A blacklisted skin is banned as an input **and** as a possible
+output -- a contract that could land on it can't be honestly valued, so the whole trade-up
+goes, not just the one price:
+
+- agents stop proposing candidates containing it (excluded from generation up front, and
+  `simulate.simulate()` hard-rejects anything that slips through mutation/evolution);
+- the `tradeups`/Covert scans skip it as an input and skip any rarity step / case whose
+  output pool contains it (mixed/filler searches apply the same rule to filler collections);
+- the manual builder rejects it with a per-skin reason;
+- every EXISTING opportunity containing it disappears from the leaderboard/archive at once,
+  and sons self-clean their checkpoints on their next round -- same mechanism as the
+  [trade-up blacklist](#blacklisting-a-trade-up-youve-already-done), which stays separate:
+  that one hides a single composition you already executed; this one bans a skin outright.
+
+CLI: `python -m src.main skin-blacklist [--add "AWP | Gungnir" [--note why]] [--remove NAME]`.
+
+**Price overrides** (`data/price_overrides.json`, keyed by full market_hash_name -- skin +
+wear + StatTrak). Your price **wins over every other source**: `steam_prices.get_price()` and
+`get_cached_price()` return it before consulting the cache, the bulk mirror, or a live fetch,
+so every scan, simulation, strategy search, and the manual builder price with it
+automatically (`"source": "user_override"`; never cached, never recorded into price history).
+Entered in any supported currency and converted through the same exchange-rate feed the bulk
+prices use. On top of that, existing best-list/archive entries containing the skin are
+**re-priced at list time** (`repriced_entry_copy`: matching unit/output prices swapped on a
+copy, cost / per-output net profit / expected ROI recomputed with the same after-fee math,
+tagged with a "repriced" badge in the dashboard) -- so a Min-ROI filter catches bugged
+trade-ups immediately, and removing the override reverts everything just as instantly
+(the stored as-simulated numbers are never mutated).
+
+CLI: `python -m src.main price-override [--skin NAME --wear WEAR [--stattrak] --price N
+[--currency C]] [--remove "NAME (WEAR)"]`.
 
 ## Manual trade-up builder
 
@@ -763,6 +868,35 @@ single site is as likely the broken number as the priciest. Pausable from the
 dashboard's "Automatic Stage-2 verification queue" panel (or `python -m src.main verify-queue`
 for the CLI/foreground equivalent) if it ever needs to be turned off.
 
+**Closing the loop: verification results stick, and stop repeating themselves (2026-07-11).**
+Two gaps meant a "bugged" composition (one whose raw simulated ROI looks great only because a
+Steam price is stale/anomalous) could get re-verified over and over, burning Skinport/Buff163/
+CSFloat requests to re-confirm an answer this tool already had:
+
+- `sim_loop._consider_best`'s per-signature dedupe used to keep whichever run of a composition
+  scored the higher **raw** `expected_roi_pct` -- so a fresh, unverified re-simulation of the
+  same bugged composition would silently overwrite (and discard) a verification that had already
+  proven it unprofitable, the moment its still-inflated raw ROI looked better again. It now
+  carries `verified_roi_pct`/`price_confidence`/`verified_at` forward onto the fresh entry
+  instead of dropping them, and compares/sorts by the **verified-aware** effective ROI
+  (`ranking.effective_roi`) rather than the raw estimate.
+- New `src/verified_low_roi.py`: once a composition's verified ROI comes back at or below 0%,
+  its signature (from/to rarity, StatTrak, input skin/wear/count multiset -- same identity
+  `sim_blacklist.py` uses) is marked, self-healing after 24h like `mispriced_skins.py`. A marked
+  composition is (1) hidden from every best/archive list (`sim_loop._entry_hidden`) and
+  self-cleans out of a son's checkpoint next round, (2) skipped by the automatic verify queue
+  (`verify_queue.is_eligible`) so it's never re-queued, and (3) excluded from
+  `sim_learning.train()`'s training set so the surrogate model stops being taught the inflated
+  number.
+
+CSFloat's live per-skin listing lookup (unlike Skinport/Buff163, which are one bulk-mirror fetch
+reused as a dict lookup) also had no cache at all -- every verification of a skin re-fetched
+live even if the exact same skin+wear had just been checked seconds earlier for a different
+candidate. `thirdparty_prices._get_csfloat_price` now caches successful responses (a real price
+*or* a confirmed "no listings") for `CSFLOAT_TTL_SECONDS` (1h -- shorter than Steam's 24h cache
+since these are live buy-now listings, not aggregated sale stats); a transient network/HTTP
+failure is never cached, so a retry isn't poisoned, matching `steam_prices.get_price`'s own rule.
+
 ### Weighted final ranking
 
 `sim_loop.list_best_simulations()` (the CLI's `best-simulations` / the dashboard's "Trade-up
@@ -1068,20 +1202,37 @@ market price.
   else in the app. Every change (seed merges on refresh, manual edits) bumps the version and
   lands in `data/pattern_db_history.jsonl`.
 - **Marketplace scanner** (`src/pattern_scanner.py`): cycles the knowledge base's targets one
-  polite query at a time. **Honest source coverage**: CSFloat is the only supported
-  marketplace whose public listings API returns per-listing float/paint seed/stickers -- and
-  it now requires a (free) API key (`CSFLOAT_API_KEY` env var). Steam listings carry no
-  float/seed publicly; the Skinport/Buff163 mirrors are price-only -- they feed the VALUATION
-  side, not pattern scanning. The scanner's status panel says all of this plainly.
-- **Opportunity detection**: estimated collector value = the skin's cross-market consensus
-  price x the entry's conservative documented premium multiplier; a listing 30%+ below that
-  becomes a ranked opportunity (transparent scoring formula over profit/tier/confidence/float/
-  liquidity -- deliberately NOT a model). Per the spec's cross-verification rule, a base price
-  fewer than 2 sources confirm demotes the opportunity's confidence automatically.
+  polite query at a time, across TWO per-listing sources since 2026-07. **The Steam Market
+  itself**: the classic listings `render` endpoint (kept reachable behind the new Market
+  Beta via its own opt-out cookie, `bMarketOptOut=1`) returns each live listing's price and
+  inspect link; the link is resolved to float/paint seed/paint index/stickers through
+  CSFloat's public INSPECT endpoint (api.csfloat.com -- separate from its key-gated listings
+  API; no key required, one throttled call per listing, cached forever since an item's
+  float/seed never change). This is the only way to buy a matched pattern directly on Steam.
+  Steam rate-limits this endpoint aggressively for anonymous callers (the same policy that
+  killed `priceoverview`) -- a 429/HTML answer puts the Steam source on its own
+  exponentially-growing cooldown (5 min -> 1h), visible in the status panel, while CSFloat
+  scanning continues unaffected. **CSFloat listings**: per-listing float/seed/stickers
+  directly, requires a (free) `CSFLOAT_API_KEY`. The Skinport/Buff163 mirrors are price-only
+  -- they feed the VALUATION side, not pattern scanning. The status panel reports each
+  source's health separately and plainly.
+- **Opportunity detection**: estimated collector value = the skin's base price x the entry's
+  conservative documented premium multiplier. Every listing that matches a documented pattern
+  becomes an opportunity row -- **profitable or not** (2026-07-11: dropped the old hardcoded
+  "30%+ below estimate" hard filter so nothing is hidden; sort/filter by expected profit, price,
+  confidence, etc. instead to find the worthwhile ones). Ranking still uses a transparent
+  scoring formula over profit/tier/confidence/float/liquidity -- deliberately NOT a model. The
+  base price is **Steam-first** (2026-07): the skin's own
+  Steam median-sale price when it exists, falling back to the cross-market consensus only
+  when Steam has no sale evidence -- the mirror's skinport/buff163 dumps conflate
+  souvenir-only items under plain names and can carry listings far above anything Steam pays
+  out, so anchoring collector value to them would manufacture fake edge. Per the spec's
+  cross-verification rule, a base price fewer than 2 sources confirm -- or one that isn't
+  Steam's own sale price -- demotes the opportunity's confidence automatically.
 - **ML constraint, per spec**: no model anywhere in the match path -- pattern classification
   is exclusively documented public knowledge; ML's only permitted role is prioritization.
 - **Dedicated page**: filter by weapon/pattern type/marketplace/min profit/min confidence/
-  float range/tier, sort by best opportunity/profit/premium/confidence/newest; each row shows
+  float range/tier, sort by best opportunity/profit/price/premium/confidence/newest; each row shows
   float, seed, ask vs. estimated collector value, expected profit, confidence, direct listing
   link, the WHY (explanation tooltip) and the documenting source link. Detected opportunities
   also appear on the Results page, clearly tagged **Collector Arbitrage** so they're never

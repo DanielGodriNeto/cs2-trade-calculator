@@ -29,6 +29,8 @@ from pathlib import Path
 
 from . import mispriced_skins as mispriced_skins_mod
 from . import price_report as price_report_mod
+from . import sim_blacklist as sim_blacklist_mod
+from . import verified_low_roi as verified_low_roi_mod
 from .tradeup import STEAM_SELL_FEE
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -67,6 +69,13 @@ def is_eligible(entry: dict) -> bool:
     if entry.get("expected_roi_pct", float("-inf")) <= ROI_THRESHOLD_PCT:
         return False
     if entry.get("cost_basis_source") == "stale":
+        return False
+    # Already proven unprofitable by a PRIOR verification of this exact composition -- see
+    # verified_low_roi.py's module docstring for why re-queuing it here would just burn another
+    # round of rate-limited Skinport/Buff163/CSFloat requests re-confirming an answer this tool
+    # already has. enqueue_forced/enqueue_top deliberately bypass is_eligible (an explicit,
+    # user-triggered audit sweep), so this only guards the automatic path.
+    if verified_low_roi_mod.is_marked(sim_blacklist_mod.signature_of(entry)):
         return False
     all_units = list(entry.get("input_mix") or []) + list(entry.get("output_distribution") or [])
     worst = max((u.get("dead_skin_score", 0.0) or 0.0 for u in all_units), default=0.0)
@@ -168,10 +177,15 @@ def summarize_and_writeback(son_id: int, entry: dict, rows: list,
 
     Also the single place every verification's per-skin gaps feed the mispriced-skin
     registry (mispriced_skins.record_from_rows) -- marking skins the verified market
-    disagrees with Steam about, and clearing ones verified back in line."""
+    disagrees with Steam about, and clearing ones verified back in line -- and the place the
+    whole COMPOSITION's verified ROI feeds verified_low_roi.py, so a composition proven
+    unprofitable stops resurfacing and stops getting re-verified every time a son re-discovers
+    it (see that module's docstring)."""
     verified_roi_pct, price_confidence = _summarize(entry, rows)
     _writeback(son_id, entry["id"], verified_roi_pct, price_confidence)
     mispriced_skins_mod.record_from_rows(rows, currency)
+    if verified_roi_pct is not None:
+        verified_low_roi_mod.record(sim_blacklist_mod.signature_of(entry), verified_roi_pct)
     return verified_roi_pct, price_confidence
 
 

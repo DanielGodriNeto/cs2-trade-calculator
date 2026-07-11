@@ -185,6 +185,21 @@ def get_score(market_hash_name: str, currency: int) -> dict | None:
     return store["skins"].get(_key(market_hash_name, currency))
 
 
+def clear_all() -> int:
+    """Erase every persisted dead-skin score. This is a decaying market signal recomputed
+    from the price cache/history (see module docstring), not simulated/outcome data -- any
+    skin still genuinely thin will simply re-accumulate a score on the next weekly review or
+    inline observation. Returns how many entries were removed. Used by the dashboard's
+    global 'Reset all data' button."""
+    with _write_lock:
+        store = _load_store()
+        n = len(store["skins"])
+        store = {"_last_review_at": None, "skins": {}}
+        SCORES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SCORES_FILE.write_text(json.dumps(store), encoding="utf-8")
+        return n
+
+
 def list_dead_skins(currency: int | None = None) -> list:
     """Every currently-tracked skin whose PERSISTED (decayed) score is above threshold --
     the "dead-skin review list" the spec asks for, surfaced in the dashboard's Market

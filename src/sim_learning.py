@@ -30,7 +30,9 @@ from . import data as data_mod
 from . import market_reliability as market_reliability_mod
 from . import ml_common
 from . import oddsmath
+from . import sim_blacklist as sim_blacklist_mod
 from . import simulate as simulate_mod
+from . import verified_low_roi as verified_low_roi_mod
 
 MODEL_FILENAME = "sim_roi_model.joblib"
 META_FILENAME = "sim_roi_model_meta.json"
@@ -111,7 +113,13 @@ def _not_excluded(r) -> bool:
     Excluded state (see that module's docstring) -- a row can clear the plain volume-based
     dead_skin check yet still rest on a skin currently Excluded for a DIFFERENT reason (a
     verified mispriced gap, an extreme rolling price-deviation z-score), which shouldn't teach
-    this son's search heuristic anything either."""
+    this son's search heuristic anything either. Also excludes a row whose exact composition was
+    itself already Stage-2-verified unprofitable (verified_low_roi.py) -- that row's
+    expected_roi_pct label is now known to be an inflated/bugged estimate, so training on it
+    would just re-teach the model the wrong answer for this composition."""
+    if verified_low_roi_mod.is_marked(
+            sim_blacklist_mod.signature(r.from_rarity, r.to_rarity, r.stattrak, r.input_mix)):
+        return False
     return not market_reliability_mod.any_unit_excluded(
         r.input_mix, r.output_distribution, currency=1, stattrak=r.stattrak)
 
