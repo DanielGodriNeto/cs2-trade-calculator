@@ -952,6 +952,15 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
         if isinstance(record, simulate_mod.SimulationRecord):
             record.agent = state.son_id  # simulate.py itself is agent-agnostic (reused by every
             # son) -- this is the one place that actually knows which agent ran it.
+            if model_status["trained"]:
+                # Same model_status snapshot used to build score_fn above (stable for this whole
+                # round, even if a retrain happens after it -- see the retrain trigger below) --
+                # records this son's own pre-simulation guess for the exact candidate that was
+                # just simulated, so ranking.py can later compare it against the real
+                # expected_roi_pct as an agreement-based trust signal (see ranking.
+                # _ml_agreement_bonus). Cheap: reuses the already-loaded model, no extra I/O.
+                record.ml_predicted_roi_pct = sim_learning_mod.predict_expected_roi(
+                    candidate, state.model_dir, state.sims_file)
             simulate_mod.log_simulation(record, state.sims_file)
             round_floats.append(record.avg_input_float)
             round_rois.append(record.expected_roi_pct)

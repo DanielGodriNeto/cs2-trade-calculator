@@ -22,6 +22,11 @@ Two refinements on top of a plain weighted average of the 5 spec factors:
    half its weighted score, a maximally reliable one is untouched. This makes "beats
    fake high ROI" a real, structural ranking pressure rather than something a large
    enough raw ROI/profit gap could always out-weigh in a plain weighted average.
+
+Confidence also folds in a small, capped bonus (see _ml_agreement_bonus) for how closely the
+discovering agent's OWN sim_learning.py model anticipated this exact candidate's ROI before it
+was simulated -- previously that trained model only ever influenced which candidates got
+sampled (random_trade.py), never how much the final ranking trusts a result once found.
 """
 from . import agents as agents_mod
 from . import dead_skin as dead_skin_mod
@@ -92,13 +97,41 @@ def _liquidity_score(entry: dict) -> float:
     return max(0.0, 100.0 * (1 - hits / len(units)))
 
 
+ML_AGREEMENT_MAX_BONUS = 10.0     # small and deliberately capped -- a secondary trust signal
+# layered on top of the primary cost-basis/dead-skin confidence, never a replacement for it
+ML_AGREEMENT_RESIDUAL_CAP_PP = 25.0  # |predicted - actual| ROI, in percentage points, at or
+# beyond which the bonus is zero -- roughly 3-5x the CV MAE this project's sim-population models
+# typically train at (see sim_learning.TrainResult.validation_mae), so a genuinely well-
+# calibrated model still earns most of the bonus while a wild miss earns none.
+
+
+def _ml_agreement_bonus(entry: dict) -> float:
+    """0-ML_AGREEMENT_MAX_BONUS. Some entries carry ml_predicted_roi_pct (simulate.
+    SimulationRecord.ml_predicted_roi_pct) -- the discovering agent's OWN sim_learning.py model's
+    pre-simulation guess at this exact candidate's ROI, set by sim_loop.run_round() only when
+    that agent already had a trained model at draw time. Comparing it against the exact
+    formula-computed effective_roi is an independent trust signal: a candidate the model
+    confidently anticipated is more likely to reflect a real, learnable pattern than one that
+    caught the model completely off guard -- neither cost-basis freshness nor dead-skin liquidity
+    can see this. The exact math (expected_roi_pct/verified_roi_pct) always stays authoritative;
+    a large residual only means this specific find is the kind of thing the model doesn't
+    understand well yet, not that the entry itself is wrong. None (no model trained yet at draw
+    time, or a legacy record predating this field) contributes no bonus and no penalty."""
+    predicted = entry.get("ml_predicted_roi_pct")
+    if predicted is None:
+        return 0.0
+    residual = abs(predicted - _effective_roi(entry))
+    return ML_AGREEMENT_MAX_BONUS * max(0.0, 1.0 - residual / ML_AGREEMENT_RESIDUAL_CAP_PP)
+
+
 def _confidence_score(entry: dict) -> float:
     """0-100. Prefers the STORED confidence_score (simulate.SimulationRecord.confidence_score,
     computed once at simulate()-time from the same cost-basis-freshness + worst-dead-skin-score
     formula) when present, rather than recomputing it -- falls back to computing it here for
-    entries logged before that field existed. Either way, adds a bonus once this entry has
-    actually been through Stage-2 verification with a clean result -- that part can only be
-    known after the fact, so it's never part of the stored value."""
+    entries logged before that field existed. Either way, adds two bonuses that can only be known
+    after simulate()-time: one once this entry has actually been through Stage-2 verification
+    with a clean result, and one for how well this son's own model anticipated the result (see
+    _ml_agreement_bonus) -- neither is ever part of the stored base value."""
     stored = entry.get("confidence_score")
     if stored is not None:
         base = stored
@@ -115,7 +148,7 @@ def _confidence_score(entry: dict) -> float:
     verified_bonus = 0.0
     if entry.get("verified_roi_pct") is not None:
         verified_bonus = 15.0 if entry.get("price_confidence") == "ok" else 5.0
-    return min(100.0, base + verified_bonus)
+    return min(100.0, base + verified_bonus + _ml_agreement_bonus(entry))
 
 
 def _discovery_value(entry: dict) -> float:
