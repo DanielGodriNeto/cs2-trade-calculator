@@ -212,22 +212,26 @@ def run_backup(force: bool = False) -> dict:
     repo_dir = cfg["repo_dir"]
     archive_path = Path(repo_dir) / archive_name
     try:
-        data_archive_mod.export_archive(archive_path)
+        # Split into <=100 MB parts (see data_archive.export_archive) -- GitHub hard-rejects
+        # any single pushed file over 100 MB, and this worker pushes what it commits.
+        part_paths = data_archive_mod.export_archive(archive_path)
     except (FileNotFoundError, OSError) as e:
         _log("archive_failed", error=str(e))
         result = {"ok": False, "action": "archive_failed", "message": str(e)}
         state["last_result"] = result
         _save_state(state)
         return result
+    part_names = [p.name for p in part_paths]
 
-    ok, out = _git(repo_dir, "add", archive_name)
+    ok, out = _git(repo_dir, "add", *part_names)
     if ok:
         ok, out = _git(repo_dir, "commit", "-m",
-                        f"Automated data backup {ts}: {n_skins} skins, {n_outcomes} outcomes")
+                        f"Automated data backup {ts}: {n_skins} skins, {n_outcomes} outcomes "
+                        f"({len(part_names)} part(s))")
     if not ok:
-        _log("commit_failed", error=out, archive=archive_name)
+        _log("commit_failed", error=out, archive=part_names)
         result = {"ok": False, "action": "commit_failed", "message": out,
-                  "archive": archive_name}
+                  "archive": part_names}
         state["last_result"] = result
         _save_state(state)
         return result
@@ -240,13 +244,13 @@ def run_backup(force: bool = False) -> dict:
     # pushes on top of it (git push sends all pending commits).
     state["last_hashes"] = hashes
     state["last_backup_at"] = now
-    state["last_archive"] = archive_name
+    state["last_archive"] = part_names
     result = {"ok": pushed, "action": "backed_up" if pushed else "pushed_failed_committed_locally",
-              "archive": archive_name, "n_skins": n_skins, "n_outcomes": n_outcomes,
+              "archive": part_names, "n_skins": n_skins, "n_outcomes": n_outcomes,
               "changed_files": changed, "push_output": push_out if not pushed else None}
     state["last_result"] = result
     _save_state(state)
-    _log("backup" if pushed else "push_failed", archive=archive_name, n_skins=n_skins,
+    _log("backup" if pushed else "push_failed", archive=part_names, n_skins=n_skins,
          n_outcomes=n_outcomes, changed_files=changed,
          **({} if pushed else {"error": push_out}))
     return result

@@ -460,12 +460,14 @@ def cmd_price_history(args):
 
 def cmd_export_data(args):
     try:
-        path = data_archive_mod.export_archive(args.out)
+        parts = data_archive_mod.export_archive(args.out)
     except FileNotFoundError as e:
         raise SystemExit(f"error: {e}")
-    print(f"Exported accumulated data (outcomes, price history, search checkpoint, ML model) to:")
-    print(f"  {path}")
-    print("\nCommit this file (or track the whole data/ folder directly in git -- it's plain")
+    print(f"Exported accumulated data (outcomes, price history, search checkpoint, ML model) "
+          f"into {len(parts)} part(s), each <=100 MB so GitHub will accept them:")
+    for p in parts:
+        print(f"  {p}")
+    print("\nCommit these files (or track the whole data/ folder directly in git -- it's plain")
     print("JSON/JSONL text, diff-friendly) to carry your training data to another machine.")
 
 
@@ -1028,14 +1030,17 @@ def build_parser():
     p_price_report.set_defaults(func=cmd_price_report)
 
     p_export = sub.add_parser("export-data",
-                               help="Zip data/ (outcomes, price history, search checkpoint, ML model) into a portable archive")
+                               help="Zip data/ (outcomes, price history, search checkpoint, ML model) into portable, <=100 MB archive parts")
     p_export.add_argument("--out", default=None,
-                           help="Output .zip path (default: data-archive-<timestamp>.zip in the project root)")
+                           help="Output .zip path/stem (default: data-archive-<timestamp>.zip in the project root); "
+                                "actual files are written as <stem>_partNNN.zip")
     p_export.set_defaults(func=cmd_export_data)
 
     p_import = sub.add_parser("import-data",
                                help="Import a data archive -- merges with existing data by default (safe across machines)")
-    p_import.add_argument("--file", required=True, help="Path to a .zip archive created by export-data")
+    p_import.add_argument("--file", required=True,
+                           help="Path to one .zip part created by export-data (sibling parts with the same "
+                                "prefix are found automatically) or a directory of parts")
     p_import.add_argument("--replace", action="store_true",
                            help="Replace data/ entirely instead of merging (DESTRUCTIVE -- discards anything not in the archive)")
     p_import.set_defaults(func=cmd_import_data)

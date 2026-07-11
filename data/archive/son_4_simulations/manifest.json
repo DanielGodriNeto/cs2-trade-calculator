@@ -1,0 +1,20 @@
+{
+ "source": "data/sons/son_4/simulations.jsonl",
+ "bytes_archived": 4702017,
+ "lines_archived": 952,
+ "part_counters": {
+  "2026-07-11": 1
+ },
+ "chunks": [
+  {
+   "file": "2026-07-11_part001.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 952,
+   "unique_skins": 898,
+   "first_record_at": "2026-07-11 16:47:36",
+   "last_record_at": "2026-07-11 18:04:33",
+   "raw_bytes": 4702017,
+   "gz_bytes": 605562
+  }
+ ]
+}

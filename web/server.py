@@ -14,6 +14,7 @@ import json
 import sys
 import threading
 import time
+import zipfile
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -673,8 +674,18 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 try:
                     with tempfile.TemporaryDirectory() as tmp:
                         tmp_path = Path(tmp) / "data-archive.zip"
-                        archive_path = data_archive_mod.export_archive(tmp_path)
-                        data = archive_path.read_bytes()
+                        # export_archive splits into <=100 MB parts (GitHub's per-file limit
+                        # -- see data_archive.py); bundle them into one outer zip so the
+                        # browser still gets a single one-click download.
+                        parts = data_archive_mod.export_archive(tmp_path)
+                        if len(parts) == 1:
+                            data = parts[0].read_bytes()
+                        else:
+                            bundle_path = Path(tmp) / "data-archive-bundle.zip"
+                            with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_STORED) as bz:
+                                for part in parts:
+                                    bz.write(part, part.name)
+                            data = bundle_path.read_bytes()
                 except FileNotFoundError as e:
                     return self._send_json({"ok": False, "error": str(e)}, 400)
                 ts = time.strftime("%Y%m%d-%H%M%S")
