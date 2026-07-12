@@ -15,10 +15,12 @@
 
 <div class="topbar" id="topbar">
   <nav class="topbar-nav" id="topbar-nav">
-    <a href="#results" data-view-link="results">Results</a>
-    <a href="#calculator" data-view-link="calculator">Trade-Up Calculator</a>
+    <a href="#overview" data-view-link="overview">Overview</a>
+    <a href="#results" data-view-link="results">Opportunities</a>
+    <a href="#calculator" data-view-link="calculator">Calculator</a>
     <a href="#patterns" data-view-link="patterns">Rare Patterns</a>
-    <a href="#ml-lab" data-view-link="ml-lab">ML Lab</a>
+    <a href="#ml-lab" data-view-link="ml-lab">Simulation Lab</a>
+    <a href="#connections" data-view-link="connections">Connections</a>
   </nav>
   <div class="topbar-stats" id="topbar-stats">
     <a class="topbar-scan-status" id="topbar-scan-status" href="#calculator" title="Trade-Up Calculator scan status -- shown here on every page so a background scan (or an error in it) is never invisible just because you're on ML Lab/Results/Rare Patterns">Scan: <span id="topbar-scan-status-value">loading&hellip;</span></a>
@@ -44,7 +46,7 @@
   <button id="reset-all-data-btn" class="danger" title="Wipes every regenerable cache/registry app-wide: the ML sim population, rare-pattern scan results, the Steam price cache, and the invalid-skin/mispriced-skin/wear-anomaly/dead-skin registries. Never touches your real logged trade history, the real ROI model, or your permanent skin blacklist/price overrides. Cannot be undone.">Reset all data</button>
 </div>
 
-<div data-view="ml-lab" id="view-ml-lab" hidden>
+<div data-view="overview" id="view-overview">
 
 <section class="overview" id="overview-section">
   <h2>Overview</h2>
@@ -57,6 +59,29 @@
     <div class="kpi-card"><div class="kpi-label">Learning progress</div><div class="kpi-value" id="kpi-learning">&mdash;</div></div>
   </div>
 </section>
+
+<section id="overview-nav-section">
+  <h2>Jump to</h2>
+  <div class="nav-card-grid">
+    <a class="nav-card" href="#results"><strong>Opportunities</strong><span>Ranked trade-up finds, leaderboards, archive</span></a>
+    <a class="nav-card" href="#calculator"><strong>Calculator</strong><span>Scan settings, manual trade-up builder</span></a>
+    <a class="nav-card" href="#patterns"><strong>Rare Patterns</strong><span>Collector-pattern arbitrage scanner</span></a>
+    <a class="nav-card" href="#ml-lab"><strong>Simulation Lab</strong><span>6-agent ML population, evolution, training</span></a>
+  </div>
+</section>
+
+<section id="connections-summary-section">
+  <h2>Connections <span class="muted-inline">(<a href="#connections">manage</a>)</span></h2>
+  <div class="conn-summary-grid" id="conn-summary-grid">
+    <a class="conn-chip" href="#connections" id="conn-chip-csfloat">CSFloat: <span>loading&hellip;</span></a>
+    <a class="conn-chip" href="#connections" id="conn-chip-backup">GitHub backup: <span>loading&hellip;</span></a>
+    <a class="conn-chip" href="#connections" id="conn-chip-ntfy">NTFY alerts: <span>loading&hellip;</span></a>
+  </div>
+</section>
+
+</div><!-- /view-overview -->
+
+<div data-view="ml-lab" id="view-ml-lab" hidden>
 
 <details class="methodology" id="methodology-section">
   <summary><h2>How this works &amp; what the numbers mean</h2></summary>
@@ -313,25 +338,6 @@
   </div>
 
   <div class="learning-panel">
-    <h3>Automated GitHub backup (delta-aware, every 6h)</h3>
-    <p class="disclaimer">A background worker wakes every 6 hours, SHA-256-hashes the mutable telemetry files (<code>outcomes.jsonl</code>, <code>price_history.jsonl</code>, <code>dead_skin_scores.json</code>) and compares them against the last successful backup. Unchanged &rarr; logs "No telemetry mutations detected" and sleeps. Changed &rarr; wraps <code>data/</code> into <code>archive_YYYYMMDD_HHMMSS_[skins]skins_[outcomes]outcomes.zip</code> via the same export-data pipeline as the button above, then commits + pushes it to the git repository configured below. Point <code>repo_dir</code> at a local clone of your backup GitHub repo (this project folder itself isn't a git repo). A failed push still commits locally and retries next cycle -- no archive is ever lost.</p>
-    <div class="learning-status" id="backup-status">loading&hellip;</div>
-    <form id="backup-config-form" class="learning-controls">
-      <label><input type="checkbox" id="backup-enabled"> Enabled</label>
-      <label>Local clone path <input type="text" id="backup-repo-dir" placeholder="e.g. C:\Users\me\cs2-backups" size="34"></label>
-      <label>Remote <input type="text" id="backup-remote" placeholder="origin" size="8"></label>
-      <label>Branch <input type="text" id="backup-branch" placeholder="main" size="8"></label>
-      <button type="submit">Save config</button>
-      <button type="button" id="backup-run-now-btn" class="secondary" title="Runs a full archive + commit + push cycle immediately, skipping the delta check">Run backup now</button>
-    </form>
-    <div id="backup-run-result" class="muted-inline"></div>
-    <table id="backup-log-table">
-      <thead><tr><th>Event</th><th>Archive / message</th><th>When</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <div class="learning-panel">
     <h3>Log a trade-up outcome <span class="count" id="outcomes-count"></span></h3>
     <p class="disclaimer">Record what actually happened after you executed a trade-up manually (this tool never auto-buys/sells). One line per input wear: <code>skin name:wear:count:unit price paid</code> -- for "wear" you can type either a bracket name (<code>Field-Tested</code>) or the exact float you saw on the listing (e.g. <code>0.18</code>), rounded to 2 decimals; a float is automatically mapped to its wear bracket and the precise value is kept alongside it for training data.</p>
     <form id="outcome-form">
@@ -380,8 +386,10 @@
 </section>
 
 <section id="market-intel-section">
-  <h2>Market intelligence</h2>
-  <p class="disclaimer">Skins currently flagged as illiquid/unreliable (temporary scores, reviewed weekly -- never a permanent blacklist, see <code>src/dead_skin.py</code>). A skin drops off this list on its own once its market activity looks healthy again.</p>
+  <details class="methodology" id="market-intel-details">
+    <summary><h2>Market intelligence &amp; risk registries <span class="count" id="market-intel-badge"></span></h2></summary>
+    <div class="methodology-body">
+  <p class="disclaimer">Diagnostic registries -- dead/invalid/mispriced skins, wear anomalies, reliability overrides, your permanent blacklist and price overrides. Collapsed by default since these are reference tables you check occasionally, not every session; nothing here was removed, just tucked away. Skins flagged below are temporary scores (reviewed weekly -- never a permanent blacklist, see <code>src/dead_skin.py</code>) and drop off on their own once market activity looks healthy again.</p>
   <table id="dead-skins-table">
     <thead><tr><th>Skin</th><th>Score</th><th>Reasons</th><th>Last seen</th></tr></thead>
     <tbody></tbody>
@@ -468,6 +476,8 @@
     <tbody></tbody>
   </table>
   <div id="price-overrides-empty" class="empty-state"></div>
+    </div>
+  </details>
 </section>
 
 <section id="price-history-section">
@@ -816,7 +826,12 @@
 
 <section id="patterns-section">
   <h2>Rare Pattern Opportunities <span class="muted-inline">(Collector Arbitrage -- independent from the trade-up optimizer)</span></h2>
-  <p class="disclaimer">Scans marketplace listings for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;). <strong>Every matched listing is shown here, profitable or not</strong> -- nothing is hidden behind a hardcoded profit bar; use the filters and "Sort by" below (expected profit, price, confidence&hellip;) to find the ones worth buying. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation is <strong>Steam-first</strong>: the base price a pattern's premium multiplies is the skin's own Steam median-sale price when it exists, and only falls back to the Steam/Skinport/Buff163 consensus (with confidence demoted) when Steam has no sale evidence. Two per-listing sources are scanned: <strong>the Steam Market itself</strong> (each listing's inspect link is resolved to float + paint seed via CSFloat's public inspect endpoint -- no key needed; Steam's aggressive rate limits put this source on a visible cooldown when hit) and <strong>CSFloat listings</strong> (float + seed directly, needs a free <code>CSFLOAT_API_KEY</code>) -- the scanner status below says plainly when either source can't scan. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
+  <details class="methodology">
+    <summary>How this works</summary>
+    <div class="methodology-body">
+  <p class="disclaimer">Scans marketplace listings for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;). <strong>Every matched listing is shown here, profitable or not</strong> -- nothing is hidden behind a hardcoded profit bar; use the filters and "Sort by" below (expected profit, price, confidence&hellip;) to find the ones worth buying. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation is <strong>Steam-first</strong>: the base price a pattern's premium multiplies is the skin's own Steam median-sale price when it exists, and only falls back to the Steam/Skinport/Buff163 consensus (with confidence demoted) when Steam has no sale evidence. Two per-listing sources are scanned: <strong>the Steam Market itself</strong> (each listing's inspect link is resolved to float + paint seed via CSFloat's public inspect endpoint -- no key needed; Steam's aggressive rate limits put this source on a visible cooldown when hit) and <strong>CSFloat listings</strong> (float + seed directly, needs a free CSFloat API key -- set one on the <a href="#connections">Connections</a> page) -- the scanner status below says plainly when either source can't scan. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
+    </div>
+  </details>
 
   <div class="learning-panel">
     <h3>Marketplace scanner</h3>
@@ -892,6 +907,60 @@
 </section>
 
 </div><!-- /view-patterns -->
+
+<div data-view="connections" id="view-connections" hidden>
+
+<section id="connections-section">
+  <h2>Connections</h2>
+  <p class="disclaimer">API keys and integrations this dashboard talks to. Everything below is stored locally in <code>connections.local.json</code> at the project root -- deliberately kept outside <code>data/</code> so it's never swept into the GitHub backup archive below or pushed anywhere.</p>
+
+  <div class="learning-panel" id="csfloat-panel">
+    <h3>CSFloat API key <span class="conn-badge" id="csfloat-badge">&hellip;</span></h3>
+    <p class="disclaimer">Optional, free (csfloat.com). Powers float/paint-seed lookups for the Rare Patterns scanner and third-party price verification elsewhere in the app. Leaving this blank just means those two features stay off -- everything else works fine without it.</p>
+    <form id="csfloat-config-form" class="learning-controls" autocomplete="off">
+      <label>API key <input type="password" id="csfloat-key-input" placeholder="paste key, or leave blank to keep current" size="34"></label>
+      <button type="submit">Save</button>
+    </form>
+    <div id="csfloat-config-msg" class="empty-state" style="display:none;"></div>
+    <div class="learning-status" id="csfloat-status"></div>
+  </div>
+
+  <div class="learning-panel" id="github-backup-panel">
+    <h3>GitHub backup <span class="conn-badge" id="backup-badge">&hellip;</span> <span class="muted-inline">(delta-aware, every 6h)</span></h3>
+    <p class="disclaimer">A background worker wakes every 6 hours, SHA-256-hashes the mutable telemetry files (<code>outcomes.jsonl</code>, <code>price_history.jsonl</code>, <code>dead_skin_scores.json</code>) and compares them against the last successful backup. Unchanged &rarr; logs "No telemetry mutations detected" and sleeps. Changed &rarr; wraps <code>data/</code> into <code>archive_YYYYMMDD_HHMMSS_[skins]skins_[outcomes]outcomes.zip</code> via the same export-data pipeline as the Simulation Lab's export button, then commits + pushes it to the git repository configured below. Point <code>repo_dir</code> at a local clone of your backup GitHub repo (this project folder itself isn't a git repo). A failed push still commits locally and retries next cycle -- no archive is ever lost.</p>
+    <div class="learning-status" id="backup-status">loading&hellip;</div>
+    <form id="backup-config-form" class="learning-controls">
+      <label><input type="checkbox" id="backup-enabled"> Enabled</label>
+      <label>Local clone path <input type="text" id="backup-repo-dir" placeholder="e.g. C:\Users\me\cs2-backups" size="34"></label>
+      <label>Remote <input type="text" id="backup-remote" placeholder="origin" size="8"></label>
+      <label>Branch <input type="text" id="backup-branch" placeholder="main" size="8"></label>
+      <button type="submit">Save config</button>
+      <button type="button" id="backup-run-now-btn" class="secondary" title="Runs a full archive + commit + push cycle immediately, skipping the delta check">Run backup now</button>
+    </form>
+    <div id="backup-run-result" class="muted-inline"></div>
+    <table id="backup-log-table">
+      <thead><tr><th>Event</th><th>Archive / message</th><th>When</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="learning-panel" id="ntfy-panel">
+    <h3>NTFY push alerts <span class="conn-badge" id="ntfy-badge">&hellip;</span></h3>
+    <p class="disclaimer">Free phone push notifications (<a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy.sh</a> -- no account needed) the moment a high-ROI trade-up or underpriced rare-pattern listing turns up, without keeping the dashboard open. Install the ntfy app, pick a private hard-to-guess topic name, subscribe to it in the app, then enter the same topic below. Checked every 5 minutes against data the dashboard has already scanned -- no extra Steam/CSFloat requests.</p>
+    <form id="ntfy-config-form" class="learning-controls" autocomplete="off">
+      <label><input type="checkbox" id="ntfy-enabled"> Enabled</label>
+      <label>Topic <input type="text" id="ntfy-topic" placeholder="e.g. cs2-alerts-x7f2q" size="20"></label>
+      <label>Server <input type="text" id="ntfy-server" placeholder="https://ntfy.sh" size="20"></label>
+      <label>Min trade-up ROI % <input type="number" id="ntfy-roi-threshold" step="1" value="100"></label>
+      <label>Min pattern edge % <input type="number" id="ntfy-pattern-threshold" step="1" value="100"></label>
+      <button type="submit">Save</button>
+      <button type="button" id="ntfy-test-btn" class="secondary">Send test notification</button>
+    </form>
+    <div id="ntfy-config-msg" class="empty-state" style="display:none;"></div>
+  </div>
+</section>
+
+</div><!-- /view-connections -->
 
 <script src="/app.js"></script>
 </body>

@@ -72,6 +72,14 @@ OPPORTUNITIES_FILE = DATA_DIR / "pattern_opportunities.json"
 CSFLOAT_LISTINGS_URL = "https://csfloat.com/api/v1/listings"
 CSFLOAT_API_KEY = os.environ.get("CSFLOAT_API_KEY")  # optional, shared with thirdparty_prices
 
+
+def configure_csfloat_key(key: str | None):
+    """Live setter for CSFLOAT_API_KEY, mirroring thirdparty_prices.configure_csfloat_key() --
+    this module keeps its own separate module-level constant (see the comment above), so the
+    dashboard's Connections settings page has to call both setters, not just one."""
+    global CSFLOAT_API_KEY
+    CSFLOAT_API_KEY = key or None
+
 # Steam Market per-listing scan (see module docstring, "STEAM MARKET"): the listings render
 # endpoint returns each live listing's price AND its inspect-link template; the CSFloat
 # INSPECT API (public, key optional) resolves an inspect link to float/seed/index/stickers.

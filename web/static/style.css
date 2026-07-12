@@ -697,13 +697,76 @@ td.profit-negative { color: var(--loss); }
   background: rgba(235, 75, 75, 0.15); color: var(--loss);
 }
 
-#market-intel-section {
+/* #market-intel-section is now just a thin wrapper -- the inner #market-intel-details (class
+   "methodology") owns the panel chrome, avoiding a box-within-a-box look. */
+#market-intel-section { margin-bottom: 8px; }
+
+/* Topbar consolidation: turn the plain comma-separated stat rows into a single row of compact
+   chips (same visual language as .tag-*/.reliability-badge elsewhere) instead of dense running
+   text -- same data, easier to scan at a glance. */
+.topbar-stats span, .topbar-stats a.topbar-scan-status {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 2px 10px;
+}
+.topbar-stats span.health-headline { background: none; padding: 0; font-weight: 600; }
+.topbar-stats-secondary { opacity: 0.85; }
+
+/* Overview page: KPI grid reuses .kpi-grid/.kpi-card already defined above; these are new. */
+.nav-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.nav-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s;
 }
+.nav-card:hover { border-color: var(--accent); }
+.nav-card strong { color: var(--accent); font-size: 1.02em; }
+.nav-card span { color: var(--muted); font-size: 0.85em; }
+
+.conn-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+.conn-chip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-decoration: none;
+  color: var(--text);
+  font-size: 0.9em;
+  gap: 8px;
+}
+.conn-chip:hover { border-color: var(--accent); }
+.conn-chip span { font-weight: 600; }
+.conn-chip span.conn-ok { color: var(--profit); }
+.conn-chip span.conn-off { color: var(--muted); }
+
+/* CSFloat/GitHub/NTFY panel badges (Connections page) -- same configured/not convention as
+   .reliability-badge, .pat-conf etc elsewhere in this file. */
+.conn-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 600;
+  background: rgba(255, 255, 255, 0.06); color: var(--muted);
+}
+.conn-badge.conn-ok { background: rgba(76, 175, 80, 0.18); color: var(--profit); }
+.conn-badge.conn-off { background: rgba(255, 255, 255, 0.06); color: var(--muted); }
+.conn-badge.conn-error { background: rgba(235, 75, 75, 0.18); color: var(--loss); }
 
 /* Basic responsive support -- this project previously had zero @media rules, so anything
    narrower than a laptop viewport (tablet/phone) just overflowed the whole page silently.
@@ -716,5 +779,5 @@ td.profit-negative { color: var(--loss); }
   .topbar-nav, .topbar-stats { flex-wrap: wrap; }
   table { display: block; overflow-x: auto; white-space: nowrap; }
   .table-scroll table { display: table; white-space: normal; }
-  .kpi-grid, .leaderboards-grid { grid-template-columns: 1fr; }
+  .kpi-grid, .leaderboards-grid, .nav-card-grid, .conn-summary-grid { grid-template-columns: 1fr; }
 }

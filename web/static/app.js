@@ -66,23 +66,78 @@ const state = {
   backupFormFilled: false,  // the backup config form is filled from the server ONCE, then left
   // alone -- re-filling it on every 3s poll would clobber whatever the user is typing (the
   // exact async-UI-state-wiped-by-poll failure this dashboard's state rules exist to prevent).
+  lastConnectionsStatus: null,  // most recent /api/connections/status payload
+  connectionsFormFilled: false, // same fill-once-guard idea as backupFormFilled, for the
+  // CSFloat/NTFY forms on the new Connections page.
 };
 
-// Client-side view switcher for the top nav (ML Lab / Results / Trade-Up Calculator) -- all
-// three views' markup lives in the same document (see index.html's data-view divs) and share
-// this one app.js/state, so switching is just a hash-driven show/hide, never a page reload.
-// This keeps every existing render/poll function working unmodified regardless of which view
-// is currently visible, since the DOM elements they target always exist -- only their
-// visibility changes.
-// "results" is the default/landing view (not "ml-lab") -- a daily user wants to see actionable
-// trade-up opportunities first, not scroll past the ML population's internal telemetry to find
-// them. ML Lab is still one click away via the top nav, just no longer what a fresh page load
-// (or an unrecognized/empty hash) shows.
-const VIEWS = ["results", "calculator", "patterns", "ml-lab"];
+// Client-side view switcher for the top nav -- every view's markup lives in the same document
+// (see index.html's data-view divs) and shares this one app.js/state, so switching is just a
+// hash-driven show/hide, never a page reload. This keeps every existing render/poll function
+// working unmodified regardless of which view is currently visible, since the DOM elements they
+// target always exist -- only their visibility changes.
+// "overview" is the default/landing view -- a daily user wants a KPI/status snapshot first, not
+// scroll past a single feature's internals to get oriented. Every other view (including the
+// original "results"/"ml-lab" ids -- kept as-is internally, only their nav labels changed, so no
+// other JS in this file needs to know about the rename) is one click away via the top nav.
+const VIEWS = ["overview", "results", "calculator", "patterns", "ml-lab", "connections"];
 
 function currentView() {
   const hash = (location.hash || "").replace("#", "");
-  return VIEWS.includes(hash) ? hash : "results";
+  return VIEWS.includes(hash) ? hash : "overview";
+}
+
+// Chart.js gives a canvas a 0x0 size forever if it's first created while its container is
+// hidden/display:none (a hidden tab, a collapsed <details>, a collapsed .collapse-btn panel) --
+// it writes explicit "width: 0px; height: 0px" straight onto the canvas's inline style at
+// creation time. Confirmed live (both this session's own testing and Chart.js's known behavior
+// here): once that's happened, NEITHER a bare chart.resize() NOR an explicit
+// chart.resize(width, height) recovers it, even when the container's own getBoundingClientRect
+// reports a correct non-zero size by then -- responsive:true's ResizeObserver doesn't reliably
+// re-fire off that starting state either. The only reliable fix is destroy + recreate. Since
+// this codebase's "chart exists -> just .update()" fast path (every renderXChart function)
+// never re-measures the DOM, simply destroying the broken instance and clearing it from
+// state.charts is enough: the next 3s poll tick's "state.charts.X doesn't exist -> create new
+// Chart()" branch recreates it fresh, now inside a visible container, with zero changes needed
+// to any individual renderXChart function. state.charts holds either a Chart instance directly
+// (singleton charts) or a plain object keyed by son_id (the per-agent small-multiples grids) --
+// this walks both shapes. Call this any time a chart's container might have just become
+// visible; only charts actually stuck at 0x0 are touched, so a healthy chart's legend-toggle
+// state (e.g. renderAgentStatsChart's per-dataset hidden flags) survives untouched.
+// Uses setTimeout, deliberately NOT requestAnimationFrame -- rAF only fires for an actively
+// rendering/foregrounded tab (confirmed live: it never fired at all in one test environment,
+// silently no-opping this entire function), while all we actually need is "run after the
+// current synchronous DOM mutation (the hidden-attribute toggle) has applied," which a 0ms
+// timeout guarantees regardless of tab visibility/focus.
+function resizeAllCharts() {
+  setTimeout(() => {
+    let wearBracketDestroyed = false;
+    for (const [key, value] of Object.entries(state.charts)) {
+      if (!value) continue;
+      if (typeof value.resize === "function") {
+        if (value.canvas && value.canvas.width === 0) {
+          value.destroy();
+          delete state.charts[key];
+          if (key === "wearBracket") wearBracketDestroyed = true;
+        }
+      } else if (typeof value === "object") {
+        for (const [subKey, chart] of Object.entries(value)) {
+          if (chart && typeof chart.resize === "function" && chart.canvas && chart.canvas.width === 0) {
+            chart.destroy();
+            delete value[subKey];
+          }
+        }
+      }
+    }
+    // Every other destroyed chart gets recreated for free by the next 3s poll tick (pollStatus
+    // calls every renderXChart function on every tick, regardless of view -- see its own
+    // comment). wearBracketChart is the one exception: it's rendered once from /api/constants
+    // at page load (loadConstants(), never re-polled since wear breakpoints never change at
+    // runtime), so if it was just destroyed nothing would ever recreate it without this.
+    if (wearBracketDestroyed && state.constants) {
+      renderWearBracketChart(state.constants.wear_breakpoints);
+    }
+  }, 0);
 }
 
 function applyView() {
@@ -94,6 +149,7 @@ function applyView() {
   document.querySelectorAll("#topbar-nav a").forEach(a => {
     a.classList.toggle("active", a.dataset.viewLink === view);
   });
+  resizeAllCharts();
 }
 window.addEventListener("hashchange", applyView);
 applyView();
@@ -369,9 +425,10 @@ async function pollStatus() {
       loadConvergenceStatus(), loadVerifyQueueStatus(), loadDeadSkins(), loadInvalidSkins(),
       loadSimLeaderboards(), loadBlacklist(), loadMispricedSkins(), loadWearAnomalies(), loadMarketReliability(),
       loadEvolutionStatus(), loadRecoveryLog(), loadPatternsStatus(), loadPatternOpportunities(),
-      loadBackupStatus(), loadSkinBlacklist(), loadPriceOverrides(),
+      loadBackupStatus(), loadSkinBlacklist(), loadPriceOverrides(), loadConnectionsStatus(),
     ]);
     renderOverview();
+    updateMarketIntelBadge();
   } catch (e) {
     document.getElementById("status-value").textContent = "disconnected";
     const topbarVal = document.getElementById("topbar-scan-status-value");
@@ -1134,6 +1191,117 @@ function renderBackupStatus(b) {
       <td>${r.archive || r.message || r.reason || r.error || ""}</td>
       <td>${fmtTime(r.at)}</td>
     </tr>`).join("");
+}
+
+// ---- Connections (CSFloat key / GitHub backup status / NTFY alerts) ------------------------
+async function loadConnectionsStatus() {
+  const res = await fetch("/api/connections/status");
+  state.lastConnectionsStatus = await res.json();
+  renderConnectionsStatus(state.lastConnectionsStatus);
+}
+
+function _setConnBadge(id, ok, textOk, textOff) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = ok ? textOk : textOff;
+  el.className = "conn-badge " + (ok ? "conn-ok" : "conn-off");
+}
+
+function _setConnChip(id, label, ok, textOk, textOff) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const span = el.querySelector("span");
+  span.textContent = ok ? textOk : textOff;
+  span.className = ok ? "conn-ok" : "conn-off";
+  el.childNodes[0].textContent = `${label}: `;
+}
+
+function renderConnectionsStatus(c) {
+  if (!c) return;
+
+  _setConnBadge("csfloat-badge", c.csfloat.configured, "configured", "not set");
+  const csfloatStatusEl = document.getElementById("csfloat-status");
+  if (csfloatStatusEl) {
+    csfloatStatusEl.textContent = c.csfloat.configured
+      ? `current key: ${c.csfloat.masked_key || "(set)"}`
+      : (c.csfloat.note || "no key set -- Rare Patterns' CSFloat source and third-party price checks that need it stay skipped, never an error.");
+  }
+
+  const backupOk = !!(c.github_backup && c.github_backup.configured);
+  _setConnBadge("backup-badge", backupOk, "configured", "not set");
+
+  const ntfyOk = !!(c.ntfy && c.ntfy.configured && c.ntfy.enabled);
+  _setConnBadge("ntfy-badge", ntfyOk, "active", c.ntfy && c.ntfy.configured ? "saved, disabled" : "not set");
+  if (!state.connectionsFormFilled && c.ntfy) {
+    state.connectionsFormFilled = true;
+    const enabledEl = document.getElementById("ntfy-enabled");
+    const topicEl = document.getElementById("ntfy-topic");
+    const serverEl = document.getElementById("ntfy-server");
+    const roiEl = document.getElementById("ntfy-roi-threshold");
+    const patEl = document.getElementById("ntfy-pattern-threshold");
+    if (enabledEl) enabledEl.checked = !!c.ntfy.enabled;
+    if (topicEl) topicEl.value = c.ntfy.topic || "";
+    if (serverEl) serverEl.value = c.ntfy.server || "https://ntfy.sh";
+    if (roiEl && c.ntfy.roi_threshold_pct != null) roiEl.value = c.ntfy.roi_threshold_pct;
+    if (patEl && c.ntfy.pattern_threshold_pct != null) patEl.value = c.ntfy.pattern_threshold_pct;
+  }
+
+  // Overview page's compact summary chips -- same three connections, terser labels.
+  _setConnChip("conn-chip-csfloat", "CSFloat", c.csfloat.configured, "configured", "not set");
+  _setConnChip("conn-chip-backup", "GitHub backup", backupOk, "configured", "not set");
+  _setConnChip("conn-chip-ntfy", "NTFY alerts", ntfyOk, "active", "off");
+}
+
+document.getElementById("csfloat-config-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const keyInput = document.getElementById("csfloat-key-input");
+  const body = {};
+  if (keyInput.value.trim()) body.csfloat_api_key = keyInput.value.trim();
+  const res = await fetch("/api/connections/config", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  keyInput.value = "";
+  _flashPanelMsg("csfloat-config-msg", data.ok ? "Saved." : (data.error || "Save failed."), !data.ok);
+  await loadConnectionsStatus();
+});
+
+document.getElementById("ntfy-config-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = {
+    ntfy_enabled: document.getElementById("ntfy-enabled").checked,
+    ntfy_topic: document.getElementById("ntfy-topic").value.trim(),
+    ntfy_server: document.getElementById("ntfy-server").value.trim(),
+    ntfy_roi_threshold_pct: parseFloat(document.getElementById("ntfy-roi-threshold").value) || 100,
+    ntfy_pattern_threshold_pct: parseFloat(document.getElementById("ntfy-pattern-threshold").value) || 100,
+  };
+  const res = await fetch("/api/connections/config", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  _flashPanelMsg("ntfy-config-msg", data.ok ? "Saved." : (data.error || "Save failed."), !data.ok);
+  await loadConnectionsStatus();
+});
+
+document.getElementById("ntfy-test-btn").addEventListener("click", async () => {
+  const res = await fetch("/api/connections/ntfy/test", { method: "POST" });
+  const data = await res.json();
+  _flashPanelMsg("ntfy-config-msg", data.ok ? "Test notification sent -- check your phone." : (data.error || "Send failed."), !data.ok);
+});
+
+// Market-intelligence accordion badge: sums the row counts of every table inside it so the
+// closed-by-default summary still tells you at a glance whether anything's actually flagged,
+// without needing a dedicated server endpoint -- these tables are already rendered by their
+// own load*/render* functions on every poll, this just counts what's already in the DOM.
+function updateMarketIntelBadge() {
+  const tableIds = ["dead-skins-table", "mispriced-skins-table", "wear-anomalies-table",
+    "market-reliability-table", "invalid-skins-table", "skin-blacklist-table", "price-overrides-table"];
+  const total = tableIds.reduce((sum, id) => {
+    const tbody = document.querySelector(`#${id} tbody`);
+    return sum + (tbody ? tbody.children.length : 0);
+  }, 0);
+  const badge = document.getElementById("market-intel-badge");
+  if (badge) badge.textContent = total > 0 ? `(${total} flagged)` : "(none flagged)";
 }
 
 function renderOverview() {
@@ -3077,7 +3245,16 @@ document.querySelectorAll(".collapse-btn").forEach(btn => {
     const hidden = target.style.display === "none";
     target.style.display = hidden ? "" : "none";
     btn.textContent = hidden ? "Hide" : "Show";
+    if (hidden) resizeAllCharts();  // just revealed -- any chart inside was possibly born at 0x0
   });
+});
+
+// Same 0x0-on-hidden-container problem as the tab/.collapse-btn cases above, but for native
+// <details> elements (methodology's feature-importance/calibration charts, the new market-
+// intelligence accordion) -- a "toggle" event fires on both open AND close, resizeAllCharts()
+// is cheap/idempotent so no need to distinguish.
+document.querySelectorAll("details").forEach(el => {
+  el.addEventListener("toggle", () => { if (el.open) resizeAllCharts(); });
 });
 
 document.getElementById("export-profitable-collections-btn").addEventListener("click", (e) => {

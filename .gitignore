@@ -42,3 +42,8 @@ credentials.json
 # pushed to GitHub even though this repo's own auto-backup would otherwise happily zip it up.
 /SETUP_NOTES.md
 /run_watch.bat
+
+# Dashboard "Connections" settings (src/connections_config.py): CSFloat API key + NTFY topic.
+# Deliberately kept OUTSIDE data/ and out of git for the same reason as SETUP_NOTES.md above --
+# data/ is tracked and auto-backed-up wholesale, so any secret has to live here instead.
+/connections.local.json
