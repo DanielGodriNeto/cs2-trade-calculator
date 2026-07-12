@@ -33,6 +33,17 @@ def configured() -> bool:
     return bool(NTFY_TOPIC)
 
 
+def configure(topic: str | None, server: str | None = None):
+    """Live setter for NTFY_TOPIC/NTFY_SERVER, same pattern as thirdparty_prices's
+    configure_csfloat_key() -- lets the dashboard's Connections settings page apply a saved
+    topic/server without a process restart. An empty/falsy server falls back to the public
+    default rather than clearing it, since ntfy.sh is the sane default for anyone who hasn't
+    self-hosted."""
+    global NTFY_TOPIC, NTFY_SERVER
+    NTFY_TOPIC = topic or None
+    NTFY_SERVER = server or "https://ntfy.sh"
+
+
 def notify(title: str, message: str, *, priority: str = "default", tags: list[str] | None = None,
            click_url: str | None = None) -> bool:
     """Sends one push notification. priority: min|low|default|high|urgent (ntfy.sh convention).

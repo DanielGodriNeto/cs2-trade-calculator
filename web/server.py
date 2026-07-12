@@ -59,6 +59,9 @@ from src import recovery as recovery_mod
 from src import pattern_db as pattern_db_mod
 from src import pattern_scanner as pattern_scanner_mod
 from src import backup_engine as backup_engine_mod
+from src import connections_config as connections_config_mod
+from src import alerts as alerts_mod
+from src import watch_loop as watch_loop_mod
 import tempfile
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -333,6 +336,75 @@ def rate_limit_watchdog(state: ScanState):
             state.wake_event.set()
 
 
+DASHBOARD_ALERTS_INTERVAL_SECONDS = 300  # 5 min -- independent of the 3s UI poll
+
+
+def dashboard_alerts_loop(state: ScanState, stop_event: threading.Event):
+    """Lightweight sibling to watch_loop.py's standalone CLI watcher (see that module's own
+    docstring/run_cycle) -- reuses its exact cooldown-state file, alert keys, and notify format
+    (imported directly, not duplicated) so a user who ALSO runs `python -m src.main watch`
+    never gets double-alerted for the same opportunity. Deliberately does NOT re-scan from
+    scratch like watch_loop.py's CLI does: it only reads state.tradeups (the dashboard's own
+    already-computed scan results, refreshed by whatever scan the user already started) and
+    pattern_scanner's already-populated opportunity store -- zero extra Steam/CSFloat calls
+    beyond whatever the dashboard's own scans were already making.
+
+    No-ops entirely unless connections_config's ntfy_enabled + ntfy_topic are both set --
+    re-checked fresh every tick, so toggling it off in the Connections page takes effect within
+    one cycle without a server restart."""
+    while not stop_event.wait(DASHBOARD_ALERTS_INTERVAL_SECONDS):
+        cfg = connections_config_mod.load_config()
+        if not cfg.get("ntfy_enabled") or not cfg.get("ntfy_topic"):
+            continue
+        roi_threshold = cfg.get("ntfy_roi_threshold_pct", 100.0)
+        pattern_threshold = cfg.get("ntfy_pattern_threshold_pct", 100.0)
+        alert_state = watch_loop_mod._load_state()
+        changed = False
+
+        with state.lock:
+            tradeups_snapshot = list(state.tradeups)
+        for r in tradeups_snapshot:
+            if r.roi_pct < roi_threshold:
+                continue
+            key = f"tradeup:{r.collection}:{r.from_rarity}:{r.to_rarity}:{r.stattrak}"
+            if watch_loop_mod._should_alert(alert_state, key):
+                title = f"Trade-up +{r.roi_pct:.0f}% ROI"
+                body = (f"{r.collection}: {r.from_rarity} -> {r.to_rarity}"
+                        f"{' (StatTrak)' if r.stattrak else ''}\n"
+                        f"Cost ${r.cost:.2f} -> ${r.expected_revenue_after_fee:.2f} after fees "
+                        f"(profit ${r.profit:+.2f})")
+                alerts_mod.notify(watch_loop_mod._ascii(title), watch_loop_mod._ascii(body),
+                                   priority="high", tags=["moneybag"])
+                watch_loop_mod._mark_alerted(alert_state, key)
+                changed = True
+
+        try:
+            pattern_opps = pattern_scanner_mod.list_opportunities(sort="profit")
+        except Exception:
+            pattern_opps = []
+        for o in pattern_opps:
+            ask = o.get("asking_price")
+            profit = o.get("expected_profit")
+            if not ask or profit is None:
+                continue
+            roi = (profit / ask) * 100.0
+            if roi < pattern_threshold:
+                continue
+            key = f"pattern:{o.get('listing_id')}"
+            if watch_loop_mod._should_alert(alert_state, key):
+                title = f"Rare pattern +{roi:.0f}% under value"
+                body = (f"{o.get('weapon')} | {o.get('skin')} ({o.get('wear')}) -- {o.get('pattern_label')}\n"
+                        f"Ask ${ask:.2f}, worth ~${o.get('estimated_collector_value'):.2f} "
+                        f"on {o.get('marketplace')}")
+                alerts_mod.notify(watch_loop_mod._ascii(title), watch_loop_mod._ascii(body),
+                                   priority="high", tags=["gem"], click_url=o.get("listing_url"))
+                watch_loop_mod._mark_alerted(alert_state, key)
+                changed = True
+
+        if changed:
+            watch_loop_mod._save_state(alert_state)
+
+
 class QuietThreadingHTTPServer(ThreadingHTTPServer):
     """Like ThreadingHTTPServer, but doesn't dump a traceback to the console
     every time a browser tab cancels an in-flight poll (ConnectionAbortedError /
@@ -595,6 +667,26 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 return self._send_json(pattern_db_mod.list_history(limit=limit))
             if path == "/api/backup/status":
                 return self._send_json(backup_engine_mod.get_status(backup_worker))
+            if path == "/api/connections/status":
+                cfg = connections_config_mod.load_config()
+                thirdparty_stats = thirdparty_prices_mod.get_stats()
+                pattern_status = pattern_scan_state.snapshot()
+                return self._send_json({
+                    "csfloat": {
+                        "configured": thirdparty_stats["csfloat"]["configured"],
+                        "masked_key": connections_config_mod.masked_key(cfg.get("csfloat_api_key")),
+                        "note": pattern_status.get("csfloat_key_note"),
+                    },
+                    "github_backup": backup_engine_mod.get_status(backup_worker),
+                    "ntfy": {
+                        "configured": alerts_mod.configured(),
+                        "enabled": bool(cfg.get("ntfy_enabled")),
+                        "topic": cfg.get("ntfy_topic"),
+                        "server": cfg.get("ntfy_server"),
+                        "roi_threshold_pct": cfg.get("ntfy_roi_threshold_pct"),
+                        "pattern_threshold_pct": cfg.get("ntfy_pattern_threshold_pct"),
+                    },
+                })
             if path == "/api/constants":
                 return self._send_json({
                     "steam_sell_fee_pct": tradeup_mod.STEAM_SELL_FEE * 100,
@@ -826,6 +918,31 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 # dashboard can show the result of THIS run rather than "check back later".
                 result = backup_engine_mod.run_backup(force=True)
                 return self._send_json({"ok": result.get("ok", False), "result": result})
+
+            if path == "/api/connections/config":
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                cfg = connections_config_mod.save_config(body)
+                connections_config_mod.apply_to_runtime(cfg)
+                return self._send_json({"ok": True, "config": {
+                    "csfloat_configured": bool(cfg.get("csfloat_api_key")),
+                    "csfloat_masked_key": connections_config_mod.masked_key(cfg.get("csfloat_api_key")),
+                    "ntfy_enabled": cfg.get("ntfy_enabled"),
+                    "ntfy_topic": cfg.get("ntfy_topic"),
+                    "ntfy_server": cfg.get("ntfy_server"),
+                    "ntfy_roi_threshold_pct": cfg.get("ntfy_roi_threshold_pct"),
+                    "ntfy_pattern_threshold_pct": cfg.get("ntfy_pattern_threshold_pct"),
+                }})
+            if path == "/api/connections/ntfy/test":
+                if not alerts_mod.configured():
+                    return self._send_json({"ok": False, "error": "no NTFY topic configured -- save one first"}, 400)
+                ok = alerts_mod.notify("CS2 dashboard test notification",
+                                        "If you can see this, NTFY alerts are wired up correctly.",
+                                        priority="default", tags=["white_check_mark"])
+                return self._send_json({"ok": ok} if ok else
+                                        {"ok": False, "error": "send failed -- check the topic/server and your network"})
 
             if path == "/api/market-reliability/override":
                 try:
@@ -1259,9 +1376,19 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
 
 
 def main():
+    # Apply any previously-saved Connections settings (CSFloat key, NTFY topic/server) before
+    # anything else starts -- see src/connections_config.py for why this lives outside data/.
+    connections_config_mod.apply_to_runtime()
+
     state = ScanState()
     threading.Thread(target=scan_loop, args=(state,), daemon=True).start()
     threading.Thread(target=rate_limit_watchdog, args=(state,), daemon=True).start()
+
+    # Dashboard NTFY alerts (see dashboard_alerts_loop above): safe to auto-start, it no-ops
+    # entirely until a topic is saved AND enabled in the Connections page, and only reads
+    # data the dashboard's own scans have already computed -- no extra network calls.
+    dashboard_alerts_stop = threading.Event()
+    threading.Thread(target=dashboard_alerts_loop, args=(state, dashboard_alerts_stop), daemon=True).start()
 
     # Retrain-watch loop: safe to auto-start -- it only polls outcomes.stats() (cheap, no
     # network) until enough new logged outcomes exist to actually retrain.
