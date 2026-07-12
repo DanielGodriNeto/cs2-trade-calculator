@@ -65,6 +65,18 @@ EMA_ALPHA = 0.5  # how much a fresh review moves the persisted score toward the 
 
 _write_lock = threading.Lock()
 
+_cache_lock = threading.Lock()
+_cache: dict = {"mtime": None, "store": None, "checked_at": 0.0}
+_STAT_INTERVAL_SECONDS = 5.0  # how often the cache re-stats the file for freshness -- same
+# convention as market_reliability._history_index's _HISTORY_STAT_INTERVAL_SECONDS. Without
+# this cache, get_score() (and market_reliability.market_metrics(), which calls it once per
+# unit per training row) re-read and re-parsed this WHOLE file from disk on every single call --
+# fine at a few hundred entries, but training_weight() re-derives EVERY row's weight on every
+# retrain, so this cost scaled with the accumulated training set and was measured as the
+# dominant cost of a retrain on a long-running son (confirmed: round time for one population
+# "son" grew from ~163s/round early on to ~957s/round once its training set reached ~2800 rows,
+# tracking this exact O(rows) unbounded-disk-read pattern).
+
 
 def _stability(history: list) -> bool:
     """True if recorded price_history points for a skin+wear look unstable (coefficient
@@ -143,21 +155,46 @@ def non_volume_score(score: float, reasons: list | None) -> float:
 # --- Persisted, decaying store (weekly-reviewed) --------------------------------------
 
 def _load_store() -> dict:
+    """Lazy in-process cache keyed by the file's mtime (re-stat'd at most once per
+    _STAT_INTERVAL_SECONDS) -- see the module-level comment above _cache for why. Returns the
+    SAME cached dict object across calls (not a copy); every caller that mutates it already
+    follows up with _save_store(), which refreshes the cache to match, so a stale read is never
+    served after a write."""
+    global _cache
+    now = time.time()
+    with _cache_lock:
+        if _cache["store"] is not None and now - _cache["checked_at"] < _STAT_INTERVAL_SECONDS:
+            return _cache["store"]
     if not SCORES_FILE.exists():
-        return {"_last_review_at": None, "skins": {}}
-    try:
-        store = json.loads(SCORES_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"_last_review_at": None, "skins": {}}
-    store.setdefault("_last_review_at", None)
-    store.setdefault("skins", {})
-    return store
+        with _cache_lock:
+            if _cache["store"] is None:
+                _cache["store"] = {"_last_review_at": None, "skins": {}}
+            _cache["mtime"] = None
+            _cache["checked_at"] = now
+            return _cache["store"]
+    mtime = SCORES_FILE.stat().st_mtime
+    with _cache_lock:
+        if _cache["store"] is not None and _cache["mtime"] == mtime:
+            _cache["checked_at"] = now
+            return _cache["store"]
+        try:
+            store = json.loads(SCORES_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            store = {"_last_review_at": None, "skins": {}}
+        store.setdefault("_last_review_at", None)
+        store.setdefault("skins", {})
+        _cache = {"mtime": mtime, "store": store, "checked_at": now}
+        return store
 
 
 def _save_store(store: dict) -> None:
+    global _cache
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with _write_lock:
         SCORES_FILE.write_text(json.dumps(store), encoding="utf-8")
+        mtime = SCORES_FILE.stat().st_mtime
+    with _cache_lock:
+        _cache = {"mtime": mtime, "store": store, "checked_at": time.time()}
 
 
 def _key(market_hash_name: str, currency: int) -> str:
@@ -191,12 +228,16 @@ def clear_all() -> int:
     skin still genuinely thin will simply re-accumulate a score on the next weekly review or
     inline observation. Returns how many entries were removed. Used by the dashboard's
     global 'Reset all data' button."""
+    global _cache
     with _write_lock:
         store = _load_store()
         n = len(store["skins"])
         store = {"_last_review_at": None, "skins": {}}
         SCORES_FILE.parent.mkdir(parents=True, exist_ok=True)
         SCORES_FILE.write_text(json.dumps(store), encoding="utf-8")
+        mtime = SCORES_FILE.stat().st_mtime
+        with _cache_lock:
+            _cache = {"mtime": mtime, "store": store, "checked_at": time.time()}
         return n
 
 
