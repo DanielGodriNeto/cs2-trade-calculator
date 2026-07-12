@@ -419,8 +419,11 @@ WEIGHT_MINOR_DISAGREEMENT = 0.75
 WEIGHT_STEAM_ONLY = 0.35        # priced on Steam alone -- usable, but far less trusted
 WEIGHT_ANOMALY = 0.0            # currently Excluded -- keep the row, contribute nothing
 
-SOURCE_DISAGREEMENT_PCT = 25.0  # cheapest-vs-priciest source gap above this = "disagreement"
-# (matches price_report.HIGH_SPREAD_THRESHOLD_PCT's intent for the cached-feed variant)
+SOURCE_DISAGREEMENT_PCT = 25.0  # cheapest-vs-priciest THIRD-PARTY source gap above this =
+# "disagreement" (matches price_report.HIGH_SPREAD_THRESHOLD_PCT's intent for the cached-feed
+# variant). Deliberately compares Skinport vs Buff163 only, never Steam -- see
+# source_agreement_pct's comment in market_metrics() for why Steam can't be part of this
+# spread.
 
 
 def market_metrics(market_hash_name: str, currency: int) -> dict:
@@ -441,16 +444,36 @@ def market_metrics(market_hash_name: str, currency: int) -> dict:
     n = len(values)
     consensus = statistics.median(values) if values else None
     variance = statistics.pvariance(values) if n >= 2 else None
-    if n >= 2 and consensus:
-        spread_frac = (values[-1] - values[0]) / consensus
-        agreement = round(max(0.0, 100.0 * (1.0 - min(1.0, spread_frac))), 1)
+
+    # source_agreement_pct measures whether the INDEPENDENT third-party feeds (Skinport,
+    # Buff163) corroborate each other -- deliberately EXCLUDING Steam. Steam Community Market
+    # runs a resale fee that leaves its price structurally ~25-50% above Skinport/Buff163 for
+    # nearly every skin (confirmed empirically 2026-07 -- e.g. AK-47 Nightwish: steam 89.72 vs
+    # skinport 59.37 / buff163 60.11), so a spread that includes Steam reads as "disagreement"
+    # almost universally regardless of actual data quality, making the signal useless for both
+    # market_confidence here and training_weight's any_disagreement check below. Steam's own
+    # gap vs the market is already a first-class, separately-calibrated signal elsewhere --
+    # dead_skin.py's large_price_gap bucket (cached feed) and mispriced_skins.py's active_gap
+    # (live-verified) -- both of which already feed compute_state()/dead_skin_score, which
+    # training_weight also checks (state == "excluded"/"suspicious"). So dropping Steam here
+    # doesn't lose that signal, it just stops re-measuring it a second time, badly.
+    thirdparty_values = sorted(v for k, v in prices.items() if k != "steam")
+    if len(thirdparty_values) >= 2:
+        tp_consensus = statistics.median(thirdparty_values)
+        if tp_consensus:
+            spread_frac = (thirdparty_values[-1] - thirdparty_values[0]) / tp_consensus
+            agreement = round(max(0.0, 100.0 * (1.0 - min(1.0, spread_frac))), 1)
+        else:
+            agreement = None
     else:
         agreement = None
 
     stored = dead_skin_mod.get_score(market_hash_name, currency)
     liquidity = round(max(0.0, 100.0 - (stored["score"] if stored else 0.0)), 1)
 
-    # Confidence: how much cross-checking actually backs this skin's price right now.
+    # Confidence: how much cross-checking actually backs this skin's price right now -- "high"
+    # now means all 3 feeds present AND the two independent ones actually agree with each
+    # other, a real corroboration rather than "Steam agrees with its own fee markup".
     if n >= 3 and (agreement or 0) >= 75:
         confidence = "high"
     elif n >= 2:
@@ -474,10 +497,16 @@ def training_weight(input_mix: list, output_distribution: list, currency: int,
     Walks every counted unit exactly like any_unit_excluded (reusing the same name
     construction), but instead of a binary gate it classifies the WHOLE sample by its
     weakest signal: any Excluded unit -> anomaly (0); no unit priced by any third-party
-    source -> steam-only; partial third-party coverage, any Suspicious unit, or any
-    cheapest-vs-priciest source gap over SOURCE_DISAGREEMENT_PCT -> minor disagreement;
-    otherwise fully verified. Questionable samples keep their row -- only their influence
-    shrinks (the caller passes these as sklearn sample_weights, see ml_common.fit_best_model)."""
+    source -> steam-only; a THIRD-PARTY MINORITY (n_with_thirdparty*2 <= len(units)), any
+    Suspicious unit, or any cheapest-vs-priciest source gap over SOURCE_DISAGREEMENT_PCT ->
+    minor disagreement; otherwise fully verified. Deliberately a MAJORITY gate rather than
+    requiring every unit covered: a strict all-units requirement left fully_verified at
+    ~0 rows across every population (a 10-unit trade-up needs all 10 priced on Skinport/
+    Buff163 simultaneously, which almost never happens), so the weighting ladder was
+    paying its full computational cost for no real differentiation. Requiring a majority
+    still means the sample's price picture is mostly cross-checked, just not unanimously.
+    Questionable samples keep their row -- only their influence shrinks (the caller passes
+    these as sklearn sample_weights, see ml_common.fit_best_model)."""
     units = list(input_mix or []) + list(output_distribution or [])
     if not units:
         return WEIGHT_STEAM_ONLY, "no_units"
@@ -503,7 +532,7 @@ def training_weight(input_mix: list, output_distribution: list, currency: int,
                 any_disagreement = True
     if n_with_thirdparty == 0:
         return WEIGHT_STEAM_ONLY, "steam_only"
-    if any_suspicious or any_disagreement or n_with_thirdparty < len(units):
+    if any_suspicious or any_disagreement or n_with_thirdparty * 2 <= len(units):
         return WEIGHT_MINOR_DISAGREEMENT, "minor_disagreement"
     return WEIGHT_FULLY_VERIFIED, "fully_verified"
 
