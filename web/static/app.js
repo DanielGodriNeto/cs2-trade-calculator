@@ -74,11 +74,15 @@ const state = {
 // This keeps every existing render/poll function working unmodified regardless of which view
 // is currently visible, since the DOM elements they target always exist -- only their
 // visibility changes.
-const VIEWS = ["ml-lab", "results", "patterns", "calculator"];
+// "results" is the default/landing view (not "ml-lab") -- a daily user wants to see actionable
+// trade-up opportunities first, not scroll past the ML population's internal telemetry to find
+// them. ML Lab is still one click away via the top nav, just no longer what a fresh page load
+// (or an unrecognized/empty hash) shows.
+const VIEWS = ["results", "calculator", "patterns", "ml-lab"];
 
 function currentView() {
   const hash = (location.hash || "").replace("#", "");
-  return VIEWS.includes(hash) ? hash : "ml-lab";
+  return VIEWS.includes(hash) ? hash : "results";
 }
 
 function applyView() {

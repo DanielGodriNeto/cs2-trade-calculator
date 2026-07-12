@@ -105,6 +105,12 @@ ML_AGREEMENT_RESIDUAL_CAP_PP = 25.0  # |predicted - actual| ROI, in percentage p
 # calibrated model still earns most of the bonus while a wild miss earns none.
 
 
+ML_AGREEMENT_UNVERIFIED_SCALE = 0.5  # see _ml_agreement_bonus: halved when effective_roi is still
+# the Steam/third-party-derived expected_roi_pct estimate rather than a Stage-2-verified number --
+# two theoretically-derived numbers (the sim model's guess and simulate.py's own formula estimate)
+# agreeing is a weaker trust signal than the model agreeing with a verified, execution-checked ROI.
+
+
 def _ml_agreement_bonus(entry: dict) -> float:
     """0-ML_AGREEMENT_MAX_BONUS. Some entries carry ml_predicted_roi_pct (simulate.
     SimulationRecord.ml_predicted_roi_pct) -- the discovering agent's OWN sim_learning.py model's
@@ -116,12 +122,23 @@ def _ml_agreement_bonus(entry: dict) -> float:
     can see this. The exact math (expected_roi_pct/verified_roi_pct) always stays authoritative;
     a large residual only means this specific find is the kind of thing the model doesn't
     understand well yet, not that the entry itself is wrong. None (no model trained yet at draw
-    time, or a legacy record predating this field) contributes no bonus and no penalty."""
+    time, or a legacy record predating this field) contributes no bonus and no penalty.
+
+    CAVEAT (do not remove without re-reading): sim_learning.py's model and simulate.py's
+    expected_roi_pct both ultimately derive from the same Steam/third-party listing-price data,
+    which only weakly represents true liquidity/execution risk (a listing price is not a
+    guaranteed fill). Until an entry has a real verified_roi_pct (Stage-2 price verification),
+    "agreement" here means two model-adjacent numbers correlate, not that real-world execution
+    risk is low -- so the bonus is scaled down by ML_AGREEMENT_UNVERIFIED_SCALE unless the entry
+    is already verified, where the comparison carries more weight."""
     predicted = entry.get("ml_predicted_roi_pct")
     if predicted is None:
         return 0.0
     residual = abs(predicted - _effective_roi(entry))
-    return ML_AGREEMENT_MAX_BONUS * max(0.0, 1.0 - residual / ML_AGREEMENT_RESIDUAL_CAP_PP)
+    bonus = ML_AGREEMENT_MAX_BONUS * max(0.0, 1.0 - residual / ML_AGREEMENT_RESIDUAL_CAP_PP)
+    if entry.get("verified_roi_pct") is None:
+        bonus *= ML_AGREEMENT_UNVERIFIED_SCALE
+    return bonus
 
 
 def _confidence_score(entry: dict) -> float:

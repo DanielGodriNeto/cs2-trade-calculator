@@ -15,10 +15,10 @@
 
 <div class="topbar" id="topbar">
   <nav class="topbar-nav" id="topbar-nav">
-    <a href="#ml-lab" data-view-link="ml-lab">ML Lab</a>
     <a href="#results" data-view-link="results">Results</a>
-    <a href="#patterns" data-view-link="patterns">Rare Patterns</a>
     <a href="#calculator" data-view-link="calculator">Trade-Up Calculator</a>
+    <a href="#patterns" data-view-link="patterns">Rare Patterns</a>
+    <a href="#ml-lab" data-view-link="ml-lab">ML Lab</a>
   </nav>
   <div class="topbar-stats" id="topbar-stats">
     <a class="topbar-scan-status" id="topbar-scan-status" href="#calculator" title="Trade-Up Calculator scan status -- shown here on every page so a background scan (or an error in it) is never invisible just because you're on ML Lab/Results/Rare Patterns">Scan: <span id="topbar-scan-status-value">loading&hellip;</span></a>
@@ -44,7 +44,7 @@
   <button id="reset-all-data-btn" class="danger" title="Wipes every regenerable cache/registry app-wide: the ML sim population, rare-pattern scan results, the Steam price cache, and the invalid-skin/mispriced-skin/wear-anomaly/dead-skin registries. Never touches your real logged trade history, the real ROI model, or your permanent skin blacklist/price overrides. Cannot be undone.">Reset all data</button>
 </div>
 
-<div data-view="ml-lab" id="view-ml-lab">
+<div data-view="ml-lab" id="view-ml-lab" hidden>
 
 <section class="overview" id="overview-section">
   <h2>Overview</h2>
@@ -500,7 +500,7 @@
 
 </div><!-- /view-ml-lab -->
 
-<div data-view="results" id="view-results" hidden>
+<div data-view="results" id="view-results">
 
 <section id="results-section">
   <h2>Results</h2>
@@ -565,14 +565,22 @@
         <select id="opp-agent-filter"><option value="">any</option></select>
       </label>
     </div>
+    <div class="table-scroll">
     <table id="best-simulations-table">
       <thead><tr>
         <th>Agent</th><th>Collection</th><th>From</th><th>To</th><th>StatTrak</th>
-        <th>Cost</th><th>ROI %</th><th>Verified ROI %</th><th>Composite score</th>
-        <th>Confidence</th><th>Dead-skin risk</th><th>Price basis</th><th>Last verified</th>
+        <th>Cost</th>
+        <th title="The estimated ROI from simulate.py's formula math against current cached/live prices -- theoretical, not yet checked against a real market execution.">ROI %</th>
+        <th title="A Stage-2 live cross-check (Skinport/Buff163/CSFloat) confirmed this exact ROI against real listings -- more trustworthy than the plain ROI % column, but only present once verification has run on this row.">Verified ROI %</th>
+        <th title="Weighted ranking score out of 100: 60% real ROI, 15% profit amount, 10% liquidity, 10% confidence, 5% discovery value -- built so a smaller but reliable profit outranks a fake-looking high ROI resting on illiquid/unverified prices. See 'How this works' for the full formula.">Composite score</th>
+        <th title="0-100 trust score for this row's prices: how fresh the cost-basis data is, whether any counted skin looks like a thin/suspicious 'dead' listing, plus small bonuses once verified or once the agent's own ML model correctly anticipated this result. Higher is more trustworthy, not higher-ROI.">Confidence</th>
+        <th title="Flags when a counted input or output rests on a skin with unusually few recent sales/listings (see dead_skin.py) -- a low-volume price is easier to fake or for the listing to vanish before you can buy/sell at it.">Dead-skin risk</th>
+        <th title="Where the prices in this row's cost/ROI came from: 'cache' (a fresh recent price), 'stale' (an older but still-usable cached price), or a live/third-party fallback. Fresher basis = more trustworthy ROI.">Price basis</th>
+        <th>Last verified</th>
       </tr></thead>
       <tbody></tbody>
     </table>
+    </div>
   </div>
 
   <h3>Collector Arbitrage Opportunities <span class="count" id="collector-opps-count"></span>
@@ -610,14 +618,22 @@
       <button id="archive-search-btn">Search</button>
       <button class="export-btn" id="export-archive-xlsx-btn" title="Every opportunity, agent stat, and model metric in one formatted Excel workbook with charts">Export full spreadsheet (.xlsx)</button>
     </div>
+    <div class="table-scroll">
     <table id="archive-table">
       <thead><tr>
         <th>Agent</th><th>Collection</th><th>From</th><th>To</th><th>StatTrak</th>
-        <th>Cost</th><th>ROI %</th><th>Verified ROI %</th><th>Composite score</th>
-        <th>Confidence</th><th>Dead-skin risk</th><th>Price basis</th><th>Last verified</th>
+        <th>Cost</th>
+        <th title="The estimated ROI from simulate.py's formula math against current cached/live prices -- theoretical, not yet checked against a real market execution.">ROI %</th>
+        <th title="A Stage-2 live cross-check (Skinport/Buff163/CSFloat) confirmed this exact ROI against real listings -- more trustworthy than the plain ROI % column, but only present once verification has run on this row.">Verified ROI %</th>
+        <th title="Weighted ranking score out of 100: 60% real ROI, 15% profit amount, 10% liquidity, 10% confidence, 5% discovery value -- built so a smaller but reliable profit outranks a fake-looking high ROI resting on illiquid/unverified prices. See 'How this works' for the full formula.">Composite score</th>
+        <th title="0-100 trust score for this row's prices: how fresh the cost-basis data is, whether any counted skin looks like a thin/suspicious 'dead' listing, plus small bonuses once verified or once the agent's own ML model correctly anticipated this result. Higher is more trustworthy, not higher-ROI.">Confidence</th>
+        <th title="Flags when a counted input or output rests on a skin with unusually few recent sales/listings (see dead_skin.py) -- a low-volume price is easier to fake or for the listing to vanish before you can buy/sell at it.">Dead-skin risk</th>
+        <th title="Where the prices in this row's cost/ROI came from: 'cache' (a fresh recent price), 'stale' (an older but still-usable cached price), or a live/third-party fallback. Fresher basis = more trustworthy ROI.">Price basis</th>
+        <th>Last verified</th>
       </tr></thead>
       <tbody></tbody>
     </table>
+    </div>
     <div class="archive-pagination">
       <button id="archive-prev-btn" class="secondary" disabled>&laquo; Prev</button>
       <span id="archive-page-status" class="muted-inline">page 1</span>

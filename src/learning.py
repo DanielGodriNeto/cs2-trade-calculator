@@ -200,6 +200,17 @@ def train() -> TrainResult:
                                           sample_weight=sample_weight)
     model, mae, importances = selection.model, selection.cv_mae, selection.feature_importances
 
+    # Real prediction-interval bounds from the winner's own out-of-fold residuals (honest held
+    # -out errors), NOT a per-prediction estimate -- replaces the old n-samples-only "high/medium
+    # /low" confidence label, which was identical for every prediction regardless of how well
+    # that specific candidate was actually supported. np.percentile on a small residual array is
+    # still meaningful (it's the same array CV MAE is computed from) and degrades gracefully
+    # (wide/uninformative interval) exactly when the sample is too small to trust, which is more
+    # honest than a fixed n-based tier.
+    residuals = np.array(selection.oof_residuals, dtype=float)
+    residual_p10 = float(np.percentile(residuals, 10))
+    residual_p90 = float(np.percentile(residuals, 90))
+
     global _loaded_model, _loaded_model_mtime
     with _lock:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -207,7 +218,8 @@ def train() -> TrainResult:
         meta = {"trained_at": time.time(), "n_samples": len(sold), "validation_mae": mae,
                 "feature_importances": importances, "feature_names": FEATURE_NAMES,
                 "sklearn_version": _sklearn_version(), "model_name": selection.model_name,
-                "candidate_maes": selection.candidate_maes}
+                "candidate_maes": selection.candidate_maes,
+                "residual_p10": residual_p10, "residual_p90": residual_p90}
         META_FILE.write_text(json.dumps(meta), encoding="utf-8")
         _loaded_model = None  # force a reload on the next predict_roi() call
         _loaded_model_mtime = None
@@ -246,10 +258,17 @@ def get_model_status() -> dict:
 def predict_roi(*, collection: str, from_rarity: str | None, input_mix: list, stattrak: bool,
                  cost_paid: float, predicted_roi_pct: float | None,
                  thirdparty_gap_pct: float | None = None, filler_input: dict | None = None) -> dict | None:
-    """Returns {"ml_predicted_roi_pct": float, "confidence": "low"|"medium"|"high"} or None if
-    the model isn't trained yet -- callers must treat None as "no ML signal available", never
-    fabricate a number. confidence is a simple n_samples-based heuristic, NOT a real
-    per-prediction uncertainty estimate."""
+    """Returns {"ml_predicted_roi_pct": float, "confidence": "low"|"medium"|"high",
+    "predicted_roi_range": [lo, hi] | None} or None if the model isn't trained yet -- callers
+    must treat a None return as "no ML signal available", never fabricate a number.
+
+    confidence is still a simple n_samples-based heuristic (kept for backward-compat display),
+    but predicted_roi_range is a REAL uncertainty signal: an 80% interval built from the trained
+    model's own out-of-fold residuals at training time (see ml_common.fit_best_model's
+    oof_residuals). It's a single global interval width, not a per-candidate heteroscedastic
+    estimate -- still an honest improvement over confidence's identical label for every
+    prediction, since it reflects the model's actual held-out error spread (including outlier
+    skew) rather than just how many rows it saw. None if the loaded meta predates this field."""
     global _loaded_model, _loaded_model_mtime
     status = get_model_status()
     if not status["trained"] or not MODEL_FILE.exists():
@@ -274,4 +293,7 @@ def predict_roi(*, collection: str, from_rarity: str | None, input_mix: list, st
     pred = float(model.predict(np.array([features], dtype=float))[0])
     n = status["n_samples"]
     confidence = "high" if n >= 200 else "medium" if n >= 50 else "low"
-    return {"ml_predicted_roi_pct": pred, "confidence": confidence}
+    roi_range = None
+    if status.get("residual_p10") is not None and status.get("residual_p90") is not None:
+        roi_range = [pred + status["residual_p10"], pred + status["residual_p90"]]
+    return {"ml_predicted_roi_pct": pred, "confidence": confidence, "predicted_roi_range": roi_range}

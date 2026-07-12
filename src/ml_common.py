@@ -39,6 +39,14 @@ class ModelSelectionResult:
     cv_mae: float                    # the winner's own cross-validated MAE (honest, pre-refit)
     candidate_maes: dict             # every candidate's CV MAE, for transparency
     feature_importances: dict        # permutation importance, computed against the winner
+    oof_residuals: list              # winner's out-of-fold (y - prediction) values, honest
+                                      # held-out errors -- callers use the empirical quantiles of
+                                      # this list to build a real prediction interval instead of
+                                      # a fake n-samples-based confidence label. Ridge is the one
+                                      # remaining squared-error-loss candidate (no robust-loss
+                                      # linear option is bundled here); flagged as an accepted
+                                      # limitation rather than fixed, since Ridge rarely wins on
+                                      # this project's nonlinear trade-up math (see README).
 
 
 def _candidates(random_state: int, n_samples: int) -> dict:
@@ -55,8 +63,13 @@ def _candidates(random_state: int, n_samples: int) -> dict:
     # for columns like predicted_roi_pct/collection_mean_roi that are sometimes unknown) -- fed
     # the raw X directly, no imputation. min_samples_leaf scales down for small n so it doesn't
     # default to a leaf size that's a large fraction of the whole training set.
+    # loss="absolute_error" (not the sklearn default squared_error) so the tree's own split/leaf
+    # objective matches the MAE metric this module selects and reports on -- trade-up ROI is
+    # heavy-tailed (rare huge wins), so a squared-error objective would let a couple of outlier
+    # rows dominate the fit while the MAE shown to the user hides that sensitivity.
     hgb = HistGradientBoostingRegressor(
-        random_state=random_state, max_depth=4, min_samples_leaf=max(3, min(20, n_samples // 8)))
+        loss="absolute_error", random_state=random_state, max_depth=4,
+        min_samples_leaf=max(3, min(20, n_samples // 8)))
 
     # RandomForest/Ridge can't handle NaN -- mean-impute first (Ridge also needs scaling, since
     # its L2 penalty is sensitive to feature scale; RandomForest doesn't strictly need scaling
@@ -64,7 +77,8 @@ def _candidates(random_state: int, n_samples: int) -> dict:
     rf = make_pipeline(
         SimpleImputer(strategy="mean"),
         RandomForestRegressor(random_state=random_state, n_estimators=300, max_depth=5,
-                               min_samples_leaf=max(2, n_samples // 15)))
+                               min_samples_leaf=max(2, n_samples // 15),
+                               criterion="absolute_error"))
     ridge = make_pipeline(SimpleImputer(strategy="mean"), StandardScaler(), Ridge(alpha=1.0))
 
     return {"hist_gradient_boosting": hgb, "random_forest": rf, "ridge": ridge}
@@ -95,31 +109,43 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     per-fold fit weights through sklearn's pipeline parameter naming across the >=1.3 range
     this project supports. None behaves exactly like the historical unweighted path."""
     import numpy as np
-    from sklearn.model_selection import KFold
+    from sklearn.model_selection import RepeatedKFold
     from sklearn.metrics import mean_absolute_error
     from sklearn.inspection import permutation_importance
     from sklearn.base import clone
 
     n = len(y)
     n_folds = min(5, n)
-    cv = KFold(n_splits=n_folds, shuffle=True, random_state=random_state)
+    # RepeatedKFold (3 repeats), not a single KFold split -- with the small real-outcome sample
+    # sizes this project sees, one unlucky shuffle can flip which candidate "wins" and how big
+    # its reported CV MAE looks. Repeating with different shuffles and averaging the per-row
+    # out-of-fold predictions stabilizes both the winner choice and the honest error estimate,
+    # at a cheap 3x fit cost given how few rows/candidates are involved.
+    n_repeats = 3
+    cv = RepeatedKFold(n_splits=n_folds, n_repeats=n_repeats, random_state=random_state)
     w = np.asarray(sample_weight, dtype=float) if sample_weight is not None else None
     if w is not None and (not np.any(w > 0)):
         w = None  # every row zero-weighted -> degenerate; fall back to unweighted rather than crash
 
     candidates = _candidates(random_state, n)
     candidate_maes = {}
+    candidate_oof_preds = {}  # name -> (n_repeats, n) array, averaged into one oof estimate below
     for name, estimator in candidates.items():
-        preds = np.empty(n, dtype=float)
+        sums = np.zeros(n, dtype=float)
+        counts = np.zeros(n, dtype=float)
         for train_idx, test_idx in cv.split(X):
             fold = clone(estimator)
             fold_w = w[train_idx] if w is not None else None
             fold.fit(X[train_idx], y[train_idx], **_fit_kwargs(fold, fold_w))
-            preds[test_idx] = fold.predict(X[test_idx])
+            sums[test_idx] += fold.predict(X[test_idx])
+            counts[test_idx] += 1.0
+        preds = sums / counts  # every row appears in exactly one test fold per repeat, so counts == n_repeats
+        candidate_oof_preds[name] = preds
         candidate_maes[name] = float(mean_absolute_error(y, preds, sample_weight=w))
 
     best_name = min(candidate_maes, key=candidate_maes.get)
     best_model = candidates[best_name]
+    oof_residuals = (y - candidate_oof_preds[best_name]).tolist()
     # Final refit on ALL data (with weights), after CV already measured honest error above.
     best_model.fit(X, y, **_fit_kwargs(best_model, w))
 
@@ -128,4 +154,5 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     importances = dict(zip(feature_names, [float(v) for v in importance_result.importances_mean]))
 
     return ModelSelectionResult(model=best_model, model_name=best_name, cv_mae=candidate_maes[best_name],
-                                 candidate_maes=candidate_maes, feature_importances=importances)
+                                 candidate_maes=candidate_maes, feature_importances=importances,
+                                 oof_residuals=oof_residuals)
