@@ -42,6 +42,7 @@ class FloatMixResult:
     n_output_variants: int
     ml_predicted_roi_pct: float | None = None  # learning.py's calibrated prediction, tiebreaker only
     ml_confidence: str | None = None  # "low" | "medium" | "high" by training-set size, or None if unset
+    ml_roi_range: list | None = None  # [lo, hi] 80% interval from the model's own held-out residuals, or None
 
 
 def _price_per_wear(skin: dict, stattrak: bool, currency: int, price_field: str,
@@ -179,5 +180,6 @@ def evaluate_float_strategies(input_skin: dict, outputs: list, stattrak: bool, c
                 n_output_variants=len(outputs),
                 ml_predicted_roi_pct=ml_result["ml_predicted_roi_pct"] if ml_result else None,
                 ml_confidence=ml_result["confidence"] if ml_result else None,
+                ml_roi_range=ml_result["predicted_roi_range"] if ml_result else None,
             )
     return sorted(best_by_wear.values(), key=lambda r: r.roi_pct, reverse=True)

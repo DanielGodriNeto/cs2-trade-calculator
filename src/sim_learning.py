@@ -194,6 +194,17 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
                                           sample_weight=sample_weight)
     model, mae, importances = selection.model, selection.cv_mae, selection.feature_importances
 
+    # Same real-residual-based uncertainty band as learning.py's train() -- kept in sync
+    # deliberately (see this project's documented sibling-drift bug history). NOT threaded
+    # through predict_expected_roi()'s return value: that function's contract is a bare
+    # `float | None` consumed positionally by random_trade.py's sampling bias and
+    # ranking._ml_agreement_bonus, and widening it risks the exact "tuple/return-shape drift"
+    # failure class this codebase has hit before. The interval is exposed only via
+    # get_model_status() for the dashboard's per-son model-quality display.
+    residuals = np.array(selection.oof_residuals, dtype=float)
+    residual_p10 = float(np.percentile(residuals, 10))
+    residual_p90 = float(np.percentile(residuals, 90))
+
     with _lock:
         model_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, model_dir / MODEL_FILENAME)
@@ -201,7 +212,8 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
                 "feature_importances": importances, "feature_names": FEATURE_NAMES,
                 "model_name": selection.model_name, "candidate_maes": selection.candidate_maes,
                 "sample_weight_breakdown": weight_reasons,
-                "mean_sample_weight": round(float(sample_weight.mean()), 3)}
+                "mean_sample_weight": round(float(sample_weight.mean()), 3),
+                "residual_p10": residual_p10, "residual_p90": residual_p90}
         (model_dir / META_FILENAME).write_text(json.dumps(meta), encoding="utf-8")
         _loaded_models.pop(model_dir, None)  # force a reload on the next predict_expected_roi() call
 

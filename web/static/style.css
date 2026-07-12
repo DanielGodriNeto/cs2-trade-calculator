@@ -223,6 +223,15 @@ table {
   overflow: hidden;
   margin-bottom: 32px;
 }
+/* Wraps the widest tables (best-simulations/archive, 13 columns) so they scroll horizontally
+   on narrow viewports instead of silently overflowing the page with no visible affordance. */
+.table-scroll {
+  overflow-x: auto;
+  margin-bottom: 32px;
+}
+.table-scroll table {
+  margin-bottom: 0;
+}
 th, td {
   padding: 8px 12px;
   text-align: left;
@@ -450,8 +459,14 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 .copy-btn.copied { color: var(--profit); border-color: var(--profit); }
-td.profit-positive { color: var(--profit); }
+/* Icon prefixes alongside color, not color alone -- a colorblind user scanning the table can
+   still tell profit sign apart without relying on green-vs-red discrimination. Applies to both
+   <td class="profit-positive"> and the many <span class="profit-positive"> usages elsewhere in
+   app.js, so the selector isn't tag-scoped. */
+td.profit-positive { color: var(--profit); font-weight: 600; }
 td.profit-negative { color: var(--loss); }
+.profit-positive::before { content: "\25B2 "; font-size: 0.8em; }
+.profit-negative::before { content: "\25BC "; font-size: 0.8em; }
 
 /* Market Reliability Engine state badges (src/market_reliability.py) */
 .reliability-badge {
@@ -636,6 +651,8 @@ td.profit-negative { color: var(--loss); }
 .kpi-value { color: var(--accent); font-size: 1.4em; font-weight: 700; }
 .kpi-value.profit-positive { color: var(--profit); }
 .kpi-value.profit-negative { color: var(--loss); }
+.kpi-value.profit-positive::before { content: "\25B2 "; font-size: 0.6em; vertical-align: middle; }
+.kpi-value.profit-negative::before { content: "\25BC "; font-size: 0.6em; vertical-align: middle; }
 
 /* Agent monitoring / opportunity filters / verify queue / market intelligence */
 .opportunity-filters {
@@ -669,6 +686,8 @@ td.profit-negative { color: var(--loss); }
   font-size: 0.85em;
   margin-bottom: 12px;
 }
+/* Note: risk-* badges already carry a text label ("(low risk)" etc, see app.js's _riskBadge) --
+   not color-only, so no extra icon needed here. */
 .confidence-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.85em; }
 .confidence-badge.risk-low { background: rgba(76, 175, 80, 0.18); color: var(--profit); }
 .confidence-badge.risk-medium { background: rgba(212, 175, 55, 0.18); color: var(--accent); }
@@ -684,4 +703,18 @@ td.profit-negative { color: var(--loss); }
   border-radius: 8px;
   padding: 12px 16px;
   margin-bottom: 24px;
+}
+
+/* Basic responsive support -- this project previously had zero @media rules, so anything
+   narrower than a laptop viewport (tablet/phone) just overflowed the whole page silently.
+   Doesn't attempt a full mobile redesign (this is a daily-use desktop dashboard), just keeps
+   it usable: tighter body padding, a wrapping top bar, every table (not just the ones already
+   wrapped in .table-scroll) gets a local horizontal-scroll container instead of blowing out
+   the page width, and single-column stat/leaderboard grids. */
+@media (max-width: 900px) {
+  body { padding: 12px 12px 48px; }
+  .topbar-nav, .topbar-stats { flex-wrap: wrap; }
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+  .table-scroll table { display: table; white-space: normal; }
+  .kpi-grid, .leaderboards-grid { grid-template-columns: 1fr; }
 }

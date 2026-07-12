@@ -85,6 +85,7 @@ class TradeUpResult:
     # changes expected_revenue/profit/roi_pct above
     ml_predicted_roi_pct: float | None = None  # learning.py's calibrated prediction for the plain scan, tiebreaker-grade signal only
     ml_confidence: str | None = None  # "low" | "medium" | "high" by training-set size, or None if unset
+    ml_roi_range: list | None = None  # [lo, hi] 80% interval from the model's own held-out residuals, or None
     cheapest_input_image: str = ""  # direct Steam CDN thumbnail URL for cheapest_input's skin
     cheapest_input_skin: str = ""  # bare skin name (no "StatTrak(TM) "/"(wear)" formatting) -- same
     cheapest_input_wear: str = ""  # skin+wear cheapest_input describes as one string. Kept separately
@@ -369,6 +370,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
 
         ml_predicted_roi_pct = None
         ml_confidence = None
+        ml_roi_range = None
         if use_ml:
             from . import learning as learning_mod
             if learning_mod.get_model_status()["trained"]:
@@ -381,6 +383,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
                 if ml_result:
                     ml_predicted_roi_pct = ml_result["ml_predicted_roi_pct"]
                     ml_confidence = ml_result["confidence"]
+                    ml_roi_range = ml_result["predicted_roi_range"]
 
         results.append(TradeUpResult(
             collection=collection,
@@ -404,6 +407,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
             thirdparty_check=thirdparty_check_result,
             ml_predicted_roi_pct=ml_predicted_roi_pct,
             ml_confidence=ml_confidence,
+            ml_roi_range=ml_roi_range,
             cheapest_input_image=cheapest_skin.get("image", ""),
             cheapest_input_skin=cheapest_skin["name"],
             cheapest_input_wear=matched_wear,

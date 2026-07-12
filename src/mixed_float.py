@@ -45,6 +45,7 @@ class MixedFloatResult:
     buy_links: dict
     ml_predicted_roi_pct: float | None = None  # learning.py's calibrated prediction, tiebreaker only
     ml_confidence: str | None = None  # "low" | "medium" | "high" by training-set size, or None if unset
+    ml_roi_range: list | None = None  # [lo, hi] 80% interval from the model's own held-out residuals, or None
     primary_skin_image: str = ""  # direct Steam CDN thumbnail URL -- same for every wear in primary_mix
     filler_skin_image: str = ""  # "" when filler_count == 0
 
@@ -174,6 +175,7 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
             buy_links=buy_links,
             ml_predicted_roi_pct=ml_result["ml_predicted_roi_pct"] if ml_result else None,
             ml_confidence=ml_result["confidence"] if ml_result else None,
+            ml_roi_range=ml_result["predicted_roi_range"] if ml_result else None,
             primary_skin_image=primary_skin.get("image", ""),
             filler_skin_image=filler_skin.get("image", "") if n_filler else "",
         )
