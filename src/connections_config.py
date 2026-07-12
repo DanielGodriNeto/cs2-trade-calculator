@@ -71,12 +71,26 @@ def apply_to_runtime(cfg: dict | None = None) -> None:
     """Pushes the persisted config into every live module that reads these values -- called
     once at server startup and again after every successful save so changes take effect
     without a process restart. Import is local to avoid a hard dependency for callers (e.g.
-    CLI commands) that never touch connections at all."""
+    CLI commands) that never touch connections at all.
+
+    `cfg` is only non-None when a caller just saved a config (the /api/connections/config
+    handler passes the freshly-written dict) -- that's an explicit user action and should
+    always win, including clearing a field back to empty. The implicit startup call (cfg=None)
+    must NOT do that: alerts.py/thirdparty_prices.py/pattern_scanner.py are designed to pick up
+    CSFLOAT_API_KEY/NTFY_TOPIC from the environment at import time, and connections.local.json
+    defaults every key to None/empty when nothing has ever been saved through the dashboard.
+    Blindly re-applying that empty file over an env-var-configured value at every startup wiped
+    out the env var silently -- e.g. NTFY_TOPIC set per alerts.py's own setup instructions,
+    then the dashboard started and instantly cleared it, so alerts looked "configured" but
+    never sent."""
+    explicit = cfg is not None
     cfg = cfg or load_config()
     from . import alerts as alerts_mod
     from . import pattern_scanner as pattern_scanner_mod
     from . import thirdparty_prices as thirdparty_prices_mod
 
-    thirdparty_prices_mod.configure_csfloat_key(cfg.get("csfloat_api_key"))
-    pattern_scanner_mod.configure_csfloat_key(cfg.get("csfloat_api_key"))
-    alerts_mod.configure(cfg.get("ntfy_topic"), cfg.get("ntfy_server"))
+    if explicit or cfg.get("csfloat_api_key"):
+        thirdparty_prices_mod.configure_csfloat_key(cfg.get("csfloat_api_key"))
+        pattern_scanner_mod.configure_csfloat_key(cfg.get("csfloat_api_key"))
+    if explicit or cfg.get("ntfy_topic"):
+        alerts_mod.configure(cfg.get("ntfy_topic"), cfg.get("ntfy_server"))
