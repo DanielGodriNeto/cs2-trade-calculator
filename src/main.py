@@ -15,6 +15,7 @@ import argparse
 import csv
 import sys
 import time
+from pathlib import Path
 
 from . import data as data_mod
 from . import tradeup as tradeup_mod
@@ -29,6 +30,7 @@ from . import price_report as price_report_mod
 from . import data_archive as data_archive_mod
 from . import split_archive as split_archive_mod
 from . import price_scan as price_scan_mod
+from . import profile_card_export as profile_card_export_mod
 from . import sim_loop as sim_loop_mod
 from . import sim_learning as sim_learning_mod
 from . import agents as agents_mod
@@ -38,8 +40,6 @@ from . import mispriced_skins as mispriced_skins_mod
 from . import wear_anomaly as wear_anomaly_mod
 from . import market_reliability as market_reliability_mod
 from . import verify_queue as verify_queue_mod
-from . import evolution as evolution_mod
-from . import recovery as recovery_mod
 from . import pattern_db as pattern_db_mod
 from . import pattern_scanner as pattern_scanner_mod
 from . import user_overrides as user_overrides_mod
@@ -775,61 +775,6 @@ def cmd_verify_queue(args):
     verify_queue_mod.run_foreground(currency=args.currency)
 
 
-def cmd_evolution_status(args):
-    snap = evolution_mod.snapshot()
-    agent_names = {i: agents_mod.profile_for(i).name for i in range(sim_loop_mod.N_SONS)}
-    print(f"Evolution Manager: {'enabled' if snap['enabled'] else 'DISABLED (all hooks neutral)'}")
-    print(f"Generation {snap['generation']} | elite {snap['elite_size']}/{snap['elite_capacity']} "
-          f"genomes across {snap['n_species']} species | {snap['injections']} cross-agent parent "
-          f"injections | novelty archive: {snap['novelty_archive_size']} distinct strategies")
-    if snap.get("last_error"):
-        print(f"Last error: {snap['last_error']}")
-    if snap["elite_top"]:
-        rows = [{
-            "found by": agent_names.get(g["son_id"], f"Son {g['son_id']}"),
-            "species": g["species"].replace("|", " | "),
-            "fitness": f"{g['fitness']:.1f}",
-            "roi %": f"{g['roi_pct']:.1f}" if g.get("roi_pct") is not None else "-",
-        } for g in snap["elite_top"]]
-        print("\nElite population (top):")
-        _print_table(rows, ["found by", "species", "fitness", "roi %"])
-    if snap["hall_of_fame"]:
-        rows = [{
-            "found by": agent_names.get(g["son_id"], f"Son {g['son_id']}"),
-            "species": g["species"].replace("|", " | "),
-            "fitness": f"{g['fitness']:.1f}",
-            "roi %": f"{g['roi_pct']:.1f}" if g.get("roi_pct") is not None else "-",
-        } for g in snap["hall_of_fame"]]
-        print("\nHall of Fame (all-time, only displaced by strictly fitter genomes):")
-        _print_table(rows, ["found by", "species", "fitness", "roi %"])
-    for e in snap.get("pbt_events") or []:
-        print(f"Hyperparam transfer: {agent_names.get(e['donor'], e['donor'])} -> "
-              f"{agent_names.get(e['receiver'], e['receiver'])} at "
-              f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(e['at']))}")
-    if args.enable is not None:
-        evolution_mod.set_enabled(args.enable == "on")
-        print(f"\nEvolution Manager is now {'enabled' if evolution_mod.enabled() else 'disabled'}.")
-
-
-def cmd_recovery_log(args):
-    rows_in = recovery_mod.list_log(limit=args.limit)
-    if not rows_in:
-        print("No recovery events logged yet -- that's the healthy case: no agent has stayed "
-              "stuck long enough (past the stuck threshold plus a nudge's chance to work) to "
-              "need Exploration Recovery Mode. See src/recovery.py.")
-        return
-    agent_names = {i: agents_mod.profile_for(i).name for i in range(sim_loop_mod.N_SONS)}
-    rows = [{
-        "agent": agent_names.get(r["son_id"], f"Son {r['son_id']}"),
-        "event": r["event"],
-        "level": r.get("level", "-"),
-        "round": r.get("round", "-"),
-        "stalled": r.get("rounds_since_improvement", "-"),
-        "when": time.strftime("%Y-%m-%d %H:%M", time.localtime(r["at"])),
-    } for r in rows_in]
-    _print_table(rows, ["agent", "event", "level", "round", "stalled", "when"])
-
-
 def cmd_pattern_opportunities(args):
     rows_in = pattern_scanner_mod.list_opportunities(
         weapon=args.weapon, pattern_type=args.pattern_type, min_profit=args.min_profit,
@@ -1192,20 +1137,6 @@ def build_parser():
     p_override_rel.add_argument("--clear", action="store_true", help="Remove any existing override instead")
     p_override_rel.set_defaults(func=cmd_override_reliability)
 
-    p_evo = sub.add_parser(
-        "evolution-status",
-        help="Show the Evolution Manager's elite population, species, Hall of Fame and recent "
-             "meta/hyperparameter events -- optionally enable/disable it (see src/evolution.py)")
-    p_evo.add_argument("--enable", choices=["on", "off"], default=None,
-                        help="Turn the Evolution Manager on or off (all hooks go neutral when off)")
-    p_evo.set_defaults(func=cmd_evolution_status)
-
-    p_recovery = sub.add_parser(
-        "recovery-log",
-        help="Show Exploration Recovery Mode events -- when an agent stayed stuck long enough to "
-             "escalate mutation/exploration pressure or perturb its parameters (see src/recovery.py)")
-    p_recovery.add_argument("--limit", type=int, default=50)
-    p_recovery.set_defaults(func=cmd_recovery_log)
 
     p_patterns = sub.add_parser(
         "pattern-opportunities",
@@ -1253,7 +1184,24 @@ def build_parser():
                                f"{watch_loop_mod.DEFAULT_PATTERN_THRESHOLD_PCT:.0f})")
     p_watch.set_defaults(func=cmd_watch)
 
+    p_profile_card = sub.add_parser(
+        "profile-card",
+        help="Write a small DELAYED/ANONYMIZED aggregate-stats JSON snapshot (population avg "
+             "ROI, a magnitude-only best-find figure, total candidates scanned, real outcomes "
+             "logged) for the GitHub profile-card workflow -- never real actionable trade-up "
+             "opportunities (see src/profile_card_export.py). Does NOT commit or push anything.")
+    p_profile_card.add_argument("--out", default=str(Path("data") / "profile_card_snapshot.json"),
+                                 help="Output path (default: data/profile_card_snapshot.json)")
+    p_profile_card.set_defaults(func=cmd_profile_card)
+
     return p
+
+
+def cmd_profile_card(args):
+    snapshot = profile_card_export_mod.write_snapshot(Path(args.out))
+    print(f"Wrote {args.out}")
+    for k, v in snapshot.items():
+        print(f"  {k}: {v}")
 
 
 def main():

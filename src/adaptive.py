@@ -88,52 +88,6 @@ NOVELTY_REWARD_PP = 12.0  # max reward bonus (pp) when 100% of a window's valid 
 INVALID_PENALTY_PP = 8.0  # max reward penalty (pp) when 100% of a window's attempts were invalid
 REWARD_HISTORY_KEEP = 40  # adaptation decisions remembered per son (checkpoint payload cap)
 
-# --- Evolvable hyperparameters (Hyperparameter Evolution, see evolution.py) --------------
-#
-# The six knobs below started life as the fixed module constants above. They are now PER-SON
-# values stored in this son's own adaptive state (adaptive["hyperparams"], persisted in the
-# checkpoint like everything else) so the Evolution Manager can evolve the SEARCH BEHAVIOR
-# itself -- exploration schedules (window length), mutation probabilities (trial tweak sigma),
-# novelty/UCB coefficients, reward coefficients, and adoption-confidence thresholds -- via
-# population-based training across sons (see evolution.run_hyperparam_evolution). Every value
-# is hard-clamped to the safety bounds below on every read, so no evolution step (or corrupt
-# checkpoint) can push the tuning loop outside a range the (1+1)-ES stays stable in. Defaults
-# ARE the historical constants: a son whose hyperparams have never been evolved behaves
-# byte-for-byte like before this block existed.
-HYPERPARAM_BOUNDS = {
-    "novelty_ucb_pp":      (2.0, 20.0),   # UCB exploration coefficient
-    "novelty_reward_pp":   (4.0, 24.0),   # reward coefficient: novelty term
-    "invalid_penalty_pp":  (2.0, 16.0),   # reward coefficient: invalid-attempt penalty
-    "perturb_sigma":       (0.05, 0.25),  # mutation probability/strength of ES trial tweaks
-    "adopt_epsilon_pp":    (0.1, 2.0),    # confidence threshold to adopt a trial
-    "adapt_window_rounds": (3, 8),        # exploration schedule: rounds per A/B window
-}
-DEFAULT_HYPERPARAMS = {
-    "novelty_ucb_pp": NOVELTY_UCB_PP,
-    "novelty_reward_pp": NOVELTY_REWARD_PP,
-    "invalid_penalty_pp": INVALID_PENALTY_PP,
-    "perturb_sigma": PERTURB_SIGMA,
-    "adopt_epsilon_pp": ADOPT_EPSILON_PP,
-    "adapt_window_rounds": ADAPT_WINDOW_ROUNDS,
-}
-
-
-def hyperparams(adaptive: dict) -> dict:
-    """This son's active hyperparameters: stored values merged over the defaults, every one
-    clamped to HYPERPARAM_BOUNDS -- see the block comment above."""
-    stored = adaptive.get("hyperparams") or {}
-    out = {}
-    for k, default in DEFAULT_HYPERPARAMS.items():
-        v = stored.get(k, default)
-        lo, hi = HYPERPARAM_BOUNDS[k]
-        try:
-            v = min(max(float(v), lo), hi)
-        except (TypeError, ValueError):
-            v = default
-        out[k] = int(round(v)) if k == "adapt_window_rounds" else v
-    return out
-
-
 def bounds_for(profile: "agents_mod.AgentProfile") -> dict:
     """Per-agent [lo, hi] clamp for every adaptive param: BAND_RADIUS around that agent's own
     base personality, intersected with the global floors/ceilings above."""
@@ -171,7 +125,6 @@ def initial_state(profile: "agents_mod.AgentProfile") -> dict:
         "adaptations_tried": 0,
         "adaptations_adopted": 0,
         "reward_history": [],    # [{at, reward, action, params}], newest last, capped
-        "hyperparams": dict(DEFAULT_HYPERPARAMS),  # evolvable -- see HYPERPARAM_BOUNDS above
     }
 
 
@@ -221,16 +174,14 @@ def note_invalid(adaptive: dict) -> None:
 
 def window_reward(adaptive: dict) -> float:
     """See module docstring. A window with zero valid sims scores its ROI term as 0 and still
-    takes the full invalid penalty -- a tweak that prices nothing must lose to one that works.
-    Reward coefficients come from this son's own evolvable hyperparams (see hyperparams())."""
-    hp = hyperparams(adaptive)
+    takes the full invalid penalty -- a tweak that prices nothing must lose to one that works."""
     rois = adaptive["window_rois"]
     roi_term = median(rois) if rois else 0.0
     valid = adaptive["window_valid"]
     novelty_frac = (adaptive["window_novel"] / valid) if valid else 0.0
     attempts = valid + adaptive["window_invalid"]
     invalid_frac = (adaptive["window_invalid"] / attempts) if attempts else 0.0
-    return roi_term + hp["novelty_reward_pp"] * novelty_frac - hp["invalid_penalty_pp"] * invalid_frac
+    return roi_term + NOVELTY_REWARD_PP * novelty_frac - INVALID_PENALTY_PP * invalid_frac
 
 
 def _reset_window(adaptive: dict) -> None:
@@ -245,25 +196,22 @@ def end_round(adaptive: dict, profile: "agents_mod.AgentProfile", rng) -> "str |
     """Called once per completed round (sim_loop.run_round's end-of-round bookkeeping, under the
     son's own lock). Advances the measurement window; when a window completes, runs one step of
     the baseline->trial->adopt/revert state machine described in the module docstring. Returns
-    the action taken ("trial_started"/"adopted"/"reverted") when a window closed, else None.
-    Window length, trial sigma and adoption threshold come from this son's own evolvable
-    hyperparams (see hyperparams())."""
-    hp = hyperparams(adaptive)
+    the action taken ("trial_started"/"adopted"/"reverted") when a window closed, else None."""
     adaptive["window_rounds"] += 1
-    if adaptive["window_rounds"] < hp["adapt_window_rounds"]:
+    if adaptive["window_rounds"] < ADAPT_WINDOW_ROUNDS:
         return None
     reward = window_reward(adaptive)
     adaptive["last_reward"] = reward
     if adaptive["phase"] == "baseline":
         adaptive["baseline_reward"] = reward
         adaptive["trial_params"] = perturb(adaptive["params"], bounds_for(profile), rng,
-                                            sigma=hp["perturb_sigma"])
+                                            sigma=PERTURB_SIGMA)
         adaptive["phase"] = "trial"
         action = "trial_started"
     else:
         adaptive["adaptations_tried"] += 1
         baseline = adaptive["baseline_reward"]
-        if baseline is not None and reward > baseline + hp["adopt_epsilon_pp"]:
+        if baseline is not None and reward > baseline + ADOPT_EPSILON_PP:
             adaptive["params"] = dict(adaptive["trial_params"])
             adaptive["adaptations_adopted"] += 1
             action = "adopted"
@@ -287,8 +235,7 @@ def summary(adaptive: dict, profile: "agents_mod.AgentProfile") -> dict:
     return {
         "phase": adaptive["phase"],
         "window_rounds": adaptive["window_rounds"],
-        "window_size": hyperparams(adaptive)["adapt_window_rounds"],
-        "hyperparams": hyperparams(adaptive),
+        "window_size": ADAPT_WINDOW_ROUNDS,
         "params": live_params(adaptive),
         "adopted_params": dict(adaptive["params"]),
         "base_params": {p: getattr(profile, p) for p in ADAPTIVE_PARAMS},
@@ -330,7 +277,7 @@ def novelty_bonus(candidate, coverage: dict, coverage_total: float,
     contract's input units, so a 1-unit filler from an unexplored collection earns a tenth of
     what a full 10-unit primary would. Callers scale by the agent's live exploration_rate, so
     exploratory agents chase novelty harder than exploitative ones. ucb_pp defaults to the
-    historical constant; sim_loop passes the son's own evolved hyperparams value."""
+    historical constant; sim_loop passes this same constant explicitly."""
     total_units = sum(u["count"] for leg in candidate.legs for u in leg.units) or 1
     log_total = math.log(coverage_total + math.e)  # +e so the bonus is well-defined from zero
     bonus = 0.0

@@ -35,7 +35,7 @@
   </div>
   <div class="topbar-stats topbar-stats-secondary" id="topbar-patterns-stats">
     <span class="health-headline health-idle" id="patterns-health-headline">Rare Patterns scanner: checking&hellip;</span>
-    <span title="Queries the Rare Patterns scanner has sent to CSFloat's public API (separate from the Steam price cache above)">CSFloat: <span id="pat-stat-csfloat-queries">0</span> queries</span>
+    <span title="Steam listings resolved to float/paint-seed/stickers via CSFloat's free inspect endpoint (separate from the Steam price cache above)">Inspect resolutions: <span id="pat-stat-csfloat-queries">0</span></span>
     <span title="Queries the Rare Patterns scanner has sent to the Steam Market for listing/inspect data (separate from the Steam price cache above)">Steam Market: <span id="pat-stat-steam-queries">0</span> queries</span>
     <span title="Listings matched against the pattern knowledge base so far this session"><span id="pat-stat-matches">0</span> matches</span>
   </div>
@@ -66,7 +66,7 @@
     <a class="nav-card" href="#results"><strong>Opportunities</strong><span>Ranked trade-up finds, leaderboards, archive</span></a>
     <a class="nav-card" href="#calculator"><strong>Calculator</strong><span>Scan settings, manual trade-up builder</span></a>
     <a class="nav-card" href="#patterns"><strong>Rare Patterns</strong><span>Collector-pattern arbitrage scanner</span></a>
-    <a class="nav-card" href="#ml-lab"><strong>Simulation Lab</strong><span>6-agent ML population, evolution, training</span></a>
+    <a class="nav-card" href="#ml-lab"><strong>Simulation Lab</strong><span>6-agent ML population, self-tuning, training</span></a>
   </div>
 </section>
 
@@ -297,45 +297,6 @@
     </table>
   </div>
 
-  <div class="learning-panel">
-    <h3>Evolution Manager (Evolution Engine 2.0)</h3>
-    <p class="disclaimer">Cross-agent cooperation layered on top of the population above -- the specialist agents themselves are never modified. Maintains a cross-agent <strong>Elite Population</strong> (fitness = the same composite score the final ranking uses, so fake high ROI can't capture it), injects other agents' elite finds into each agent's mutation pool (tournament parent selection with a novelty-biased slice), groups elites into <strong>species</strong> whose stagnation raises that species' mutation pressure, keeps an all-time <strong>Hall of Fame</strong>, refreshes the two <strong>Meta agents'</strong> inherited personalities by behavioral crossover from the best-performing specialists every 6h, and periodically copies a mutated version of the best agent's self-tuning <strong>hyperparameters</strong> onto the worst's (population-based training). Every admission, injection, meta refresh and hyperparameter transfer is logged to <code>data/evolution/lineage.jsonl</code>. Disable it any time -- every hook goes neutral and the population behaves exactly as before.</p>
-    <div class="learning-status" id="evolution-status">loading&hellip;</div>
-    <div class="learning-controls">
-      <button id="evolution-toggle-btn">&hellip;</button>
-      <button id="evolution-tick-btn" class="secondary" title="Run one manager step right now (ingest + due maintenance) instead of waiting for the next 2-minute tick">Run a tick now</button>
-    </div>
-    <h4>Elite population (top 15 of <span id="evolution-elite-cap">60</span>)
-      <button class="export-btn collapse-btn" id="collapse-evolution-elite-btn" data-target="evolution-elite-wrap">Hide</button>
-    </h4>
-    <div id="evolution-elite-wrap">
-      <table id="evolution-elite-table">
-        <thead><tr><th>Found by</th><th>Species (collection | rarity path)</th><th class="num">Fitness</th><th class="num">ROI %</th><th>Admitted</th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <div id="evolution-elite-empty" class="empty-state" style="display:none;">No elite genomes yet -- run the agents above; the manager ingests their best finds every 2 minutes.</div>
-    </div>
-    <h4>Hall of Fame <span class="muted-inline">(all-time, only displaced by strictly fitter genomes)</span>
-      <button class="export-btn collapse-btn" id="collapse-evolution-hof-btn" data-target="evolution-hof-wrap">Show</button>
-    </h4>
-    <div id="evolution-hof-wrap" style="display:none;">
-      <table id="evolution-hof-table">
-        <thead><tr><th>Found by</th><th>Species</th><th class="num">Fitness</th><th class="num">ROI %</th><th>Admitted</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <div id="evolution-events" class="muted-inline"></div>
-  </div>
-
-  <div class="learning-panel">
-    <h3>Exploration Recovery Mode <span class="count" id="recovery-log-count"></span></h3>
-    <p class="disclaimer">Extends the STUCK detection above: if an agent stays stuck well past the point where a nudge had its chance, it enters Recovery Mode -- progressively raising mutation, exploration, novelty weighting and search diversity while lowering exploitation bias (levels 1-4, pure multipliers on the live self-tuned params, instantly undone on exit). If it's STILL stuck at max escalation, each adaptive parameter gets an independent, bounds-clamped random perturbation (some up, some down). The mode exits the moment a real improvement lands. Every event below is also on each agent's card above while active.</p>
-    <table id="recovery-log-table">
-      <thead><tr><th>Agent</th><th>Event</th><th class="num">Level</th><th class="num">Round</th><th class="num">Rounds w/o improvement</th><th>When</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div id="recovery-log-empty" class="empty-state" style="display:none;">No recovery events yet -- that's good: no agent has been stuck long enough to need it.</div>
-  </div>
 
   <div class="learning-panel">
     <h3>Log a trade-up outcome <span class="count" id="outcomes-count"></span></h3>
@@ -578,15 +539,10 @@
     <div class="table-scroll">
     <table id="best-simulations-table">
       <thead><tr>
-        <th>Agent</th><th>Collection</th><th>From</th><th>To</th><th>StatTrak</th>
+        <th></th>
         <th>Cost</th>
-        <th title="The estimated ROI from simulate.py's formula math against current cached/live prices -- theoretical, not yet checked against a real market execution.">ROI %</th>
-        <th title="A Stage-2 live cross-check (Skinport/Buff163/CSFloat) confirmed this exact ROI against real listings -- more trustworthy than the plain ROI % column, but only present once verification has run on this row.">Verified ROI %</th>
-        <th title="Weighted ranking score out of 100: 60% real ROI, 15% profit amount, 10% liquidity, 10% confidence, 5% discovery value -- built so a smaller but reliable profit outranks a fake-looking high ROI resting on illiquid/unverified prices. See 'How this works' for the full formula.">Composite score</th>
-        <th title="0-100 trust score for this row's prices: how fresh the cost-basis data is, whether any counted skin looks like a thin/suspicious 'dead' listing, plus small bonuses once verified or once the agent's own ML model correctly anticipated this result. Higher is more trustworthy, not higher-ROI.">Confidence</th>
-        <th title="Flags when a counted input or output rests on a skin with unusually few recent sales/listings (see dead_skin.py) -- a low-volume price is easier to fake or for the listing to vanish before you can buy/sell at it.">Dead-skin risk</th>
-        <th title="Where the prices in this row's cost/ROI came from: 'cache' (a fresh recent price), 'stale' (an older but still-usable cached price), or a live/third-party fallback. Fresher basis = more trustworthy ROI.">Price basis</th>
-        <th>Last verified</th>
+        <th title="The estimated ROI from simulate.py's formula math against current cached/live prices. Once a Stage-2 live cross-check (Skinport/Buff163/CSFloat) has confirmed this row, the verified number replaces this as the primary figure (shown with the original prediction alongside, small).">ROI %</th>
+        <th title="One combined signal folding together Composite score (ranking weight), Confidence (price freshness/trust), Dead-skin risk (thin-listing warning), and Price basis (cache vs stale) -- hover the badge for the exact numbers, or expand the row for full detail.">Trust</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -631,15 +587,10 @@
     <div class="table-scroll">
     <table id="archive-table">
       <thead><tr>
-        <th>Agent</th><th>Collection</th><th>From</th><th>To</th><th>StatTrak</th>
+        <th></th>
         <th>Cost</th>
-        <th title="The estimated ROI from simulate.py's formula math against current cached/live prices -- theoretical, not yet checked against a real market execution.">ROI %</th>
-        <th title="A Stage-2 live cross-check (Skinport/Buff163/CSFloat) confirmed this exact ROI against real listings -- more trustworthy than the plain ROI % column, but only present once verification has run on this row.">Verified ROI %</th>
-        <th title="Weighted ranking score out of 100: 60% real ROI, 15% profit amount, 10% liquidity, 10% confidence, 5% discovery value -- built so a smaller but reliable profit outranks a fake-looking high ROI resting on illiquid/unverified prices. See 'How this works' for the full formula.">Composite score</th>
-        <th title="0-100 trust score for this row's prices: how fresh the cost-basis data is, whether any counted skin looks like a thin/suspicious 'dead' listing, plus small bonuses once verified or once the agent's own ML model correctly anticipated this result. Higher is more trustworthy, not higher-ROI.">Confidence</th>
-        <th title="Flags when a counted input or output rests on a skin with unusually few recent sales/listings (see dead_skin.py) -- a low-volume price is easier to fake or for the listing to vanish before you can buy/sell at it.">Dead-skin risk</th>
-        <th title="Where the prices in this row's cost/ROI came from: 'cache' (a fresh recent price), 'stale' (an older but still-usable cached price), or a live/third-party fallback. Fresher basis = more trustworthy ROI.">Price basis</th>
-        <th>Last verified</th>
+        <th title="The estimated ROI from simulate.py's formula math against current cached/live prices. Once a Stage-2 live cross-check (Skinport/Buff163/CSFloat) has confirmed this row, the verified number replaces this as the primary figure (shown with the original prediction alongside, small).">ROI %</th>
+        <th title="One combined signal folding together Composite score (ranking weight), Confidence (price freshness/trust), Dead-skin risk (thin-listing warning), and Price basis (cache vs stale) -- hover the badge for the exact numbers, or expand the row for full detail.">Trust</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -829,7 +780,7 @@
   <details class="methodology">
     <summary>How this works</summary>
     <div class="methodology-body">
-  <p class="disclaimer">Scans marketplace listings for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;). <strong>Every matched listing is shown here, profitable or not</strong> -- nothing is hidden behind a hardcoded profit bar; use the filters and "Sort by" below (expected profit, price, confidence&hellip;) to find the ones worth buying. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation is <strong>Steam-first</strong>: the base price a pattern's premium multiplies is the skin's own Steam median-sale price when it exists, and only falls back to the Steam/Skinport/Buff163 consensus (with confidence demoted) when Steam has no sale evidence. Two per-listing sources are scanned: <strong>the Steam Market itself</strong> (each listing's inspect link is resolved to float + paint seed via CSFloat's public inspect endpoint -- no key needed; Steam's aggressive rate limits put this source on a visible cooldown when hit) and <strong>CSFloat listings</strong> (float + seed directly, needs a free CSFloat API key -- set one on the <a href="#connections">Connections</a> page) -- the scanner status below says plainly when either source can't scan. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
+  <p class="disclaimer">Scans <strong>Steam Market listings directly</strong> (the only listing source -- no third-party listings API involved) for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;). <strong>Every matched listing is shown here, profitable or not</strong> -- nothing is hidden behind a hardcoded profit bar; use the filters and "Sort by" below (expected profit, price, confidence&hellip;) to find the ones worth buying. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation is <strong>Steam-first</strong>: the base price a pattern's premium multiplies is the skin's own Steam median-sale price when it exists, and only falls back to the Steam/Skinport/Buff163 consensus (with confidence demoted) when Steam has no sale evidence. Each Steam listing's inspect link is resolved to float + paint seed via CSFloat's free inspect endpoint (a key is optional, only widens its rate budget -- not required). <strong>Honest caveat:</strong> Steam rate-limits anonymous listing requests hard, so a scan can spend real time sitting out cooldowns rather than finding listings -- the scanner status below reports this plainly rather than hiding it; a self-provided <code>STEAM_LOGIN_SECURE_COOKIE</code> (your own Steam session, set as an environment variable, never through this dashboard) removes that limit. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
     </div>
   </details>
 
@@ -856,7 +807,7 @@
       </select>
     </label>
     <label>Marketplace
-      <select id="pat-marketplace"><option value="">any</option><option value="steam">Steam Market</option><option value="csfloat">CSFloat</option></select>
+      <select id="pat-marketplace"><option value="">any</option><option value="steam">Steam Market</option></select>
     </label>
     <label>Min expected profit <input type="number" id="pat-min-profit" step="1" placeholder="any"></label>
     <label>Min confidence
@@ -886,7 +837,7 @@
     </tr></thead>
     <tbody></tbody>
   </table>
-  <div id="patterns-empty" class="empty-state" style="display:none;">No opportunities match. If the scanner has never run, start it above (needs a free CSFloat API key).</div>
+  <div id="patterns-empty" class="empty-state" style="display:none;">No opportunities match. If the scanner has never run, start it above. Scans Steam Market listings directly, no API key required -- expect it to run slowly in bursts, since Steam rate-limits anonymous listing requests (see the status line above for details).</div>
 </section>
 
 <section id="pattern-db-section">
@@ -916,7 +867,7 @@
 
   <div class="learning-panel" id="csfloat-panel">
     <h3>CSFloat API key <span class="conn-badge" id="csfloat-badge">&hellip;</span></h3>
-    <p class="disclaimer">Optional, free (csfloat.com). Powers float/paint-seed lookups for the Rare Patterns scanner and third-party price verification elsewhere in the app. Leaving this blank just means those two features stay off -- everything else works fine without it.</p>
+    <p class="disclaimer">Optional, free (csfloat.com). The Rare Patterns scanner's listing source is Steam Market only, regardless of this key -- setting it just widens the rate budget of CSFloat's free inspect endpoint (resolves a Steam listing's float/paint-seed/stickers) and third-party price verification elsewhere in the app. Leaving this blank works fine; those two features just get a smaller rate budget. The Rare Patterns scanner's real throughput bottleneck is Steam's own anonymous rate limit -- see the Rare Patterns page for the optional <code>STEAM_LOGIN_SECURE_COOKIE</code> environment variable, which raises that limit and isn't set through this form for security reasons.</p>
     <form id="csfloat-config-form" class="learning-controls" autocomplete="off">
       <label>API key <input type="password" id="csfloat-key-input" placeholder="paste key, or leave blank to keep current" size="34"></label>
       <button type="submit">Save</button>

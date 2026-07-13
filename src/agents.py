@@ -45,9 +45,7 @@ How each parameter actually affects behavior (see sim_loop.py / random_trade.py)
   (profit/liquidity/confidence/discovery) when its finds are merged into the global
   final ranking across all 4 agents -- see ranking.py.
 """
-import json
-import threading
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -107,20 +105,13 @@ AGENT_PROFILES: dict[int, AgentProfile] = {
 
 # --- Second-generation Meta Agents (Evolution Engine 2.0) --------------------------------
 #
-# Sons 4-5 are META agents: unlike the four specialists above (whose personalities are fixed
-# starting points chosen by hand), a meta agent's behavioral parameters are INHERITED -- the
-# Evolution Manager (evolution.py) performs behavioral crossover from the best-performing
-# specialists and persists the result to META_PROFILE_FILE, which profile_for() overlays on
-# the seed values below. The seeds only matter until the first crossover happens (a brand-new
-# install has no performance data to cross over from yet). The four specialists themselves are
-# NEVER modified by any of this -- meta agents are additive, storage-isolated in their own
-# data/sons/son_4 / son_5 directories like every other son, and keep learning independently
-# through the exact same adaptive.py machinery once created.
-#
-# The Evolution Manager refreshes the inherited values below periodically (see
-# evolution.refresh_meta_agents) while each meta agent's OWN accumulated experience --
-# simulations, trained model, checkpoint, self-tuned adaptive params -- is preserved untouched;
-# only the BASE personality (the center of adaptive.bounds_for's per-param band) moves.
+# Sons 4-5 are two more named personalities alongside the four specialists above -- fixed
+# starting points like the rest, storage-isolated in their own data/sons/son_4 / son_5
+# directories, learning independently through the exact same adaptive.py self-tuning machinery
+# as every other son. (They used to be "meta agents" whose base personality was periodically
+# bred from the other four via a now-removed cross-agent evolution system; the seed profiles
+# below were that system's starting point and are now just their permanent personality, same
+# as sons 0-3.)
 
 META_AGENT_IDS = (4, 5)
 
@@ -147,51 +138,8 @@ AGENT_PROFILES.update(_META_SEED_PROFILES)
 
 AGENT_NAMES = {sid: p.name for sid, p in AGENT_PROFILES.items()}
 
-META_PROFILE_FILE = Path(__file__).resolve().parent.parent / "data" / "evolution" / "meta_agents.json"
-
-_meta_lock = threading.Lock()
-_meta_cache: dict = {"mtime": None, "profiles": {}}
-
-
-def _meta_overrides() -> dict:
-    """{son_id: AgentProfile} built from evolution.py's persisted crossover file, cached by
-    mtime (same convention as market_reliability._history_index). Missing/corrupt file or
-    out-of-range values -> empty dict, i.e. the seed profiles stand."""
-    if not META_PROFILE_FILE.exists():
-        return {}
-    mtime = META_PROFILE_FILE.stat().st_mtime
-    with _meta_lock:
-        if _meta_cache["mtime"] == mtime:
-            return _meta_cache["profiles"]
-        profiles: dict = {}
-        try:
-            stored = json.loads(META_PROFILE_FILE.read_text(encoding="utf-8"))
-            for sid_str, payload in (stored.get("agents") or {}).items():
-                sid = int(sid_str)
-                if sid not in _META_SEED_PROFILES:
-                    continue
-                params = payload.get("params") or {}
-                fields = {}
-                for f in ("exploration_rate", "risk_tolerance", "collection_mixing_bias",
-                          "wear_optimization_bias", "liquidity_importance", "roi_weight",
-                          "mutation_strength", "memory_weight"):
-                    v = params.get(f)
-                    if isinstance(v, (int, float)) and 0.0 <= v <= 1.0:
-                        fields[f] = float(v)
-                if fields:
-                    profiles[sid] = replace(_META_SEED_PROFILES[sid], **fields)
-        except (json.JSONDecodeError, OSError, ValueError):
-            profiles = {}
-        _meta_cache["mtime"] = mtime
-        _meta_cache["profiles"] = profiles
-        return profiles
-
 
 def profile_for(son_id: int) -> AgentProfile:
-    if son_id in META_AGENT_IDS:
-        override = _meta_overrides().get(son_id)
-        if override is not None:
-            return override
     return AGENT_PROFILES[son_id]
 
 

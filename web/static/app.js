@@ -54,8 +54,6 @@ const state = {
   // from state -- same rule as simVerifyResults above -- so it survives the poll-driven rebuild
   // instead of being recomputed (and losing history) every 3s. Resets on page reload, same as
   // the rest of this dashboard's in-memory-only state.
-  lastEvolution: null,      // most recent /api/evolution/status payload (Evolution Manager panel)
-  lastRecoveryLog: [],      // most recent /api/recovery/log payload (Exploration Recovery panel)
   lastPatternsStatus: null, // most recent /api/patterns/status payload (Rare Patterns page)
   lastPatternOpps: [],      // most recent /api/patterns/opportunities payload -- cached in state
   // (not just rendered) per this dashboard's poll-survival rule, shared by the Rare Patterns
@@ -96,7 +94,7 @@ const VIEW_LOADERS = {
   "ml-lab": ["loadThirdpartyStats", "loadModelStatus", "loadRetrainLoopStatus", "loadOutcomes",
     "loadPriceScanStatus", "loadRoundRobinStatus", "loadSimPopulationStatus", "loadConvergenceStatus",
     "loadVerifyQueueStatus", "loadDeadSkins", "loadInvalidSkins", "loadMispricedSkins",
-    "loadWearAnomalies", "loadMarketReliability", "loadEvolutionStatus", "loadRecoveryLog",
+    "loadWearAnomalies", "loadMarketReliability",
     "loadSkinBlacklist", "loadPriceOverrides"],
   results: ["loadBestSimulations", "loadSimLeaderboards", "loadBlacklist", "loadPatternOpportunities"],
   patterns: ["loadPatternsStatus", "loadPatternOpportunities"],
@@ -228,12 +226,34 @@ function renderMethodologyConstants() {
   renderWearBracketChart(c.wear_breakpoints);
 }
 
-const WEAR_COLORS = ["#4caf50", "#8bc34a", "#d4af37", "#ff9800", "#eb4b4b"];
-const CHART_AXIS_COLOR = "#8890a0";
-const AGENT_PALETTE = ["#8ea1ff", "#4caf50", "#d4af37", "#eb4b4b"];  // one fixed color per son_id
-// (0-3), shared by the agent radar chart, the agent-stats-over-rounds chart, and the bankroll
-// per-agent breakdown, so the same agent is always the same color everywhere on the page.
-const CHART_TEXT_COLOR = "#d7dbe4";
+const WEAR_COLORS = ["#39d97a", "#8bd15c", "#d9a83c", "#e08a3c", "#e0524f"];
+const CHART_AXIS_COLOR = "#6e786e";
+const AGENT_PALETTE = ["#39d97a", "#7a7fd9", "#d9a83c", "#e0524f", "#4fb8d9", "#b26fe0"];
+// one fixed color per son_id (0-5, six agents since the Stage 4 meta-agent addition), shared
+// by the agent radar chart, the agent-stats-over-rounds chart, and the bankroll per-agent
+// breakdown, so the same agent is always the same color everywhere on the page.
+const CHART_TEXT_COLOR = "#c9d1c9";
+const CHART_GRID_COLOR = "#1c211c";
+
+// Global Chart.js theming -- monospace to match the terminal aesthetic everywhere, a near-
+// invisible grid (this is a dark background; Chart.js's own default grid color assumes a
+// light one and is either too harsh or nearly invisible here), and no default legend/tooltip
+// chrome fighting the rest of the page. Individual charts still set their own axis/series
+// colors (CHART_AXIS_COLOR/AGENT_PALETTE/etc. above) -- this only covers what they don't.
+if (typeof Chart !== "undefined") {
+  Chart.defaults.font.family = "'Cascadia Mono', 'Consolas', 'SF Mono', ui-monospace, monospace";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = CHART_TEXT_COLOR;
+  Chart.defaults.borderColor = CHART_GRID_COLOR;
+  Chart.defaults.scale.grid.color = CHART_GRID_COLOR;
+  Chart.defaults.plugins.tooltip.backgroundColor = "#151915";
+  Chart.defaults.plugins.tooltip.titleColor = CHART_TEXT_COLOR;
+  Chart.defaults.plugins.tooltip.bodyColor = CHART_TEXT_COLOR;
+  Chart.defaults.plugins.tooltip.borderColor = "#3a413a";
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.cornerRadius = 2;
+  Chart.defaults.plugins.tooltip.displayColors = true;
+}
 
 // A single stacked horizontal bar showing the five wear brackets end-to-end across the full
 // 0.00-1.00 float range -- the visual companion to the "Float manipulation" methodology text.
@@ -416,7 +436,7 @@ async function copyToClipboard(text, btn) {
     document.body.removeChild(ta);
   }
   const original = btn.textContent;
-  btn.textContent = "✓";
+  btn.textContent = "copied";
   btn.classList.add("copied");
   setTimeout(() => {
     btn.textContent = original;
@@ -442,6 +462,24 @@ function wireCopyButtons(container) {
 // already in flight makes a single slow cycle merely skip a beat instead of cascading into a
 // deadlock.
 let _pollInFlight = false;
+
+// Diff-guard for the loadX()->renderX() pairs below: pollStatus() re-fetches every visible
+// panel every 3s regardless of whether the data actually changed, and every renderX() rebuilds
+// its target's innerHTML unconditionally -- on large tables (opportunity archive, best-
+// simulations, tradeups) that's real wasted DOM work every single tick, and can visibly
+// stutter/flash content that didn't change. _unchanged(key, payload) compares a JSON snapshot
+// of the just-fetched payload against the last one that actually triggered a render for that
+// key; loaders call it right after fetching and skip their render call when it returns true.
+// Row-click/verify/blacklist handlers call renderX() directly (not through loadX()), so
+// expand/collapse and one-off action feedback are completely unaffected by this -- see
+// renderBestSimulations' click handler and wireVerifyButtons for the pattern this relies on.
+const _lastRenderedJson = {};
+function _unchanged(key, payload) {
+  const json = JSON.stringify(payload);
+  if (_lastRenderedJson[key] === json) return true;
+  _lastRenderedJson[key] = json;
+  return false;
+}
 
 async function pollStatus() {
   if (_pollInFlight) return;
@@ -601,7 +639,9 @@ function renderRoundRobinStatus() {
 
 async function loadDeadSkins() {
   const res = await fetch("/api/dead-skins");
-  renderDeadSkins(await res.json());
+  const data = await res.json();
+  if (_unchanged("deadSkins", data)) return;
+  renderDeadSkins(data);
 }
 
 function renderDeadSkins(dead) {
@@ -626,7 +666,9 @@ function renderDeadSkins(dead) {
 
 async function loadInvalidSkins() {
   const res = await fetch("/api/invalid-skins");
-  renderInvalidSkins(await res.json());
+  const data = await res.json();
+  if (_unchanged("invalidSkins", data)) return;
+  renderInvalidSkins(data);
 }
 
 async function clearInvalidSkins() {
@@ -658,6 +700,7 @@ function renderInvalidSkins(invalid) {
 async function loadMispricedSkins() {
   const res = await fetch("/api/mispriced-skins");
   state.lastMispriced = await res.json();
+  if (_unchanged("mispricedSkins", state.lastMispriced)) return;
   renderMispricedSkins(state.lastMispriced);
 }
 
@@ -698,6 +741,7 @@ function renderMispricedSkins(rows) {
 async function loadSkinBlacklist() {
   const res = await fetch("/api/skin-blacklist");
   state.lastSkinBlacklist = await res.json();
+  if (_unchanged("skinBlacklist", state.lastSkinBlacklist)) return;
   renderSkinBlacklist(state.lastSkinBlacklist);
 }
 
@@ -735,6 +779,7 @@ function renderSkinBlacklist(rows) {
 async function loadPriceOverrides() {
   const res = await fetch("/api/price-overrides");
   state.lastPriceOverrides = await res.json();
+  if (_unchanged("priceOverrides", state.lastPriceOverrides)) return;
   renderPriceOverrides(state.lastPriceOverrides);
 }
 
@@ -782,6 +827,7 @@ function _flashPanelMsg(id, text, isError) {
 async function loadWearAnomalies() {
   const res = await fetch("/api/wear-anomalies");
   state.lastWearAnomalies = await res.json();
+  if (_unchanged("wearAnomalies", state.lastWearAnomalies)) return;
   renderWearAnomalies(state.lastWearAnomalies);
 }
 
@@ -817,6 +863,7 @@ function renderWearAnomalies(rows) {
 async function loadMarketReliability() {
   const res = await fetch("/api/market-reliability");
   state.lastMarketReliability = await res.json();
+  if (_unchanged("marketReliability", state.lastMarketReliability)) return;
   renderMarketReliability(state.lastMarketReliability);
 }
 
@@ -903,93 +950,6 @@ function renderVerifyQueueStatus(v) {
     </tr>`).join("");
 }
 
-// ---- Evolution Manager (Evolution Engine 2.0) -------------------------------------------
-async function loadEvolutionStatus() {
-  const res = await fetch("/api/evolution/status");
-  state.lastEvolution = await res.json();
-  renderEvolution(state.lastEvolution);
-}
-
-function _evolutionRows(genomes) {
-  const agentNames = (state.constants && state.constants.agent_names) || {};
-  return (genomes || []).map(g => `
-    <tr>
-      <td>${agentNames[g.son_id] || `Son ${g.son_id}`}</td>
-      <td>${(g.species || "").replaceAll("|", " | ")}</td>
-      <td class="num">${g.fitness != null ? g.fitness.toFixed(1) : "-"}</td>
-      <td class="num ${g.roi_pct != null && g.roi_pct >= 0 ? "profit-positive" : "profit-negative"}">${g.roi_pct != null ? fmtMoney(g.roi_pct) + "%" : "-"}</td>
-      <td>${fmtTime(g.added_at)}</td>
-    </tr>`).join("");
-}
-
-function renderEvolution(ev) {
-  const el = document.getElementById("evolution-status");
-  if (!el || !ev) return;
-  const toggleBtn = document.getElementById("evolution-toggle-btn");
-  toggleBtn.textContent = ev.enabled ? "Disable" : "Enable";
-  document.getElementById("evolution-tick-btn").disabled = !ev.enabled;
-  document.getElementById("evolution-elite-cap").textContent = ev.elite_capacity;
-  el.textContent = ev.enabled
-    ? `enabled | generation ${ev.generation} | elite ${ev.elite_size}/${ev.elite_capacity} genomes across ${ev.n_species} species | `
-      + `${ev.injections} cross-agent parent injections | novelty archive: ${ev.novelty_archive_size} distinct strategies | `
-      + `last tick ${fmtTime(ev.last_tick_at)} | meta agents refreshed ${fmtTime(ev.last_meta_refresh_at)} | last hyperparam transfer ${fmtTime(ev.last_pbt_at)}`
-      + (ev.last_error ? ` | last error: ${ev.last_error}` : "")
-    : "disabled -- every hook (parent injection, mutation boost, meta refresh, hyperparameter evolution) is returning neutral values; the population behaves exactly as if the manager didn't exist.";
-  const eliteTable = document.getElementById("evolution-elite-table");
-  const eliteEmpty = document.getElementById("evolution-elite-empty");
-  if (!(ev.elite_top || []).length) {
-    eliteTable.style.display = "none";
-    eliteEmpty.style.display = "block";
-  } else {
-    eliteTable.style.display = "";
-    eliteEmpty.style.display = "none";
-    eliteTable.querySelector("tbody").innerHTML = _evolutionRows(ev.elite_top);
-  }
-  document.querySelector("#evolution-hof-table tbody").innerHTML = _evolutionRows(ev.hall_of_fame);
-  const agentNames = (state.constants && state.constants.agent_names) || {};
-  const events = [];
-  for (const e of ev.pbt_events || []) {
-    events.push(`hyperparams: ${agentNames[e.donor] || `Son ${e.donor}`} (reward ${e.donor_reward}) → ${agentNames[e.receiver] || `Son ${e.receiver}`} (reward ${e.receiver_reward}) at ${fmtTime(e.at)}`);
-  }
-  for (const e of ev.meta_events || []) {
-    events.push(`meta refresh from specialists ${(e.parents || []).map(p => agentNames[p] || `Son ${p}`).join(" + ")} at ${fmtTime(e.at)}`);
-  }
-  document.getElementById("evolution-events").innerHTML = events.length
-    ? `Recent evolution events:<br>${events.map(e => `&bull; ${e}`).join("<br>")}`
-    : "";
-}
-
-// ---- Exploration Recovery Mode log --------------------------------------------------------
-async function loadRecoveryLog() {
-  const res = await fetch("/api/recovery/log?limit=30");
-  state.lastRecoveryLog = await res.json();
-  renderRecoveryLog(state.lastRecoveryLog);
-}
-
-function renderRecoveryLog(rows) {
-  const table = document.getElementById("recovery-log-table");
-  const emptyEl = document.getElementById("recovery-log-empty");
-  const countEl = document.getElementById("recovery-log-count");
-  if (!table || !emptyEl) return;
-  countEl.textContent = rows.length ? `(${rows.length} recent)` : "";
-  if (!rows.length) {
-    table.style.display = "none";
-    emptyEl.style.display = "block";
-    return;
-  }
-  table.style.display = "";
-  emptyEl.style.display = "none";
-  const agentNames = (state.constants && state.constants.agent_names) || {};
-  table.querySelector("tbody").innerHTML = rows.map(r => `
-    <tr>
-      <td>${agentNames[r.son_id] || `Son ${r.son_id}`}</td>
-      <td><span class="recovery-event recovery-event-${r.event}">${r.event}</span></td>
-      <td class="num">${r.level != null ? r.level : "-"}</td>
-      <td class="num">${r.round != null ? r.round : "-"}</td>
-      <td class="num">${r.rounds_since_improvement != null ? r.rounds_since_improvement : "-"}</td>
-      <td>${fmtTime(r.at)}</td>
-    </tr>`).join("");
-}
 
 // ---- Rare Pattern Arbitrage (Collector Arbitrage) ------------------------------------------
 function tierBadge(tier) {
@@ -1014,17 +974,16 @@ function renderPatternsStatus(ps) {
   const parts = [
     `${s.status}${s.current_target ? ` -- checking ${s.current_target}` : ""}`,
     `${s.n_targets || 0} scan targets from the knowledge base`,
-    `CSFloat: ${s.queries || 0} queries | ${s.listings_seen || 0} listings | last success ${fmtTime(s.last_success_at)}`,
     `Steam Market: ${s.steam_queries || 0} queries | ${s.steam_listings_seen || 0} listings | ${s.inspects_resolved || 0} inspect links resolved | last success ${fmtTime(s.steam_last_success_at)}`,
     `${s.matches || 0} matches | ${s.opportunities_live || 0} live opportunities`,
   ];
   if (s.steam_blocked_until && s.steam_blocked_until * 1000 > Date.now()) {
-    parts.push(`⏳ Steam source cooling down after a rate limit -- resumes ${fmtTime(s.steam_blocked_until)} (CSFloat scanning continues meanwhile)`);
+    parts.push(`Steam cooling down after a rate limit -- resumes ${fmtTime(s.steam_blocked_until)}`);
   }
-  if (s.last_error) parts.push(`CSFloat last error: ${s.last_error}`);
   if (s.steam_last_error) parts.push(`Steam last error: ${s.steam_last_error}`);
   if (s.inspect_last_error) parts.push(`inspect last error: ${s.inspect_last_error}`);
-  if (!s.csfloat_key_configured && s.csfloat_key_note) parts.push(`⚠ ${s.csfloat_key_note}`);
+  if (!s.steam_login_cookie_configured && s.steam_login_cookie_note) parts.push(s.steam_login_cookie_note);
+  if (!s.csfloat_key_configured && s.csfloat_key_note) parts.push(s.csfloat_key_note);
   el.textContent = parts.join(" | ");
   document.getElementById("patterns-scan-start-btn").disabled = s.status === "scanning";
   document.getElementById("patterns-scan-pause-btn").disabled = s.status !== "scanning";
@@ -1041,15 +1000,16 @@ function renderPatternsStatus(ps) {
   }
 }
 
-// Mirrors the Rare Patterns scanner's own network health (CSFloat + Steam Market inspect
-// queries -- a completely separate rate-limited path from the Steam price cache the row above
-// tracks) into the global topbar, same as renderNetworkStats does for the price cache. Runs off
-// the same 3s poll (loadPatternsStatus is in the pollStatus Promise.all), so it stays current
-// from any tab, not just when scrolled to the Rare Patterns page.
+// Mirrors the Rare Patterns scanner's own network health (Steam Market listings + the
+// separate CSFloat inspect-resolution queries -- a completely different rate-limited path
+// from the Steam price cache the row above tracks) into the global topbar, same as
+// renderNetworkStats does for the price cache. Runs off the same 3s poll (loadPatternsStatus
+// is in the pollStatus Promise.all), so it stays current from any tab, not just when scrolled
+// to the Rare Patterns page.
 function renderPatternsTopbar(s) {
   const headline = document.getElementById("patterns-health-headline");
   if (!headline) return;
-  document.getElementById("pat-stat-csfloat-queries").textContent = s.queries || 0;
+  document.getElementById("pat-stat-csfloat-queries").textContent = s.inspects_resolved || 0;
   document.getElementById("pat-stat-steam-queries").textContent = s.steam_queries || 0;
   document.getElementById("pat-stat-matches").textContent = s.matches || 0;
 
@@ -1061,16 +1021,13 @@ function renderPatternsTopbar(s) {
     headline.className = "health-headline health-idle";
   } else if (steamCoolingDown) {
     const remaining = Math.ceil(s.steam_blocked_until - now);
-    headline.textContent = `⏳ Rare Patterns: Steam Market cooling down after a rate limit -- resumes in ${remaining}s (CSFloat continues meanwhile)`;
-    headline.className = "health-headline health-warn";
-  } else if (s.last_error) {
-    headline.textContent = `⚠ Rare Patterns: CSFloat error -- ${s.last_error}`;
+    headline.textContent = `Rare Patterns: Steam Market cooling down after a rate limit -- resumes in ${remaining}s`;
     headline.className = "health-headline health-warn";
   } else if (s.steam_last_error) {
-    headline.textContent = `⚠ Rare Patterns: Steam Market error -- ${s.steam_last_error}`;
+    headline.textContent = `Rare Patterns: Steam Market error -- ${s.steam_last_error}`;
     headline.className = "health-headline health-warn";
   } else {
-    headline.textContent = "✓ Rare Patterns scanner running normally";
+    headline.textContent = "Rare Patterns scanner running normally";
     headline.className = "health-headline health-ok";
   }
 }
@@ -1114,7 +1071,7 @@ function renderPatternOpportunities(rows) {
     <tr title="${(o.explanation || "").replace(/"/g, "&quot;")}">
       <td>${copyableName(o.market_hash_name, o.image_url)}</td>
       <td>${o.pattern_label || "-"} ${tierBadge(o.pattern_tier)}
-        ${o.source_url ? `<a href="${o.source_url}" target="_blank" rel="noopener noreferrer" class="buy-link" title="Public source documenting this pattern">source ↗</a>` : ""}</td>
+        ${o.source_url ? `<a href="${o.source_url}" target="_blank" rel="noopener noreferrer" class="buy-link" title="Public source documenting this pattern">source</a>` : ""}</td>
       <td class="num">${o.float_value != null ? o.float_value.toFixed(4) : "-"}</td>
       <td class="num">${o.paint_seed != null ? o.paint_seed : (o.paint_index != null ? `idx ${o.paint_index}` : "-")}</td>
       <td class="num">${fmtCurrency(o.asking_price)}</td>
@@ -1123,7 +1080,7 @@ function renderPatternOpportunities(rows) {
       <td class="num">${o.edge_pct != null ? fmtMoney(o.edge_pct) + "%" : "-"}</td>
       <td>${patConfBadge(o.confidence)}</td>
       <td>${MARKETPLACE_LABELS[o.marketplace] || o.marketplace}</td>
-      <td>${o.listing_url ? `<a href="${o.listing_url}" target="_blank" rel="noopener noreferrer" class="buy-link">View listing ↗</a>` : "-"}</td>
+      <td>${o.listing_url ? `<a href="${o.listing_url}" target="_blank" rel="noopener noreferrer" class="buy-link">View listing</a>` : "-"}</td>
     </tr>`).join("");
   wireCopyButtons(table.querySelector("tbody"));
 }
@@ -1152,7 +1109,7 @@ function renderCollectorOpps(rows) {
       <td class="num">${fmtCurrency(o.estimated_collector_value)}</td>
       <td class="num ${o.expected_profit >= 0 ? "profit-positive" : "profit-negative"}">${fmtCurrency(o.expected_profit)}</td>
       <td>${patConfBadge(o.confidence)}</td>
-      <td>${o.listing_url ? `<a href="${o.listing_url}" target="_blank" rel="noopener noreferrer" class="buy-link">View listing ↗</a>` : "-"}</td>
+      <td>${o.listing_url ? `<a href="${o.listing_url}" target="_blank" rel="noopener noreferrer" class="buy-link">View listing</a>` : "-"}</td>
     </tr>`).join("");
   wireCopyButtons(table.querySelector("tbody"));
 }
@@ -1172,7 +1129,7 @@ function renderPatternDb(db) {
     const floatReq = (e.min_float != null || e.max_float != null)
       ? `${e.min_float != null ? e.min_float : 0} - ${e.max_float != null ? e.max_float : 1}` : "-";
     const src = sourceUrls[e.source]
-      ? `<a href="${sourceUrls[e.source]}" target="_blank" rel="noopener noreferrer" class="buy-link">${e.source} ↗</a>`
+      ? `<a href="${sourceUrls[e.source]}" target="_blank" rel="noopener noreferrer" class="buy-link">${e.source}</a>`
       : (e.source || "-");
     return `
     <tr>
@@ -1831,6 +1788,7 @@ function renderSimFeatureImportanceGrid(sons) {
 async function loadSimLeaderboards() {
   const res = await fetch("/api/sim-population/leaderboards");
   state.lastSimLeaderboards = await res.json();
+  if (_unchanged("simLeaderboards", state.lastSimLeaderboards)) return;
   renderSimLeaderboards(state.lastSimLeaderboards);
 }
 
@@ -1932,12 +1890,6 @@ function renderSimPopulation(sons) {
       : `model not trained yet (need ${s.sim_model_status ? s.sim_model_status.min_samples_required : "?"}+)`;
     const stuckBadge = s.stuck ? `<span class="stuck-badge">STUCK -- ${s.rounds_since_improvement} rounds w/o improvement</span>` : "";
     const nudgeBadge = s.nudge_rounds_remaining > 0 ? `<span class="nudging-badge">nudged, ${s.nudge_rounds_remaining} rounds left (temp x${(s.effective_temperature / s.temperature).toFixed(1)})</span>` : "";
-    // Exploration Recovery Mode (src/recovery.py): engages only after a nudge has demonstrably
-    // not been enough, escalates levels 1-4, then bounds-clamped random perturbations.
-    const rec = s.recovery;
-    const recoveryBadge = rec && rec.active
-      ? `<span class="recovery-badge" title="Progressive escalation: mutation/exploration/novelty up, exploitation down -- exits the moment a real improvement lands. See the Exploration Recovery Mode panel below for the event log.">RECOVERY MODE lvl ${rec.level}${rec.perturbations ? ` -- ${rec.perturbations} perturbation${rec.perturbations > 1 ? "s" : ""}` : ""}</span>`
-      : "";
     // Self-tuning status (src/adaptive.py): this agent A/B-tests small tweaks of its own
     // search preferences every few rounds, keeping only ones that beat the previous window's
     // ROI-first + novelty reward. The radar chart above already plots the LIVE (drifted)
@@ -1955,7 +1907,7 @@ function renderSimPopulation(sons) {
       <span class="${s.best_roi_ever != null && s.best_roi_ever >= 0 ? "profit-positive" : "profit-negative"}">${s.best_roi_ever != null ? fmtMoney(s.best_roi_ever) + "%" : "-"}</span><br>
       ${model}<br>
       <span class="muted-inline">${adaptLine}</span><br>
-      ${stuckBadge} ${nudgeBadge} ${recoveryBadge}<br>
+      ${stuckBadge} ${nudgeBadge}<br>
       updated ${fmtTime(s.updated_at)}`;
     // While the round-robin scheduler owns the population, it's the one flipping each son's
     // pause_event in turn -- disable the per-son Start/Pause/Stop so a manual click can't race
@@ -1991,6 +1943,11 @@ function renderSimPopulation(sons) {
 async function loadBestSimulations() {
   const res = await fetch("/api/sim-population/best-simulations");
   state.lastBestSimulations = await res.json();
+  // Note: this key is skipped when the underlying data is unchanged, but expand/collapse
+  // (renderBestSimulations' own row-click handler) and verify/blacklist actions call
+  // renderBestSimulations() directly rather than through this loader, so they always render
+  // immediately regardless of this guard -- see _unchanged's comment.
+  if (_unchanged("bestSimulations", state.lastBestSimulations)) return;
   renderBestSimulations(state.lastBestSimulations);
 }
 
@@ -2011,6 +1968,38 @@ function _deadSkinRiskBadge(s) {
   const units = [...(s.input_mix || []), ...(s.output_distribution || [])];
   const worst = units.reduce((m, u) => Math.max(m, u.dead_skin_score || 0), 0);
   return worst > 0 ? `<span class="dead-skin-badge">score ${worst.toFixed(0)}</span>` : `<span class="tag-same">clean</span>`;
+}
+
+// Single at-a-glance trust signal for a trade-up row, folding together the 4 raw numbers that
+// used to each need their own hover-only <th title> to interpret (Composite score, Confidence,
+// Dead-skin risk, Price basis). Level = confidence_score's existing low/medium/high risk banding
+// (see _riskLevel), stepped down one notch for a dead-skin flag and again for a non-"cache" price
+// basis -- so the badge already reflects the worst-case signal without the user hovering anything.
+// Exact numbers stay one hover (title) or one row-expand away, not deleted.
+function _trustLevel(s) {
+  const order = ["poor", "fair", "good"];
+  let idx = _riskLevel(s.confidence_score) === "low" ? 2 : _riskLevel(s.confidence_score) === "medium" ? 1 : 0;
+  const units = [...(s.input_mix || []), ...(s.output_distribution || [])];
+  const worstDeadSkin = units.reduce((m, u) => Math.max(m, u.dead_skin_score || 0), 0);
+  if (worstDeadSkin > 0) idx = Math.max(0, idx - 1);
+  if (s.cost_basis_source && s.cost_basis_source !== "cache") idx = Math.max(0, idx - 1);
+  return order[idx];
+}
+
+function _trustBadge(s) {
+  const level = _trustLevel(s);
+  const cls = level === "good" ? "risk-low" : level === "fair" ? "risk-medium" : "risk-high";
+  const label = level === "good" ? "Trust: high" : level === "fair" ? "Trust: medium" : "Trust: low";
+  const units = [...(s.input_mix || []), ...(s.output_distribution || [])];
+  const worstDeadSkin = units.reduce((m, u) => Math.max(m, u.dead_skin_score || 0), 0);
+  const title = [
+    `Composite score: ${s.composite_score != null ? s.composite_score.toFixed(1) : "-"}`,
+    `Confidence: ${s.confidence_score != null ? s.confidence_score.toFixed(0) : "-"}`,
+    `Dead-skin risk: ${worstDeadSkin > 0 ? "score " + worstDeadSkin.toFixed(0) : "clean"}`,
+    `Price basis: ${s.cost_basis_source || "-"}`,
+    `Last verified: ${s.verified_at ? fmtTime(s.verified_at) : "-"}`,
+  ].join(" · ");
+  return `<span class="confidence-badge ${cls}" title="${title}">${label}</span>`;
 }
 
 function _applyOpportunityFilters(sims) {
@@ -2078,6 +2067,45 @@ function renderVerifyRows(rows) {
     </table>`;
 }
 
+// Identity (Agent/Collection/From-To/StatTrak) and the 4 raw trust numbers (Composite score,
+// Confidence, Dead-skin risk, Price basis) used to each be their own always-visible column --
+// now demoted here, one click deeper behind the row's expand toggle, alongside the input/output
+// breakdown that already lived in this detail view. Nothing deleted, just reorganized.
+function renderSimulationSummary(s) {
+  const agentNames = (state.constants && state.constants.agent_names) || {};
+  const agentName = agentNames[s.son] || `Son ${s.son}`;
+  return `
+    <div class="sim-detail-summary">
+      <span><strong>Agent</strong> ${agentName}</span>
+      <span><strong>Collection</strong> ${s.primary_collection}</span>
+      <span><strong>Trade-up</strong> ${s.from_rarity} &rarr; ${s.to_rarity}</span>
+      <span><strong>StatTrak</strong> ${s.stattrak ? "Yes" : "No"}</span>
+      <span><strong>Composite score</strong> ${s.composite_score != null ? s.composite_score.toFixed(1) : "-"}</span>
+      <span><strong>Confidence</strong> ${_riskBadge(s.confidence_score)}</span>
+      <span><strong>Dead-skin risk</strong> ${_deadSkinRiskBadge(s)}</span>
+      <span><strong>Price basis</strong> ${s.cost_basis_source || "-"}</span>
+      <span><strong>Last verified</strong> ${s.verified_at ? fmtTime(s.verified_at) : "-"}</span>
+    </div>`;
+}
+
+// The moment-of-decision card: this is the screen you're actually looking at right before
+// spending real money on a candidate. One hero number up top (expected profit, the figure
+// that answers "is this worth it"), everything else -- identity, inputs, possible outputs,
+// trust signals -- stays available but demoted below it. See .decision-hero in style.css.
+function renderDecisionHero(s) {
+  // effective_roi_pct/profit_amount (added by ranking.rank()) already implement "verified
+  // beats predicted when available" -- see ranking.effective_roi's docstring -- so this
+  // reuses the same number the composite score/ranking itself trusts, not a re-derived one.
+  const roi = s.effective_roi_pct != null ? s.effective_roi_pct : s.expected_roi_pct;
+  const cls = roi >= 0 ? "profit-positive" : "profit-negative";
+  const verifiedNote = s.verified_roi_pct != null ? " (verified)" : "";
+  return `
+    <div class="decision-hero">
+      <span class="hero-figure ${cls}">${fmtCurrency(s.profit_amount)}</span>
+      <span class="hero-sub">expected profit on a ${fmtCurrency(s.cost)} stake -- ${fmtMoney(roi)}% ROI${verifiedNote}</span>
+    </div>`;
+}
+
 function renderSimulationDetail(s) {
   const outputsHtml = renderDrops(s.output_distribution.map(o => ({
     name: o.skin, image: o.image, wear: o.wear, probability_pct: o.prob_pct,
@@ -2092,10 +2120,13 @@ function renderSimulationDetail(s) {
   const cachedHtml = cached ? (cached.error ? `<em>Verification failed: ${cached.error}</em>` : renderVerifyRows(cached.rows)) : "";
   return `
     <div class="sim-detail">
+      ${renderDecisionHero(s)}
+      ${renderSimulationSummary(s)}
       ${renderSimInputs(s.input_mix)}
       <strong>Possible outputs</strong>
       ${outputsHtml}
       <div class="sim-verify">
+        <button class="log-outcome-btn sim-log-outcome-btn" data-id="${idAttr}" title="Pre-fill the outcome-logging form with this candidate's details -- you still confirm the real prices/results yourself after you actually buy it">Log outcome</button>
         <button class="secondary verify-prices-btn" data-id="${idAttr}">Verify prices vs Steam/Skinport/Buff163/CSFloat</button>
         <button class="secondary blacklist-btn" data-id="${idAttr}" title="You already executed this trade-up -- stop showing it and stop the agents re-proposing it">Mark done / blacklist</button>
         <div class="verify-result" data-id="${idAttr}">${cachedHtml}</div>
@@ -2165,31 +2196,17 @@ function renderBestSimulations(simsAll) {
   const tbody = document.querySelector("#best-simulations-table tbody");
   const countEl = document.getElementById("best-sim-count");
   if (countEl) countEl.textContent = simsAll.length ? `(${sims.length} of ${simsAll.length})` : "";
-  const agentNames = (state.constants && state.constants.agent_names) || {};
   tbody.innerHTML = sims.map(s => {
     const expanded = state.expandedSimulations.has(s.id);
-    const agentName = agentNames[s.son] || `Son ${s.son}`;
-    const verifiedCell = s.verified_roi_pct != null
-      ? `<span class="${s.verified_roi_pct >= 0 ? "profit-positive" : "profit-negative"}">${fmtMoney(s.verified_roi_pct)}%</span>`
-      : `<span class="muted-inline">not verified</span>`;
     return `
     <tr class="sim-row" data-id="${encodeURIComponent(s.id)}">
-      <td>${expanded ? "▾" : "▸"} ${agentName}</td>
-      <td>${s.primary_collection}</td>
-      <td>${s.from_rarity}</td>
-      <td>${s.to_rarity}</td>
-      <td>${s.stattrak ? "Yes" : "No"}</td>
+      <td>${expanded ? "▾" : "▸"}</td>
       <td class="num">${fmtMoney(s.cost)}</td>
       ${_roiCell(s)}
-      <td class="num">${verifiedCell}</td>
-      <td class="num">${s.composite_score != null ? s.composite_score.toFixed(1) : "-"}</td>
-      <td>${_riskBadge(s.confidence_score)}</td>
-      <td>${_deadSkinRiskBadge(s)}</td>
-      <td>${s.cost_basis_source}</td>
-      <td>${s.verified_at ? fmtTime(s.verified_at) : "-"}</td>
+      <td>${_trustBadge(s)}</td>
     </tr>
     <tr class="drop-row" style="${expanded ? "" : "display:none;"}">
-      <td colspan="13">${expanded ? renderSimulationDetail(s) : ""}</td>
+      <td colspan="4">${expanded ? renderSimulationDetail(s) : ""}</td>
     </tr>`;
   }).join("");
 
@@ -2202,6 +2219,7 @@ function renderBestSimulations(simsAll) {
     });
   });
   wireCopyButtons(tbody);
+  wireSimLogOutcomeButtons(tbody, sims);
   wireVerifyButtons(tbody, sims);
   wireBlacklistButtons(tbody, sims);
 }
@@ -2241,6 +2259,7 @@ function wireBlacklistButtons(tbody, sims) {
 async function loadBlacklist() {
   const res = await fetch("/api/sim-population/blacklist");
   state.lastBlacklist = await res.json();
+  if (_unchanged("blacklist", state.lastBlacklist)) return;
   renderBlacklist(state.lastBlacklist);
 }
 
@@ -2302,33 +2321,19 @@ function renderOpportunityArchive(data) {
   const tbody = document.querySelector("#archive-table tbody");
   if (!tbody) return;
   const sims = data.items || [];
-  const agentNames = (state.constants && state.constants.agent_names) || {};
   const countEl = document.getElementById("archive-count");
   if (countEl) countEl.textContent = data.total ? `(${data.total} unique)` : "";
   tbody.innerHTML = sims.map(s => {
     const expanded = state.expandedArchive.has(s.id);
-    const agentName = agentNames[s.son] || `Son ${s.son}`;
-    const verifiedCell = s.verified_roi_pct != null
-      ? `<span class="${s.verified_roi_pct >= 0 ? "profit-positive" : "profit-negative"}">${fmtMoney(s.verified_roi_pct)}%</span>`
-      : `<span class="muted-inline">not verified</span>`;
     return `
     <tr class="sim-row" data-id="${encodeURIComponent(s.id)}">
-      <td>${expanded ? "▾" : "▸"} ${agentName}</td>
-      <td>${s.primary_collection}</td>
-      <td>${s.from_rarity}</td>
-      <td>${s.to_rarity}</td>
-      <td>${s.stattrak ? "Yes" : "No"}</td>
+      <td>${expanded ? "▾" : "▸"}</td>
       <td class="num">${fmtMoney(s.cost)}</td>
       ${_roiCell(s)}
-      <td class="num">${verifiedCell}</td>
-      <td class="num">${s.composite_score != null ? s.composite_score.toFixed(1) : "-"}</td>
-      <td>${_riskBadge(s.confidence_score)}</td>
-      <td>${_deadSkinRiskBadge(s)}</td>
-      <td>${s.cost_basis_source}</td>
-      <td>${s.verified_at ? fmtTime(s.verified_at) : "-"}</td>
+      <td>${_trustBadge(s)}</td>
     </tr>
     <tr class="drop-row" style="${expanded ? "" : "display:none;"}">
-      <td colspan="13">${expanded ? renderSimulationDetail(s) : ""}</td>
+      <td colspan="4">${expanded ? renderSimulationDetail(s) : ""}</td>
     </tr>`;
   }).join("");
 
@@ -2341,6 +2346,7 @@ function renderOpportunityArchive(data) {
     });
   });
   wireCopyButtons(tbody);
+  wireSimLogOutcomeButtons(tbody, sims);
   wireVerifyButtons(tbody, sims);
   wireBlacklistButtons(tbody, sims);
 
@@ -2651,6 +2657,17 @@ function prefillOutcomeForm(r, kind) {
   document.getElementById("oc-notes").value =
     `Pre-filled from scan: ${groupName || ""}${r.from_rarity ? " " + r.from_rarity : ""}${r.to_rarity ? " -> " + r.to_rarity : ""}`.trim();
 
+  _goToOutcomeForm();
+}
+
+// The outcome-logging form lives on the ML Lab view (#outcome-form/#learning-section), but
+// "Log outcome" buttons appear on the Calculator and Results views too -- scrollIntoView()
+// alone does nothing when the target is inside a hidden (display:none) view, so this switches
+// views first via the same hash-driven mechanism the nav links use, then scrolls once the
+// section is actually visible.
+function _goToOutcomeForm() {
+  location.hash = "#ml-lab";
+  applyView();
   document.getElementById("learning-section").scrollIntoView({ behavior: "smooth" });
   document.getElementById("oc-output-skin").focus();
 }
@@ -2660,6 +2677,47 @@ function wireLogOutcomeButtons(container, kind) {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       prefillOutcomeForm(JSON.parse(decodeURIComponent(btn.dataset.row)), kind);
+    });
+  });
+}
+
+// Same idea as prefillOutcomeForm above, but for a sim-population candidate (Results view) --
+// input_mix is already a structured array here ({skin, wear, count, unit_price} per unit), no
+// market-hash-name parsing needed. currency=1 matches sim_loop's own hardcoded simulation
+// currency (see user_overrides.repriced_entry_copy's docstring for the same convention).
+function prefillOutcomeFormFromSim(s) {
+  document.getElementById("oc-collection").value = s.primary_collection || "";
+  document.getElementById("oc-kind").value = "collection";
+  document.getElementById("oc-stattrak").checked = !!s.stattrak;
+  document.getElementById("oc-from-rarity").value = s.from_rarity;
+  document.getElementById("oc-to-rarity").value = s.to_rarity;
+  document.getElementById("oc-currency").value = 1;
+
+  const mixLines = (s.input_mix || []).map(m => `${m.skin}:${m.wear}:${m.count}:${m.unit_price}`);
+  document.getElementById("oc-input-mix").value = mixLines.join("\n");
+  document.getElementById("oc-filler").value = "";
+  document.getElementById("oc-filler-collection").value = "";
+  document.getElementById("oc-output-skin").value = "";
+  document.getElementById("oc-output-wear").value = "";  // the simulation doesn't know the real
+  // output float you'll actually get -- always left blank for you to fill in after crafting
+  document.getElementById("oc-sale-price").value = "";
+  document.getElementById("oc-status").value = "sold";
+  document.getElementById("oc-predicted-roi").value = s.expected_roi_pct != null ? s.expected_roi_pct.toFixed(2) : "";
+  document.getElementById("oc-ml-predicted-roi").value = s.ml_predicted_roi_pct != null ? s.ml_predicted_roi_pct : "";
+  const agentNames = (state.constants && state.constants.agent_names) || {};
+  document.getElementById("oc-notes").value =
+    `Pre-filled from ${agentNames[s.son] || `Son ${s.son}`}'s simulation: ${s.primary_collection || ""} ${s.from_rarity} -> ${s.to_rarity}`.trim();
+
+  _goToOutcomeForm();
+}
+
+function wireSimLogOutcomeButtons(tbody, sims) {
+  tbody.querySelectorAll(".sim-log-outcome-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = decodeURIComponent(btn.dataset.id);
+      const s = sims.find(x => x.id === id);
+      if (s) prefillOutcomeFormFromSim(s);
     });
   });
 }
@@ -2719,14 +2777,14 @@ function renderNetworkStats(stats) {
   const now = Date.now() / 1000;
   if (stats.backoff_until && stats.backoff_until > now) {
     const remaining = Math.ceil(stats.backoff_until - now);
-    headline.textContent = `⏳ Steam just rate-limited a request -- waiting ${remaining}s before retrying (this is normal, not a ban)`;
+    headline.textContent = `Steam just rate-limited a request -- waiting ${remaining}s before retrying (this is normal, not a ban)`;
     headline.className = "health-warn";
   } else if (stats.last_success_at && (now - stats.last_success_at) < 20) {
-    headline.textContent = "✓ Working normally -- getting real prices back from Steam";
+    headline.textContent = "Working normally -- getting real prices back from Steam";
     headline.className = "health-ok";
   } else if (stats.requests_rate_limited > 0 &&
              (!stats.last_success_at || (stats.last_rate_limited_at || 0) > stats.last_success_at)) {
-    headline.textContent = "⚠ Steam is currently throttling requests -- retrying automatically, this is temporary";
+    headline.textContent = "Steam is currently throttling requests -- retrying automatically, this is temporary";
     headline.className = "health-warn";
   } else if (!stats.requests_ok && !stats.requests_rate_limited && !stats.cache_hits) {
     headline.textContent = "No requests made yet";
@@ -2745,7 +2803,7 @@ function renderNetworkStats(stats) {
     const minutes = Math.floor((now - stats.rate_limit_streak_start) / 60);
     vpnWarning.style.display = "block";
     document.getElementById("vpn-warning-text").textContent =
-      `⚠ Steam has rate-limited every request for the last ${minutes} minute(s) straight. ` +
+      `Steam has rate-limited every request for the last ${minutes} minute(s) straight. ` +
       `Try switching your VPN server/location (e.g. in Avast SecureLine, connect to a different city or country) ` +
       `to get a fresh IP. The scanner keeps retrying automatically every 5 minutes on its own, or click Retry now ` +
       `to try immediately after switching.`;
@@ -2834,18 +2892,21 @@ function renderStatus(s) {
 async function loadTradeups() {
   const res = await fetch("/api/tradeups");
   state.tradeups = await res.json();
+  if (_unchanged("tradeups", state.tradeups)) return;
   renderTradeups();
 }
 
 async function loadAnomalies() {
   const res = await fetch("/api/anomalies");
   state.anomalies = await res.json();
+  if (_unchanged("anomalies", state.anomalies)) return;
   renderAnomalies();
 }
 
 async function loadCovert() {
   const res = await fetch("/api/covert");
   state.covert = await res.json();
+  if (_unchanged("covert", state.covert)) return;
   renderCovert();
 }
 
@@ -2864,7 +2925,7 @@ function sortRows(rows, sortSpec) {
 function lowVolumeBadge(volume) {
   const threshold = (state.constants && state.constants.low_volume_threshold) || 5;
   if (volume == null || volume >= threshold) return "";
-  return `<span class="tag-lowvol" title="Only ${volume} recent Steam sale(s) backing this price -- may not reflect what you could actually sell at. Use the 'Price report (CSV)' button to cross-check against Skinport/CSFloat.">⚠ low volume (${volume})</span>`;
+  return `<span class="tag-lowvol" title="Only ${volume} recent Steam sale(s) backing this price -- may not reflect what you could actually sell at. Use the 'Price report (CSV)' button to cross-check against Skinport/CSFloat.">low volume (${volume})</span>`;
 }
 
 // Short wear labels for the wear-landing-odds column (FN 72% / MW 28%).
@@ -3020,7 +3081,7 @@ function mlBadge(r) {
 function droughtBadge(r) {
   const tp = r.thirdparty_check;
   if (!tp || !tp.is_drought) return "";
-  return `<span class="tag-drought" title="Steam is ${tp.gap_pct.toFixed(0)}% above the cheapest verified price (${fmtCurrency(tp.cheapest_thirdparty_price)} on ${tp.cheapest_source}) -- may be a temporary supply drought inflating the Steam price specifically">⚠ drought +${tp.gap_pct.toFixed(0)}%</span>`;
+  return `<span class="tag-drought" title="Steam is ${tp.gap_pct.toFixed(0)}% above the cheapest verified price (${fmtCurrency(tp.cheapest_thirdparty_price)} on ${tp.cheapest_source}) -- may be a temporary supply drought inflating the Steam price specifically">drought +${tp.gap_pct.toFixed(0)}%</span>`;
 }
 
 function renderTradeups() {
@@ -3035,7 +3096,7 @@ function renderTradeups() {
     // require expanding every row to discover -- only shown once both strategy toggles are
     // on and the best one actually beats this row's plain ROI.
     const strategyBadge = bestRoi != null && bestRoi > r.roi_pct
-      ? `<span class="tag-better" title="Best strategy ROI found for this trade-up">↑ ${bestRoi.toFixed(1)}% available</span>`
+      ? `<span class="tag-better" title="Best strategy ROI found for this trade-up">${bestRoi.toFixed(1)}% available</span>`
       : "";
     return `
     <tr class="tradeup-row" data-key="${encodeURIComponent(key)}">
@@ -3049,7 +3110,7 @@ function renderTradeups() {
       <td class="num ${r.profit >= 0 ? "profit-positive" : "profit-negative"}">${fmtCurrency(r.profit)}</td>
       <td class="num ${r.roi_pct >= 0 ? "profit-positive" : "profit-negative"}">${fmtMoney(r.roi_pct)}% ${strategyBadge} ${mlBadge(r)}</td>
       <td class="num">${fmtCurrency(r.max_input_price)}</td>
-      <td onclick="event.stopPropagation()">${renderBuyLinks(r.buy_links)}<button class="log-outcome-btn" data-row="${encodeURIComponent(JSON.stringify(r))}" title="Pre-fill the outcome-logging form below with this trade-up's details -- you still confirm the real prices/results yourself">&#128203; Log this</button></td>
+      <td onclick="event.stopPropagation()">${renderBuyLinks(r.buy_links)}<button class="log-outcome-btn" data-row="${encodeURIComponent(JSON.stringify(r))}" title="Pre-fill the outcome-logging form below with this trade-up's details -- you still confirm the real prices/results yourself">Log outcome</button></td>
     </tr>
     <tr class="drop-row" style="${expanded ? "" : "display:none;"}">
       <td colspan="11">${expanded ? (r.mixed_float_strategy ? renderMixedFloatStrategy(r) : renderMixedStrategy(r) + renderFloatStrategy(r)) + renderDrops(r.possible_drops) : ""}</td>
@@ -3098,7 +3159,7 @@ function renderCovert() {
     const expanded = state.expandedCovert.has(key);
     const bestRoi = bothStrategiesOn ? bestStrategyRoi(r) : null;
     const strategyBadge = bestRoi != null && bestRoi > r.roi_pct
-      ? `<span class="tag-better" title="Best strategy ROI found for this trade-up">↑ ${bestRoi.toFixed(1)}% available</span>`
+      ? `<span class="tag-better" title="Best strategy ROI found for this trade-up">${bestRoi.toFixed(1)}% available</span>`
       : "";
     return `
     <tr class="tradeup-row covert-row" data-key="${encodeURIComponent(key)}">
@@ -3110,7 +3171,7 @@ function renderCovert() {
       <td class="num ${r.profit >= 0 ? "profit-positive" : "profit-negative"}">${fmtCurrency(r.profit)}</td>
       <td class="num ${r.roi_pct >= 0 ? "profit-positive" : "profit-negative"}">${fmtMoney(r.roi_pct)}% ${strategyBadge} ${mlBadge(r)}</td>
       <td class="num">${fmtCurrency(r.max_input_price)}</td>
-      <td onclick="event.stopPropagation()">${renderBuyLinks(r.buy_links)}<button class="log-outcome-btn" data-row="${encodeURIComponent(JSON.stringify(r))}" title="Pre-fill the outcome-logging form below with this trade-up's details -- you still confirm the real prices/results yourself">&#128203; Log this</button></td>
+      <td onclick="event.stopPropagation()">${renderBuyLinks(r.buy_links)}<button class="log-outcome-btn" data-row="${encodeURIComponent(JSON.stringify(r))}" title="Pre-fill the outcome-logging form below with this trade-up's details -- you still confirm the real prices/results yourself">Log outcome</button></td>
     </tr>
     <tr class="drop-row" style="${expanded ? "" : "display:none;"}">
       <td colspan="9">${expanded ? (r.mixed_float_strategy ? renderMixedFloatStrategy(r) : renderMixedStrategy(r) + renderFloatStrategy(r)) + renderDrops(r.possible_drops) : ""}</td>
@@ -3645,7 +3706,7 @@ document.getElementById("mb-skin").addEventListener("input", (e) => {
     box.innerHTML = skins.map((s, i) => `
       <div class="suggestion-item" data-i="${i}">
         ${s.image ? `<img class="skin-thumb" src="${s.image}" alt="" loading="lazy" onerror="this.style.display='none'">` : ""}${s.name}
-        <span class="muted-inline">${s.rarity_name || ""}${s.tradeable === false ? " — ⚠ can't trade up" : ""}</span>
+        <span class="muted-inline">${s.rarity_name || ""}${s.tradeable === false ? " -- can't trade up" : ""}</span>
       </div>`).join("");
     box.style.display = "block";
     box.querySelectorAll(".suggestion-item").forEach(el => {
@@ -3769,7 +3830,7 @@ function renderManualBuilder() {
       <td>${u.rarity_name}</td>
       <td>${u.wear}</td>
       <td class="num">×${u.count}</td>
-      <td>${problem ? `<span class="tag-drought" title="${problem}">⚠ ${problem}</span>` : `<span class="tag-same">ok</span>`}</td>
+      <td>${problem ? `<span class="tag-drought" title="${problem}">${problem}</span>` : `<span class="tag-same">ok</span>`}</td>
       <td><button type="button" class="secondary mb-remove-btn" data-i="${i}">Remove</button></td>
     </tr>`;
   }).join("");
@@ -3788,7 +3849,7 @@ function renderManualBuilder() {
   computeBtn.textContent = `Compute trade-up (${total}/${need})`;
 
   document.getElementById("mb-messages").innerHTML = mb.error
-    ? `<p class="empty-state">⚠ ${mb.error}</p>` : "";
+    ? `<p class="empty-state">${mb.error}</p>` : "";
 
   const resultEl = document.getElementById("mb-result");
   if (!mb.result) { resultEl.innerHTML = ""; return; }
@@ -3810,7 +3871,7 @@ function renderManualBuilder() {
           <span class="num ${r.expected_profit >= 0 ? "profit-positive" : "profit-negative"}">Profit ${fmtCurrency(r.expected_profit)}</span>
           <span class="num ${r.expected_roi_pct >= 0 ? "profit-positive" : "profit-negative"}">ROI ${r.expected_roi_pct.toFixed(1)}%</span>
         </div>
-        ${r.low_volume_warning ? `<p class="disclaimer">⚠ at least one price here rests on thin/unreliable market data (dead-skin flagged) -- verify before spending money.</p>` : ""}
+        ${r.low_volume_warning ? `<p class="disclaimer">at least one price here rests on thin/unreliable market data (dead-skin flagged) -- verify before spending money.</p>` : ""}
         <p class="disclaimer">Priced ${r.priced_output_variants}/${r.n_output_variants} possible outputs -- probability-weighted expected value across every priced output, ${(state.constants ? state.constants.steam_sell_fee_pct.toFixed(0) : "13")}% Steam fee applied. Theoretical estimate, not an order.</p>
       </div>
       ${renderSimInputs(r.input_mix)}
@@ -3819,22 +3880,7 @@ function renderManualBuilder() {
     </div>`;
 }
 
-// ---- Stage-4 panel wiring (Evolution / Rare Patterns / Backup) ------------------------------
-document.getElementById("evolution-toggle-btn").addEventListener("click", async () => {
-  const enabled = !(state.lastEvolution && state.lastEvolution.enabled);
-  await fetch("/api/evolution/enable", { method: "POST", body: JSON.stringify({ enabled }) });
-  await loadEvolutionStatus();
-});
-document.getElementById("evolution-tick-btn").addEventListener("click", async (e) => {
-  e.target.disabled = true;
-  try {
-    await fetch("/api/evolution/tick", { method: "POST" });
-    await loadEvolutionStatus();
-  } finally {
-    e.target.disabled = false;
-  }
-});
-
+// ---- Stage-4 panel wiring (Rare Patterns / Backup) -------------------------------------------
 document.getElementById("patterns-scan-start-btn").addEventListener("click", async () => {
   await fetch("/api/patterns/scan/start", { method: "POST" });
   await loadPatternsStatus();

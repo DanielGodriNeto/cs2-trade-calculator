@@ -1,16 +1,19 @@
 :root {
-  --bg: #10131a;
-  --panel: #181d27;
-  --border: #2a3040;
-  --text: #d7dbe4;
-  --muted: #8890a0;
-  --accent: #d4af37; /* Steam/CS2 gold */
-  --covert: #eb4b4b;
-  --classified: #d32ce6;
-  --restricted: #8847ff;
-  --profit: #4caf50;
-  --loss: #eb4b4b;
-  --warn: #e0a83c;
+  --bg: #0a0c0a;
+  --panel: #101310;
+  --panel-raised: #151915;
+  --border: #262b26;
+  --border-strong: #3a413a;
+  --text: #c9d1c9;
+  --muted: #6e786e;
+  --accent: #39d97a; /* phosphor green -- the one accent color, used sparingly */
+  --accent-dim: #1f6b3f;
+  --covert: #e0524f;
+  --classified: #b26fe0;
+  --restricted: #7a7fd9;
+  --profit: #39d97a;
+  --loss: #e0524f;
+  --warn: #d9a83c;
 }
 
 * { box-sizing: border-box; }
@@ -18,13 +21,22 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: "Cascadia Mono", "Consolas", "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
   margin: 0;
-  padding: 24px 32px 64px;
+  padding: 16px 24px 56px;
+  line-height: 1.45;
 }
 
-header h1 { margin-bottom: 2px; color: var(--accent); }
-.disclaimer { color: var(--muted); font-size: 0.9em; margin-top: 0; }
+header h1 {
+  margin-bottom: 2px;
+  color: var(--text);
+  font-size: 1.15em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.disclaimer { color: var(--muted); font-size: 0.85em; margin-top: 0; line-height: 1.6; }
 
 .topbar {
   position: sticky;
@@ -32,24 +44,27 @@ header h1 { margin-bottom: 2px; color: var(--accent); }
   z-index: 20;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 16px;
-  margin: -8px 0 16px;
-  font-size: 0.9em;
+  border-radius: 2px;
+  padding: 8px 14px;
+  margin: -4px 0 14px;
+  font-size: 0.85em;
 }
-.topbar-nav { display: flex; gap: 4px; margin-bottom: 8px; }
+.topbar-nav { display: flex; gap: 2px; margin-bottom: 8px; }
 .topbar-nav a {
   color: var(--muted);
   text-decoration: none;
   font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  font-size: 0.9em;
+  letter-spacing: 0.03em;
 }
-.topbar-nav a:hover { color: var(--text); background: rgba(212, 175, 55, 0.08); }
-.topbar-nav a.active { color: #10131a; background: var(--accent); }
-.topbar-stats { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; color: var(--muted); }
+.topbar-nav a:hover { color: var(--text); background: var(--panel-raised); }
+.topbar-nav a.active { color: var(--bg); background: var(--accent); }
+.topbar-stats { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; color: var(--muted); }
 .topbar-stats .health-headline { margin-bottom: 0; }
-.topbar-stats-secondary { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 0.95em; }
+.topbar-stats-secondary { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 0.95em; }
 #stat-catalogued { color: var(--text); font-weight: 600; }
 
 /* Mirrors #status-value (Calculator-page-only) so scan status/errors are visible from every
@@ -58,8 +73,8 @@ header h1 { margin-bottom: 2px; color: var(--accent); }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
-  border-radius: 6px;
+  padding: 2px 8px;
+  border-radius: 2px;
   border: 1px solid var(--border);
   text-decoration: none;
   color: var(--muted);
@@ -70,12 +85,10 @@ header h1 { margin-bottom: 2px; color: var(--accent); }
 #topbar-scan-status-value.idle { color: var(--profit); }
 #topbar-scan-status-value.stopped { color: var(--muted); }
 #topbar-scan-status-value.paused { color: var(--restricted); }
-#topbar-scan-status-value.error {
-  color: var(--loss);
-}
+#topbar-scan-status-value.error { color: var(--loss); }
 .topbar-scan-status:has(#topbar-scan-status-value.error) {
   border-color: var(--loss);
-  background: rgba(220, 80, 80, 0.12);
+  background: rgba(224, 82, 79, 0.08);
 }
 
 [data-view] { display: block; }
@@ -84,13 +97,13 @@ header h1 { margin-bottom: 2px; color: var(--accent); }
 .status-bar {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
+  border-radius: 2px;
+  padding: 10px 14px;
   display: flex;
-  gap: 24px;
+  gap: 20px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .status-bar .label { color: var(--muted); margin-right: 4px; }
 #status-value.running { color: var(--accent); }
@@ -100,143 +113,153 @@ header h1 { margin-bottom: 2px; color: var(--accent); }
 #status-value.paused { color: var(--restricted); }
 
 button {
-  background: var(--accent);
-  color: #10131a;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-weight: 600;
-  cursor: pointer;
-}
-button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.secondary {
   background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 2px;
+  padding: 6px 14px;
+  font-weight: 600;
+  font-family: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+button:hover:not(:disabled) { background: rgba(57, 217, 122, 0.1); border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.secondary {
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+}
+button.secondary:hover:not(:disabled) { color: var(--text); border-color: var(--muted); background: var(--panel-raised); }
+button.secondary:disabled { color: var(--muted); border-color: var(--border); opacity: 0.5; }
+button.danger {
   color: var(--loss);
   border: 1px solid var(--loss);
 }
-button.secondary:disabled { color: var(--muted); border-color: var(--border); }
-button.danger {
-  background: var(--loss);
-  color: #fff;
-  border: 1px solid var(--loss);
-}
+button.danger:hover:not(:disabled) { background: rgba(224, 82, 79, 0.12); }
 button.danger:disabled { opacity: 0.5; }
 
-.progress-wrap { margin-bottom: 16px; }
+.progress-wrap { margin-bottom: 14px; }
 .progress-bar {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  height: 10px;
+  border-radius: 2px;
+  height: 6px;
   overflow: hidden;
 }
 .progress-fill { background: var(--accent); height: 100%; width: 0%; transition: width 0.3s; }
-#progress-label { color: var(--muted); font-size: 0.85em; margin-top: 4px; }
+#progress-label { color: var(--muted); font-size: 0.82em; margin-top: 4px; }
 
 .network-health {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 16px;
-  margin-bottom: 16px;
-  font-size: 0.9em;
+  border-radius: 2px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-size: 0.85em;
 }
 .health-headline { font-weight: 600; margin-bottom: 6px; }
 .health-headline.health-ok { color: var(--profit); }
-.health-headline.health-warn { color: var(--accent); }
+.health-headline.health-warn { color: var(--warn); }
 .health-headline.health-idle { color: var(--muted); }
-.health-stats { display: flex; gap: 20px; flex-wrap: wrap; color: var(--muted); }
+.health-stats { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); }
 .health-ok-num { color: var(--profit); font-weight: 600; }
-.health-warn-num { color: var(--accent); font-weight: 600; }
+.health-warn-num { color: var(--warn); font-weight: 600; }
 .health-error-num { color: var(--loss); font-weight: 600; }
 
 .vpn-warning {
-  margin-top: 10px;
+  margin-top: 8px;
   padding: 8px 12px;
   border: 1px solid var(--loss);
-  border-radius: 6px;
-  background: rgba(235, 75, 75, 0.1);
+  border-radius: 2px;
+  background: rgba(224, 82, 79, 0.08);
   color: var(--loss);
   font-weight: 600;
-  font-size: 0.9em;
+  font-size: 0.85em;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
 }
 .vpn-warning #vpn-warning-text { flex: 1; min-width: 260px; }
-#retry-now-btn {
-  background: var(--loss);
-  color: #fff;
-  flex-shrink: 0;
-}
-#retry-now-btn:hover { background: #d43c3c; }
+#retry-now-btn { color: var(--loss); border-color: var(--loss); flex-shrink: 0; }
+#retry-now-btn:hover { background: rgba(224, 82, 79, 0.15); }
 
 .view-options {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   color: var(--muted);
-  font-size: 0.9em;
+  font-size: 0.85em;
 }
 
 .export-btn {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 0.7em;
-  font-weight: normal;
+  border-radius: 2px;
+  padding: 2px 8px;
+  font-size: 0.68em;
+  font-weight: 600;
   margin-left: 10px;
   vertical-align: middle;
+  text-transform: uppercase;
 }
 .export-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 .config-panel {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
+  border-radius: 2px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
 }
-.config-panel h2 { margin-top: 0; font-size: 1.05em; color: var(--muted); }
-#config-form { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; }
-#config-form label { display: flex; flex-direction: column; font-size: 0.85em; color: var(--muted); gap: 4px; }
+.config-panel h2 { margin-top: 0; font-size: 0.9em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+#config-form { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; }
+#config-form label { display: flex; flex-direction: column; font-size: 0.8em; color: var(--muted); gap: 4px; }
 #config-form input[type="text"], #config-form input[type="number"] {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 2px;
+  padding: 5px 7px;
   width: 140px;
+  font-family: inherit;
 }
 #config-form label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
 
-h2 { color: var(--text); }
-.count { color: var(--muted); font-size: 0.8em; font-weight: normal; }
+h2 {
+  color: var(--text);
+  font-size: 1em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+.count { color: var(--muted); font-size: 0.75em; font-weight: normal; text-transform: none; }
 
 table {
   width: 100%;
   border-collapse: collapse;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 2px;
   overflow: hidden;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
+  font-variant-numeric: tabular-nums;
 }
 /* Wraps the widest tables (best-simulations/archive, 13 columns) so they scroll horizontally
    on narrow viewports instead of silently overflowing the page with no visible affordance. */
 .table-scroll {
   overflow-x: auto;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 .table-scroll table {
   margin-bottom: 0;
 }
 th, td {
-  padding: 8px 12px;
+  padding: 6px 10px;
   text-align: left;
   border-bottom: 1px solid var(--border);
-  font-size: 0.9em;
+  font-size: 0.85em;
 }
 th {
   color: var(--muted);
@@ -245,13 +268,17 @@ th {
   position: sticky;
   top: 0;
   background: var(--panel);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75em;
+  letter-spacing: 0.02em;
 }
 th:hover { color: var(--accent); }
-tbody tr:hover { background: rgba(212, 175, 55, 0.06); }
+tbody tr:hover { background: var(--panel-raised); }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .tradeup-row { cursor: pointer; }
-.drop-row td { background: rgba(0, 0, 0, 0.2); padding: 4px 12px 12px 28px; }
+.drop-row td { background: #060706; padding: 4px 10px 10px 24px; }
 .drops-table {
   width: 100%;
   margin: 4px 0 0;
@@ -260,54 +287,55 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   box-shadow: none;
 }
 .drops-table th, .drops-table td {
-  font-size: 0.85em;
-  padding: 4px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.82em;
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 .drops-table th { cursor: default; position: static; background: transparent; }
-.drops-table tr.drop-win { background: rgba(76, 175, 80, 0.12); }
-.drops-table tr.drop-loss { background: rgba(235, 75, 75, 0.12); }
-.drops-table tr.drop-win:hover { background: rgba(76, 175, 80, 0.2); }
-.drops-table tr.drop-loss:hover { background: rgba(235, 75, 75, 0.2); }
+.drops-table tr.drop-win { background: rgba(57, 217, 122, 0.08); }
+.drops-table tr.drop-loss { background: rgba(224, 82, 79, 0.08); }
+.drops-table tr.drop-win:hover { background: rgba(57, 217, 122, 0.16); }
+.drops-table tr.drop-loss:hover { background: rgba(224, 82, 79, 0.16); }
 
 .float-strategy {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 8px 12px;
   margin-bottom: 10px;
-  font-size: 0.85em;
-  background: rgba(212, 175, 55, 0.05);
+  font-size: 0.82em;
+  background: var(--panel);
 }
-.float-strategy.float-better { border-color: var(--accent); background: rgba(212, 175, 55, 0.1); }
+.float-strategy.float-better { border-color: var(--accent); background: rgba(57, 217, 122, 0.05); }
 .float-strategy-row { display: flex; gap: 18px; margin-top: 6px; flex-wrap: wrap; color: var(--text); }
 .tag-better, .tag-same {
   display: inline-block;
   margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 0.9em;
+  padding: 0 6px;
+  border-radius: 2px;
+  font-size: 0.85em;
+  border: 1px solid currentColor;
 }
-.tag-better { background: rgba(212, 175, 55, 0.25); color: var(--accent); }
-.tag-same { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
-.tag-ml { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 10px; font-size: 0.9em;
-  background: rgba(88, 101, 242, 0.25); color: #8ea1ff; }
-.tag-drought { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 10px; font-size: 0.85em;
-  background: rgba(212, 175, 55, 0.15); color: var(--accent); }
-.tag-lowvol { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 10px; font-size: 0.85em;
-  background: rgba(235, 75, 75, 0.15); color: #eb4b4b; }
+.tag-better { color: var(--accent); }
+.tag-same { color: var(--muted); }
+.tag-ml { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 2px; font-size: 0.85em;
+  border: 1px solid var(--restricted); color: var(--restricted); }
+.tag-drought { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 2px; font-size: 0.8em;
+  border: 1px solid var(--warn); color: var(--warn); }
+.tag-lowvol { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 2px; font-size: 0.8em;
+  border: 1px solid var(--loss); color: var(--loss); }
 
 .learning-panel {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 20px;
+  border-radius: 2px;
+  padding: 10px 14px;
+  margin-bottom: 18px;
 }
-.learning-panel h3 { margin: 0 0 8px; font-size: 1em; color: var(--muted); }
-.learning-panel h4 { margin: 16px 0 8px; font-size: 0.9em; color: var(--muted); }
-.learning-status { font-size: 0.9em; color: var(--text); margin-bottom: 10px; }
-.learning-controls { display: flex; gap: 10px; margin-bottom: 10px; }
-.learning-controls button { padding: 6px 14px; font-size: 0.9em; }
+.learning-panel h3 { margin: 0 0 8px; font-size: 0.85em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.learning-panel h4 { margin: 14px 0 6px; font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.learning-status { font-size: 0.85em; color: var(--text); margin-bottom: 8px; }
+.learning-controls { display: flex; gap: 8px; margin-bottom: 8px; }
+.learning-controls button { padding: 5px 12px; font-size: 0.85em; }
 
 .round-robin-controls {
   display: flex;
@@ -319,197 +347,201 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sim-population-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 10px;
 }
 .son-card {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 10px 12px;
 }
-.son-card.active-turn {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
-.son-card h5 { margin: 0 0 2px; font-size: 0.95em; display: flex; align-items: center; gap: 8px; }
-.son-card .agent-purpose { display: block; margin-bottom: 8px; font-size: 0.78em; }
-.muted-inline { font-size: 0.8em; color: var(--muted); font-weight: normal; }
-.son-card .son-stats { font-size: 0.82em; color: var(--muted); margin-bottom: 8px; line-height: 1.5; }
+.son-card.active-turn { border-color: var(--accent); }
+.son-card h5 { margin: 0 0 2px; font-size: 0.9em; display: flex; align-items: center; gap: 8px; }
+.son-card .agent-purpose { display: block; margin-bottom: 8px; font-size: 0.75em; }
+.muted-inline { font-size: 0.78em; color: var(--muted); font-weight: normal; }
+.son-card .son-stats { font-size: 0.8em; color: var(--muted); margin-bottom: 8px; line-height: 1.5; }
 .son-card .son-chart-wrap { height: 60px; margin-bottom: 8px; }
 .son-card .son-controls { display: flex; flex-wrap: wrap; gap: 6px; }
-.son-card .son-controls button { padding: 4px 10px; font-size: 0.8em; }
-.sim-detail strong { display: block; margin: 10px 0 4px; font-size: 0.9em; color: var(--muted); }
+.son-card .son-controls button { padding: 3px 8px; font-size: 0.78em; }
+.sim-detail strong { display: block; margin: 10px 0 4px; font-size: 0.85em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
 .sim-detail strong:first-child { margin-top: 0; }
 .sim-verify { margin-top: 10px; }
-.sim-verify button { padding: 4px 10px; font-size: 0.85em; }
-.sim-verify .verify-result { margin-top: 8px; font-size: 0.9em; }
+.sim-verify button { padding: 4px 10px; font-size: 0.82em; }
+.sim-verify .verify-result { margin-top: 8px; font-size: 0.85em; }
+/* Identity + raw trust numbers demoted here from the row's old always-visible columns (see
+   renderSimulationSummary/_trustBadge in app.js) -- a row of compact chips, not the block-level
+   <strong> layout the rest of .sim-detail uses, so this reads as a quick header strip. */
+.sim-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85em;
+}
+.sim-detail-summary strong { display: inline; margin: 0 6px 0 0; font-size: 1em; color: var(--muted); text-transform: none; }
 
 .stuck-badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75em;
-  background: rgba(235, 75, 75, 0.18); color: #eb4b4b; font-weight: 600;
+  display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.72em;
+  border: 1px solid var(--loss); color: var(--loss); font-weight: 600; text-transform: uppercase;
 }
 .nudging-badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75em;
-  background: rgba(88, 101, 242, 0.2); color: #8ea1ff;
+  display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.72em;
+  border: 1px solid var(--restricted); color: var(--restricted);
 }
 
 /* Population health strip -- sits above the son cards so a frozen/stuck agent (round 0 while
    others progress) is visible at a glance without scrolling through 4 separate .son-card
    blocks. Same stuck-red / round-zero-gold tinting convention as .drops-table's win/loss rows. */
 #son-health-table { margin-bottom: 16px; }
-.son-health-row.stuck { background: rgba(235, 75, 75, 0.12); }
-.son-health-row.round-zero { background: rgba(212, 175, 55, 0.08); }
-.son-health-row.stuck:hover { background: rgba(235, 75, 75, 0.2); }
-.son-health-row.round-zero:hover { background: rgba(212, 175, 55, 0.16); }
+.son-health-row.stuck { background: rgba(224, 82, 79, 0.08); }
+.son-health-row.round-zero { background: rgba(217, 168, 60, 0.06); }
+.son-health-row.stuck:hover { background: rgba(224, 82, 79, 0.16); }
+.son-health-row.round-zero:hover { background: rgba(217, 168, 60, 0.12); }
 
 /* Per-agent feature-importance small multiples, same grid pattern as .leaderboards-grid */
 .sim-feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 .sim-feature-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 8px 10px;
 }
-.sim-feature-card h5 { margin: 0 0 6px; font-size: 0.85em; color: var(--muted); }
+.sim-feature-card h5 { margin: 0 0 6px; font-size: 0.8em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
 .sim-feature-card .chart-wrap { height: 160px; margin-bottom: 0; }
 
 .sim-bankroll-per-agent {
-  display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.82em; color: var(--muted); margin: -4px 0 16px;
+  display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.8em; color: var(--muted); margin: -4px 0 14px;
 }
 .sim-bankroll-per-agent span.agent-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px;
+  display: inline-block; width: 8px; height: 8px; margin-right: 5px;
 }
 
 .leaderboards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
-#outcome-form { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
-#outcome-form label { display: flex; flex-direction: column; font-size: 0.85em; color: var(--muted); gap: 4px; }
+#outcome-form { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+#outcome-form label { display: flex; flex-direction: column; font-size: 0.8em; color: var(--muted); gap: 4px; }
 #outcome-form label.wide { flex-basis: 100%; }
 #outcome-form input[type="text"], #outcome-form input[type="number"], #outcome-form select {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 2px;
+  padding: 5px 7px;
   width: 160px;
+  font-family: inherit;
 }
 #outcome-form textarea {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 2px;
+  padding: 5px 7px;
   width: 100%;
   font-family: inherit;
 }
 #outcome-form label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
-#outcome-form-result { font-size: 0.9em; margin-bottom: 12px; min-height: 1.2em; }
+#outcome-form-result { font-size: 0.85em; margin-bottom: 12px; min-height: 1.2em; }
 
 .log-outcome-btn {
   display: inline-block;
   margin-left: 6px;
   background: transparent;
   color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  padding: 1px 7px;
-  font-size: 0.8em;
+  border: 1px solid var(--accent-dim);
+  border-radius: 2px;
+  padding: 1px 6px;
+  font-size: 0.78em;
   font-weight: 600;
   cursor: pointer;
+  text-transform: uppercase;
 }
-.log-outcome-btn:hover { background: rgba(212, 175, 55, 0.15); }
+.log-outcome-btn:hover { background: rgba(57, 217, 122, 0.1); border-color: var(--accent); }
 
 .buy-links { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .buy-link {
   display: inline-block;
   background: transparent;
   color: var(--profit);
-  border: 1px solid var(--profit);
-  border-radius: 4px;
-  padding: 1px 7px;
-  font-size: 0.8em;
+  border: 1px solid var(--accent-dim);
+  border-radius: 2px;
+  padding: 1px 6px;
+  font-size: 0.78em;
   font-weight: 600;
   text-decoration: none;
   line-height: 1.5;
 }
-.buy-link:hover { background: rgba(76, 175, 80, 0.15); }
+.buy-link:hover { background: rgba(57, 217, 122, 0.1); border-color: var(--accent); }
 
 .copyable { display: inline-flex; align-items: center; gap: 6px; }
 .copy-btn {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 0.85em;
+  border-radius: 2px;
+  padding: 0 5px;
+  font-size: 0.8em;
   font-weight: normal;
   line-height: 1.4;
   cursor: pointer;
+  font-family: inherit;
 }
 .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 .copy-btn.copied { color: var(--profit); border-color: var(--profit); }
-/* Icon prefixes alongside color, not color alone -- a colorblind user scanning the table can
-   still tell profit sign apart without relying on green-vs-red discrimination. Applies to both
-   <td class="profit-positive"> and the many <span class="profit-positive"> usages elsewhere in
-   app.js, so the selector isn't tag-scoped. */
+/* Text prefix alongside color, not color alone -- readable without relying on green-vs-red
+   discrimination. Applies to both <td class="profit-positive"> and the many
+   <span class="profit-positive"> usages elsewhere in app.js, so the selector isn't tag-scoped. */
 td.profit-positive { color: var(--profit); font-weight: 600; }
 td.profit-negative { color: var(--loss); }
-.profit-positive::before { content: "\25B2 "; font-size: 0.8em; }
-.profit-negative::before { content: "\25BC "; font-size: 0.8em; }
+.profit-positive::before { content: "+"; }
+.profit-negative::before { content: ""; }
 
 /* Market Reliability Engine state badges (src/market_reliability.py) */
 .reliability-badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 0.85em;
+  padding: 1px 7px;
+  border-radius: 2px;
+  font-size: 0.8em;
   font-weight: 600;
-  text-transform: capitalize;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
 }
-.reliability-badge.healthy { background: rgba(76, 175, 80, 0.18); color: var(--profit); }
-.reliability-badge.suspicious { background: rgba(224, 168, 60, 0.18); color: var(--warn); }
-.reliability-badge.excluded { background: rgba(235, 75, 75, 0.18); color: var(--loss); }
-.reliability-badge.overridden { border: 1px dashed currentColor; }
-
-/* Exploration Recovery Mode (src/recovery.py) -- son-card badge + event log chips */
-.recovery-badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75em;
-  background: rgba(224, 168, 60, 0.22); color: var(--warn); font-weight: 600;
-}
-.recovery-event { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.85em; }
-.recovery-event-entered, .recovery-event-escalated { background: rgba(224, 168, 60, 0.18); color: var(--warn); }
-.recovery-event-perturbed { background: rgba(235, 75, 75, 0.18); color: var(--loss); }
-.recovery-event-exited { background: rgba(76, 175, 80, 0.18); color: var(--profit); }
+.reliability-badge.healthy { color: var(--profit); }
+.reliability-badge.suspicious { color: var(--warn); }
+.reliability-badge.excluded { color: var(--loss); }
+.reliability-badge.overridden { border-style: dashed; }
 
 /* Rare Pattern Arbitrage (src/pattern_scanner.py) -- tier/confidence badges + the Results
    page's "this is NOT a trade-up" identifier tag */
 .tier-badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.8em; font-weight: 600;
+  display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.78em; font-weight: 600;
+  border: 1px solid currentColor;
 }
-.tier-badge.tier-1 { background: rgba(212, 175, 55, 0.22); color: #d4af37; }   /* soft gold */
-.tier-badge.tier-2 { background: rgba(160, 174, 192, 0.22); color: #a0aec0; }  /* slate silver */
-.tier-badge.tier-3 { background: rgba(176, 141, 87, 0.22); color: #b08d57; }   /* bronze */
+.tier-badge.tier-1 { color: #d4af37; }
+.tier-badge.tier-2 { color: #a0aec0; }
+.tier-badge.tier-3 { color: #b08d57; }
 .pat-conf {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.85em;
-  font-weight: 600; text-transform: capitalize;
+  display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.8em;
+  font-weight: 600; text-transform: uppercase; border: 1px solid currentColor;
 }
-.pat-conf-high { background: rgba(76, 175, 80, 0.18); color: var(--profit); }
-.pat-conf-medium { background: rgba(224, 168, 60, 0.18); color: var(--warn); }
-.pat-conf-low { background: rgba(235, 75, 75, 0.18); color: var(--loss); }
+.pat-conf-high { color: var(--profit); }
+.pat-conf-medium { color: var(--warn); }
+.pat-conf-low { color: var(--loss); }
 .collector-tag {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.8em; font-weight: 600;
-  background: rgba(142, 161, 255, 0.18); color: #8ea1ff; white-space: nowrap;
+  display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.78em; font-weight: 600;
+  border: 1px solid var(--restricted); color: var(--restricted); white-space: nowrap;
 }
 
 /* Skin thumbnails, used throughout tables/forms wherever a skin name appears */
@@ -519,8 +551,8 @@ td.profit-negative { color: var(--loss); }
   object-fit: contain;
   vertical-align: middle;
   margin-right: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 3px;
+  background: var(--panel-raised);
+  border-radius: 2px;
 }
 .skin-thumb-large {
   width: 64px;
@@ -528,8 +560,8 @@ td.profit-negative { color: var(--loss); }
   object-fit: contain;
   vertical-align: middle;
   margin-right: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 4px;
+  background: var(--panel-raised);
+  border-radius: 2px;
 }
 
 /* Chart.js canvas containers -- a fixed height is required, Chart.js won't size itself
@@ -541,53 +573,55 @@ td.profit-negative { color: var(--loss); }
 }
 .chart-wrap-wide { height: 120px; }
 
-/* Methodology / "how this works" section */
+/* Methodology / "how this works" section -- collapsed by default (see index.html), kept
+   visually quiet since it's reference material, not the primary content of any page. */
 .methodology {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 4px 16px 16px;
-  margin-bottom: 16px;
+  border-radius: 2px;
+  padding: 2px 14px 14px;
+  margin-bottom: 14px;
 }
-.methodology summary { cursor: pointer; padding: 12px 0; }
-.methodology summary h2 { display: inline; margin: 0; font-size: 1.1em; }
-.methodology-body h3 { color: var(--accent); margin: 18px 0 6px; font-size: 1em; }
+.methodology summary { cursor: pointer; padding: 10px 0; color: var(--muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.02em; }
+.methodology summary h2 { display: inline; margin: 0; font-size: 1em; text-transform: none; letter-spacing: normal; color: var(--muted); }
+.methodology-body h3 { color: var(--text); margin: 16px 0 6px; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.02em; }
 .methodology-body h3:first-child { margin-top: 4px; }
-.methodology-body p { color: var(--text); font-size: 0.92em; line-height: 1.55; margin: 0 0 10px; }
-.methodology-body code { background: rgba(255, 255, 255, 0.06); padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
-.glossary { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 0.9em; }
-.glossary dt { color: var(--accent); font-weight: 600; }
+.methodology-body p { color: var(--text); font-size: 0.88em; line-height: 1.6; margin: 0 0 10px; }
+.methodology-body code { background: var(--panel-raised); padding: 1px 5px; border-radius: 2px; font-size: 0.9em; }
+.glossary { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 0.85em; }
+.glossary dt { color: var(--text); font-weight: 600; }
 .glossary dd { margin: 0; color: var(--muted); }
 
 /* "Learning Machine -- top picks" section */
 .ml-picks {
-  background: rgba(88, 101, 242, 0.06);
-  border: 1px solid #8ea1ff;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
+  background: var(--panel);
+  border: 1px solid var(--restricted);
+  border-radius: 2px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
 }
 .ml-picks h2 { margin-top: 0; }
-.empty-state { color: var(--muted); font-size: 0.9em; font-style: italic; padding: 8px 0; }
+.empty-state { color: var(--muted); font-size: 0.85em; padding: 8px 0; }
 
 /* Skin price history & prediction section */
 #price-history-section {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 24px;
+  border-radius: 2px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
 }
-#price-history-form { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
-#price-history-form label { display: flex; flex-direction: column; font-size: 0.85em; color: var(--muted); gap: 4px; }
+#price-history-form { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+#price-history-form label { display: flex; flex-direction: column; font-size: 0.8em; color: var(--muted); gap: 4px; }
 #price-history-form label.wide { flex-basis: 300px; }
 #price-history-form input[type="text"], #price-history-form select {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 2px;
+  padding: 5px 7px;
   width: 100%;
+  font-family: inherit;
 }
 #price-history-form label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
 .suggestions {
@@ -595,27 +629,28 @@ td.profit-negative { color: var(--loss); }
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: var(--panel-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
   max-height: 220px;
   overflow-y: auto;
   z-index: 10;
 }
-.suggestion-item { padding: 6px 10px; cursor: pointer; font-size: 0.9em; }
-.suggestion-item:hover { background: rgba(212, 175, 55, 0.1); }
+.suggestion-item { padding: 6px 10px; cursor: pointer; font-size: 0.85em; }
+.suggestion-item:hover { background: var(--panel); }
 
 /* Manual trade-up builder (calculator page) -- same form conventions as price-history */
-#mb-form { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
-#mb-form label { display: flex; flex-direction: column; font-size: 0.85em; color: var(--muted); gap: 4px; }
+#mb-form { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+#mb-form label { display: flex; flex-direction: column; font-size: 0.8em; color: var(--muted); gap: 4px; }
 #mb-form label.wide { flex-basis: 300px; }
 #mb-form input, #mb-form select {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 2px;
+  padding: 5px 7px;
   width: 100%;
+  font-family: inherit;
 }
 #mb-units-table { margin-bottom: 12px; }
 #mb-result { margin-top: 12px; }
@@ -623,53 +658,55 @@ td.profit-negative { color: var(--loss); }
 /* Wear-landing odds chips (FN 72% / MW 28%) on drop tables */
 .wear-prob {
   display: inline-block;
-  background: rgba(142, 161, 255, 0.12);
-  border: 1px solid rgba(142, 161, 255, 0.35);
-  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--restricted);
+  border-radius: 2px;
   padding: 0 5px;
   margin: 1px 2px 1px 0;
-  font-size: 0.85em;
+  font-size: 0.82em;
   white-space: nowrap;
+  color: var(--restricted);
 }
 .ph-header { display: flex; align-items: center; margin-bottom: 10px; font-weight: 600; }
 
 /* Main Overview KPI cards */
-.overview { margin-bottom: 16px; }
+.overview { margin-bottom: 14px; }
 .overview h2 { margin-bottom: 8px; }
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 .kpi-card {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 2px;
   padding: 12px 14px;
 }
-.kpi-label { color: var(--muted); font-size: 0.78em; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em; }
-.kpi-value { color: var(--accent); font-size: 1.4em; font-weight: 700; }
+.kpi-label { color: var(--muted); font-size: 0.72em; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi-value { color: var(--text); font-size: 1.5em; font-weight: 700; font-variant-numeric: tabular-nums; }
 .kpi-value.profit-positive { color: var(--profit); }
 .kpi-value.profit-negative { color: var(--loss); }
-.kpi-value.profit-positive::before { content: "\25B2 "; font-size: 0.6em; vertical-align: middle; }
-.kpi-value.profit-negative::before { content: "\25BC "; font-size: 0.6em; vertical-align: middle; }
+.kpi-value.profit-positive::before { content: "+"; font-size: 0.7em; }
+.kpi-value.profit-negative::before { content: ""; }
 
 /* Agent monitoring / opportunity filters / verify queue / market intelligence */
 .opportunity-filters {
   display: flex;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
   align-items: end;
   margin-bottom: 10px;
 }
-.opportunity-filters label { display: flex; flex-direction: column; font-size: 0.85em; color: var(--muted); gap: 4px; }
+.opportunity-filters label { display: flex; flex-direction: column; font-size: 0.8em; color: var(--muted); gap: 4px; }
 .opportunity-filters input, .opportunity-filters select {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 2px;
+  padding: 5px 7px;
   width: 160px;
+  font-family: inherit;
 }
 .archive-pagination {
   display: flex;
@@ -678,23 +715,23 @@ td.profit-negative { color: var(--loss); }
   margin-top: 10px;
 }
 .convergence-banner {
-  border: 1px solid #8ea1ff;
-  background: rgba(88, 101, 242, 0.1);
-  color: #8ea1ff;
-  border-radius: 6px;
+  border: 1px solid var(--restricted);
+  background: transparent;
+  color: var(--restricted);
+  border-radius: 2px;
   padding: 8px 12px;
-  font-size: 0.85em;
+  font-size: 0.82em;
   margin-bottom: 12px;
 }
 /* Note: risk-* badges already carry a text label ("(low risk)" etc, see app.js's _riskBadge) --
    not color-only, so no extra icon needed here. */
-.confidence-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.85em; }
-.confidence-badge.risk-low { background: rgba(76, 175, 80, 0.18); color: var(--profit); }
-.confidence-badge.risk-medium { background: rgba(212, 175, 55, 0.18); color: var(--accent); }
-.confidence-badge.risk-high { background: rgba(235, 75, 75, 0.18); color: var(--loss); }
+.confidence-badge { display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.8em; border: 1px solid currentColor; }
+.confidence-badge.risk-low { color: var(--profit); }
+.confidence-badge.risk-medium { color: var(--warn); }
+.confidence-badge.risk-high { color: var(--loss); }
 .dead-skin-badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.85em;
-  background: rgba(235, 75, 75, 0.15); color: var(--loss);
+  display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.8em;
+  border: 1px solid var(--loss); color: var(--loss);
 }
 
 /* #market-intel-section is now just a thin wrapper -- the inner #market-intel-details (class
@@ -702,12 +739,11 @@ td.profit-negative { color: var(--loss); }
 #market-intel-section { margin-bottom: 8px; }
 
 /* Topbar consolidation: turn the plain comma-separated stat rows into a single row of compact
-   chips (same visual language as .tag-*/.reliability-badge elsewhere) instead of dense running
-   text -- same data, easier to scan at a glance. */
+   chips instead of dense running text -- same data, easier to scan at a glance. */
 .topbar-stats span, .topbar-stats a.topbar-scan-status {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 10px;
-  padding: 2px 10px;
+  background: var(--panel-raised);
+  border-radius: 2px;
+  padding: 2px 8px;
 }
 .topbar-stats span.health-headline { background: none; padding: 0; font-weight: 600; }
 .topbar-stats-secondary { opacity: 0.85; }
@@ -716,7 +752,7 @@ td.profit-negative { color: var(--loss); }
 .nav-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 8px;
 }
 .nav-card {
@@ -725,15 +761,15 @@ td.profit-negative { color: var(--loss); }
   gap: 4px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 2px;
   padding: 14px 16px;
   text-decoration: none;
   color: var(--text);
   transition: border-color 0.15s;
 }
 .nav-card:hover { border-color: var(--accent); }
-.nav-card strong { color: var(--accent); font-size: 1.02em; }
-.nav-card span { color: var(--muted); font-size: 0.85em; }
+.nav-card strong { color: var(--text); font-size: 0.95em; text-transform: uppercase; letter-spacing: 0.02em; }
+.nav-card span { color: var(--muted); font-size: 0.82em; }
 
 .conn-summary-grid {
   display: grid;
@@ -746,11 +782,11 @@ td.profit-negative { color: var(--loss); }
   align-items: center;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 2px;
   padding: 10px 14px;
   text-decoration: none;
   color: var(--text);
-  font-size: 0.9em;
+  font-size: 0.85em;
   gap: 8px;
 }
 .conn-chip:hover { border-color: var(--accent); }
@@ -761,12 +797,47 @@ td.profit-negative { color: var(--loss); }
 /* CSFloat/GitHub/NTFY panel badges (Connections page) -- same configured/not convention as
    .reliability-badge, .pat-conf etc elsewhere in this file. */
 .conn-badge {
-  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 600;
-  background: rgba(255, 255, 255, 0.06); color: var(--muted);
+  display: inline-block; padding: 0 6px; border-radius: 2px; font-size: 0.72em; font-weight: 600;
+  border: 1px solid var(--border-strong); color: var(--muted);
 }
-.conn-badge.conn-ok { background: rgba(76, 175, 80, 0.18); color: var(--profit); }
-.conn-badge.conn-off { background: rgba(255, 255, 255, 0.06); color: var(--muted); }
-.conn-badge.conn-error { background: rgba(235, 75, 75, 0.18); color: var(--loss); }
+.conn-badge.conn-ok { border-color: var(--profit); color: var(--profit); }
+.conn-badge.conn-off { border-color: var(--border-strong); color: var(--muted); }
+.conn-badge.conn-error { border-color: var(--loss); color: var(--loss); }
+
+/* Native form controls: reset browser-default chrome (dropdown arrows, checkbox skins) so
+   they match the rest of the terminal aesthetic instead of looking like stock OS widgets. */
+select {
+  appearance: none;
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236e786e'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 2px;
+  padding: 5px 24px 5px 7px;
+  font-family: inherit;
+  font-size: inherit;
+}
+select:focus, input:focus, textarea:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+
+/* Moment-of-decision hero card -- the expanded detail view of a single trade-up opportunity
+   (see renderSimulationSummary in app.js). One big number, everything else secondary: this is
+   the screen the user is actually looking at right before spending real money. */
+.decision-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.decision-hero .hero-figure {
+  font-size: 2.1em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.decision-hero .hero-figure.profit-positive { color: var(--profit); }
+.decision-hero .hero-figure.profit-negative { color: var(--loss); }
+.decision-hero .hero-sub { color: var(--muted); font-size: 0.85em; }
 
 /* Basic responsive support -- this project previously had zero @media rules, so anything
    narrower than a laptop viewport (tablet/phone) just overflowed the whole page silently.
@@ -775,7 +846,7 @@ td.profit-negative { color: var(--loss); }
    wrapped in .table-scroll) gets a local horizontal-scroll container instead of blowing out
    the page width, and single-column stat/leaderboard grids. */
 @media (max-width: 900px) {
-  body { padding: 12px 12px 48px; }
+  body { padding: 10px 10px 44px; }
   .topbar-nav, .topbar-stats { flex-wrap: wrap; }
   table { display: block; overflow-x: auto; white-space: nowrap; }
   .table-scroll table { display: table; white-space: normal; }

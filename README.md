@@ -107,16 +107,11 @@ a separate integration requiring API keys from that marketplace, and is a good
     disagrees with the verified market by 20%+ is registered over/undervalued and the agents'
     future simulations penalize it, so training routes around it automatically. See
     [Verify top 50 & the mispriced-skin registry](#verify-top-50--the-mispriced-skin-registry) below.
-21. **Evolution Manager (Evolution Engine 2.0)** (Stage 4, 2026-07) -- a cross-agent cooperation
-    layer over the multi-agent population: elite population, tournament parent selection with
-    novelty bias, species with adaptive mutation pressure, Hall of Fame, genome lineage audit
-    trail, meta-agent creation, and hyperparameter evolution (population-based training). The
-    specialist agents themselves are never modified, and the whole manager can be disabled at
-    any time. See [Evolution Manager](#evolution-manager-evolution-engine-20) below.
-22. **Meta Agents** -- two second-generation agents (Meta Alpha, Meta Beta) whose base
-    personalities are bred by behavioral crossover from the best-performing specialists and
-    refreshed every 6h, while their own accumulated experience is preserved. See
-    [Meta Agents](#meta-agents) below.
+22. **Meta Agents** -- two additional named agents (Meta Alpha, Meta Beta) alongside the four
+    specialists, each with its own fixed personality and fully independent accumulated
+    experience/model, storage-isolated like every other son. (A prior cross-agent evolution
+    system that periodically bred their base personalities from the specialists was removed
+    2026-07 -- see [Removed features](#removed-features).)
 23. **Market Reliability Engine** -- unifies dead-skin scoring, the mispriced registry, and
     cross-source consensus into one auditable Healthy/Suspicious/Excluded state per skin, adds
     rolling variance/z-score outlier detection, and gates ML training, ranking, and best-list
@@ -126,15 +121,11 @@ a separate integration requiring API keys from that marketplace, and is a good
     each row is weighted by how well its skins verify across marketplaces (1.0 fully verified
     -> 0 known anomaly) instead of being deleted. See
     [Reliability-weighted training](#reliability-weighted-training) below.
-25. **Exploration Recovery Mode** -- when an agent stays stuck past the point a nudge could fix,
-    it progressively escalates mutation/exploration/novelty pressure, then applies controlled,
-    bounds-clamped random perturbations, exiting the moment improvement lands. Every event is
-    logged. See [Exploration Recovery Mode](#exploration-recovery-mode) below.
 26. **Rare Pattern Arbitrage Engine** (dedicated "Rare Patterns" dashboard page) -- scans
-    marketplace listings for documented collector patterns (Blue Gems, Case Hardened tiers,
-    Doppler phases, Katowice crafts, ...) priced at ordinary market value, matched against a
-    centralized, versioned Pattern Knowledge Database -- never inferred by ML. See
-    [Rare Pattern Arbitrage Engine](#rare-pattern-arbitrage-engine) below.
+    Steam Market listings directly for documented collector patterns (Blue Gems, Case
+    Hardened tiers, Doppler phases, Katowice crafts, ...) priced at ordinary market value,
+    matched against a centralized, versioned Pattern Knowledge Database -- never inferred by
+    ML. See [Rare Pattern Arbitrage Engine](#rare-pattern-arbitrage-engine) below.
 27. **Automated GitHub backup engine** -- a delta-aware background worker that SHA-256-hashes
     the telemetry files every 6h and commits+pushes a structured archive to a configured git
     repo only when something actually changed. See
@@ -667,8 +658,8 @@ round sometimes blocking on real request latency instead of being instant.
 ### A multi-agent population: named agents, each with a distinct search personality
 
 Rather than one search lineage, `python -m src.main simulate-population` (or the dashboard's
-"Multi-agent simulation" panel) runs the **4 specialist agents** below -- plus, since Stage 4,
-the two bred [Meta Agents](#meta-agents), **6 independent agents** in total -- in parallel (`src/sim_loop.py`),
+"Multi-agent simulation" panel) runs the **4 specialist agents** below -- plus the two
+[Meta Agents](#meta-agents), **6 independent agents** in total -- in parallel (`src/sim_loop.py`),
 each in its own `data/sons/son_N/` directory with its own logged simulations, its own trained
 surrogate model (`src/sim_learning.py`, its own `sim_roi_model.joblib` -- literally multiple
 separate machine-learning models, one per agent), and its own random-number generator. The
@@ -1086,81 +1077,41 @@ uniformly-random candidate can easily touch a skin/wear nobody's priced yet.
   every skin/wear/StatTrak combination, especially cheap common trade-up fodder) and was walked
   back for that reason.
 
-## Evolution Manager (Evolution Engine 2.0)
-
-`src/evolution.py` upgrades the multi-agent population into a cooperative evolutionary
-platform **without touching the specialists**: their personalities, adaptive self-tuning,
-reward functions and per-son data are exactly as documented above. What was missing was
-cooperation BETWEEN agents, and that's all this module adds:
-
-- **Elite Population** -- the cross-agent top genomes (checkpoint best entries), deduped by
-  composition signature, fitness-scored by `ranking.py`'s composite (never raw ROI, so fake
-  high ROI can't capture the elite).
-- **Parent Selection & Cross-Agent Knowledge Sharing** -- each round, up to 6 elite genomes
-  (tournament-selected, preferring OTHER agents' finds, with a novelty-biased slice) are
-  injected into a son's mutation pool, so its unchanged mutation operators now also improve on
-  its siblings' discoveries.
-- **Species Management & Adaptive Mutation** -- elites group into species by the same coarse
-  strategy signature anti-convergence uses; a species that stagnates ramps a mutation
-  multiplier (up to 1.6x) for the sons working it.
-- **Hall of Fame** -- all-time best genomes, only ever displaced by strictly fitter ones,
-  never pruned for staleness.
-- **Novelty Search** -- an archive counts how often each strategy signature has ever been
-  seen; rarer signatures earn a selection bonus so under-explored strategies get recirculated.
-- **Genome Lineage** -- every elite admission, injected-parent mutation child, meta refresh
-  and hyperparameter transfer is appended to `data/evolution/lineage.jsonl` (append-only).
-- **Hyperparameter Evolution** (population-based training) -- every 30 min, the son with the
-  best recent adaptation reward donates a mutated copy of its self-tuning hyperparameters
-  (window size, perturbation sigma, adoption threshold, novelty bonus, ... --
-  `adaptive.HYPERPARAM_BOUNDS`) to the worst's, so the platform evolves its search BEHAVIOR,
-  not just its trade-ups.
-
-Excluded trade-ups ([Market Reliability Engine](#market-reliability-engine)) are barred from
-elite admission and periodically evicted, and re-enter naturally once healthy. The manager
-runs as one background thread, ticking every 2 minutes; the dashboard's "Evolution Manager"
-panel (ML Lab page) shows generation/elite/species/events live, with a Disable button that
-turns every hook neutral instantly. CLI: `python -m src.main evolution-status`
-(`--enable on|off`). Endpoints: GET `/api/evolution/status`, GET `/api/evolution/lineage`,
-POST `/api/evolution/enable`, POST `/api/evolution/tick`.
-
 ## Meta Agents
 
-`agents.py` now defines **6** agents: the 4 hand-written specialists above plus two
-second-generation **meta agents** whose base personalities are *bred*, not hand-written
-(`evolution.refresh_meta_agents`, every 6h): a uniform behavioral crossover over the two
-best-performing specialists' LIVE self-tuned parameters (exploration rate, mutation strength,
-memory weight, collection bias, wear optimization, reward weights, risk tolerance), blended
-50/50 toward each meta agent's fixed priorities:
+`agents.py` defines **6** agents: the 4 hand-written specialists above plus two more named
+agents, **Meta Alpha** and **Meta Beta**, each with its own fixed starting personality:
 
 | # | Agent | Priorities |
 |---|---|---|
 | 4 | **Meta Alpha** | ROI, confidence, verification, liquidity |
 | 5 | **Meta Beta** | Novelty, discovery, rare collections, mutation diversity |
 
-Each meta agent then learns independently exactly like a specialist (own `son_N` directory,
-own model, own adaptive self-tuning); a refresh only moves the base personality its adaptive
-bounds are centered on -- accumulated experience (checkpoint/simulations/model) is never
-touched. Until enough specialist performance data exists to breed from, they run on neutral
-defaults (`agents.py`'s meta profiles).
+Each learns independently exactly like a specialist -- own `son_N` directory, own model, own
+adaptive self-tuning ([Self-tuning agent preferences](#self-tuning-agent-preferences-adaptive-search)) --
+fully storage-isolated, same as sons 0-3.
 
-## Exploration Recovery Mode
+## Removed features
 
-`src/recovery.py` extends the existing stuck detection + nudge machinery (never replaces it):
-Recovery Mode only engages once a son has stayed stuck `ENTER_AFTER_EXTRA_ROUNDS` (8) rounds
-PAST the stuck threshold -- i.e. after a nudge demonstrably wasn't enough. Then, per spec:
+**Cross-agent evolution layer (2026-07, removed 2026-07-12).** A prior Stage 4 build added a
+cooperative layer on top of the population -- a cross-agent elite population, tournament
+parent-sharing between sons' mutation pools, species-based adaptive mutation pressure, a Hall
+of Fame, genome lineage logging, periodic behavioral crossover breeding Meta Alpha/Beta's base
+personalities from the other specialists, and population-based training of each son's search
+hyperparameters. Removed after a PM review found no evidence it was working: 219 forced
+"Exploration Recovery Mode" perturbations fired across the population in 3 days of continuous
+background compute (see below) while the genome lineage log accumulated only 4 entries total.
+The base per-son random search, self-tuning ([adaptive.py](#self-tuning-agent-preferences-adaptive-search)),
+and ranking are unaffected and were kept -- along with every son's already-accumulated
+simulations/models, none of which were touched by the removal. Meta Alpha/Beta keep their
+original seed personalities as fixed values instead of periodically-bred ones.
 
-1. **Progressive escalation** (levels 1-4, every 5 rounds): mutation rate up, exploration up,
-   novelty weighting up, exploitation bias (memory weight) down, search diversity
-   (selection temperature) up -- pure multipliers layered over the live self-tuned params, so
-   exiting restores the son's own personality instantly with nothing to undo.
-2. **Controlled random perturbation** (still stuck at level 4): each adopted adaptive
-   parameter gets one INDEPENDENT Gaussian move per window -- some up, some down -- always
-   clamped inside that agent's own safety bounds (`adaptive.bounds_for`).
-
-The mode exits the moment a real improvement lands. Every entered/escalated/perturbed/exited
-event is logged to `data/recovery_log.jsonl`, shown in the dashboard's "Exploration Recovery
-Mode" panel and as a live badge on the affected agent's card. CLI:
-`python -m src.main recovery-log`. Endpoint: GET `/api/recovery/log`.
+**Exploration Recovery Mode** (removed with the evolution layer above, same reasoning). When a
+son stayed stuck well past a nudge's chance to fix it, this extended the stuck-detection/nudge
+machinery with progressive escalation (levels 1-4: mutation/exploration/novelty pressure up,
+exploitation down) and, if still stuck at max level, controlled random perturbations of the
+son's adopted adaptive parameters. The 219-perturbations-in-3-days figure that motivated this
+whole removal came from this mechanism specifically.
 
 ## Market Reliability Engine
 
@@ -1175,8 +1126,8 @@ cross-marketplace metrics (consensus price, market confidence, source agreement,
 score) come from the same bulk-feed math the price report uses.
 
 Excluded skins are excluded from **ML training** (weight 0 -- see below), **ranking reward**
-(hard dampener in `ranking.py`), and **best-list admission** (`sim_loop._consider_best`), and
-elite/Hall-of-Fame entries containing them are evicted. Exclusion is **never permanent**:
+(hard dampener in `ranking.py`), and **best-list admission** (`sim_loop._consider_best`).
+Exclusion is **never permanent**:
 every state is re-derived fresh from current signals on each check, a periodic recheck
 (piggybacked on the retrain loop's poll, far tighter than the spec's 24h minimum) re-evaluates
 everything tracked and logs every state TRANSITION to `data/market_reliability_log.jsonl`, and
@@ -1216,20 +1167,23 @@ market price.
   else in the app. Every change (seed merges on refresh, manual edits) bumps the version and
   lands in `data/pattern_db_history.jsonl`.
 - **Marketplace scanner** (`src/pattern_scanner.py`): cycles the knowledge base's targets one
-  polite query at a time, across TWO per-listing sources since 2026-07. **The Steam Market
-  itself**: the classic listings `render` endpoint (kept reachable behind the new Market
-  Beta via its own opt-out cookie, `bMarketOptOut=1`) returns each live listing's price and
-  inspect link; the link is resolved to float/paint seed/paint index/stickers through
-  CSFloat's public INSPECT endpoint (api.csfloat.com -- separate from its key-gated listings
-  API; no key required, one throttled call per listing, cached forever since an item's
-  float/seed never change). This is the only way to buy a matched pattern directly on Steam.
-  Steam rate-limits this endpoint aggressively for anonymous callers (the same policy that
-  killed `priceoverview`) -- a 429/HTML answer puts the Steam source on its own
-  exponentially-growing cooldown (5 min -> 1h), visible in the status panel, while CSFloat
-  scanning continues unaffected. **CSFloat listings**: per-listing float/seed/stickers
-  directly, requires a (free) `CSFLOAT_API_KEY`. The Skinport/Buff163 mirrors are price-only
-  -- they feed the VALUATION side, not pattern scanning. The status panel reports each
-  source's health separately and plainly.
+  polite query at a time against **Steam Market listings -- the only listing source** (a prior
+  CSFloat listings-API source was removed 2026-07-12, see [Removed features](#removed-features);
+  third-party sources are cross-verification only project-wide, never primary discovery). The
+  classic listings `render` endpoint (kept reachable behind the new Market Beta via its own
+  opt-out cookie, `bMarketOptOut=1`) returns each live listing's price and inspect link; the
+  link is resolved to float/paint seed/paint index/stickers through CSFloat's public INSPECT
+  endpoint (api.csfloat.com -- a separate, optional-key endpoint from the removed listings
+  API; a key only widens its rate budget, one throttled call per listing, cached forever since
+  an item's float/seed never change). This is also the only way to buy a matched pattern
+  directly on Steam. **Honest caveat**: Steam rate-limits this endpoint aggressively for
+  anonymous callers (the same policy that killed `priceoverview`) -- a 429/HTML answer puts
+  the scanner on its own exponentially-growing cooldown (5 min -> 1h), visible in the status
+  panel rather than hidden, and a scan can spend real wall-clock time sitting out cooldowns
+  instead of finding listings. An optional `STEAM_LOGIN_SECURE_COOKIE` env var (your own Steam
+  session's cookie value, never entered through the dashboard) gets Steam's much friendlier
+  authenticated rate limit instead. The Skinport/Buff163 mirrors remain price-only -- they
+  feed the VALUATION side, not pattern scanning.
 - **Opportunity detection**: estimated collector value = the skin's base price x the entry's
   conservative documented premium multiplier. Every listing that matches a documented pattern
   becomes an opportunity row -- **profitable or not** (2026-07-11: dropped the old hardcoded
@@ -1623,10 +1577,7 @@ python -m src.main dead-skins
 # Watch for positive-ROI finds and cross-check every input/output against Skinport/Buff163/CSFloat automatically
 python -m src.main verify-queue
 
-# Stage 4 (2026-07): evolution / reliability / rare patterns / backup
-python -m src.main evolution-status              # elite population, species, Hall of Fame, PBT events
-python -m src.main evolution-status --enable off # turn the Evolution Manager off (or on)
-python -m src.main recovery-log                  # Exploration Recovery Mode event log
+# Stage 4 (2026-07): reliability / rare patterns / backup
 python -m src.main market-reliability            # unified Healthy/Suspicious/Excluded states
 python -m src.main override-reliability --skin "AK-47 | Redline (Field-Tested)" --state excluded
 python -m src.main pattern-opportunities --min-confidence medium --sort profit
