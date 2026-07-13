@@ -74,11 +74,20 @@ def _candidates(random_state: int, n_samples: int) -> dict:
     # RandomForest/Ridge can't handle NaN -- mean-impute first (Ridge also needs scaling, since
     # its L2 penalty is sensitive to feature scale; RandomForest doesn't strictly need scaling
     # but it's harmless to share the same imputed features for a fair comparison).
+    # criterion="squared_error" (not "absolute_error"): sklearn's RF absolute_error criterion
+    # sorts values at every split instead of using the cheap running-sum trick squared_error
+    # gets, ~2.4x slower per fit on this project's data (benchmarked: 11.6s vs 4.8s for 15
+    # CV fits) for a candidate that has never once won the CV comparison against
+    # hist_gradient_boosting across any of the 6 sim agents' actual trained models -- the
+    # outlier-robustness this bought wasn't paying for itself.
+    # n_estimators=120 (was 300): RF is the comparison baseline, never the winner (see above)
+    # -- fewer trees costs it a little stability in its own CV MAE, which doesn't matter since
+    # it isn't going to win regardless, in exchange for real speed.
     rf = make_pipeline(
         SimpleImputer(strategy="mean"),
-        RandomForestRegressor(random_state=random_state, n_estimators=300, max_depth=5,
+        RandomForestRegressor(random_state=random_state, n_estimators=120, max_depth=5,
                                min_samples_leaf=max(2, n_samples // 15),
-                               criterion="absolute_error"))
+                               criterion="squared_error"))
     ridge = make_pipeline(SimpleImputer(strategy="mean"), StandardScaler(), Ridge(alpha=1.0))
 
     return {"hist_gradient_boosting": hgb, "random_forest": rf, "ridge": ridge}
@@ -116,12 +125,16 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
 
     n = len(y)
     n_folds = min(5, n)
-    # RepeatedKFold (3 repeats), not a single KFold split -- with the small real-outcome sample
-    # sizes this project sees, one unlucky shuffle can flip which candidate "wins" and how big
-    # its reported CV MAE looks. Repeating with different shuffles and averaging the per-row
-    # out-of-fold predictions stabilizes both the winner choice and the honest error estimate,
-    # at a cheap 3x fit cost given how few rows/candidates are involved.
-    n_repeats = 3
+    # RepeatedKFold (1 repeat -- was 3): repeating with different shuffles stabilizes the
+    # winner choice and the honest error estimate against one unlucky split, but costs a
+    # full extra fit-cycle per repeat. User accepted less CV stability in exchange for speed
+    # (benchmarked: this was the single biggest remaining cost after the RF criterion fix,
+    # ~3x the fold-fit count for comparatively little payoff once a dataset is a few hundred
+    # rows rather than tens -- see the sim population's own history, where the winning
+    # candidate has beaten the runner-up by 2-3x MAE on every son, i.e. one shuffle is
+    # already decisive). Single KFold split, not literally "no repeats" (n_repeats=1 keeps
+    # the exact same code path/shapes as the >1 case, just skips the redundant reshuffles).
+    n_repeats = 1
     cv = RepeatedKFold(n_splits=n_folds, n_repeats=n_repeats, random_state=random_state)
     w = np.asarray(sample_weight, dtype=float) if sample_weight is not None else None
     if w is not None and (not np.any(w > 0)):
@@ -149,7 +162,10 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     # Final refit on ALL data (with weights), after CV already measured honest error above.
     best_model.fit(X, y, **_fit_kwargs(best_model, w))
 
-    importance_result = permutation_importance(best_model, X, y, n_repeats=10,
+    # n_repeats=5 (was 10): permutation importance is a display/diagnostic number, not part
+    # of the model itself -- halving its repeat count halves its cost for a noisier but
+    # still directionally-correct importance ranking.
+    importance_result = permutation_importance(best_model, X, y, n_repeats=5,
                                                 random_state=random_state, sample_weight=w)
     importances = dict(zip(feature_names, [float(v) for v in importance_result.importances_mean]))
 
