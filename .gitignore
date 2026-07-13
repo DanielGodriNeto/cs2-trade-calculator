@@ -24,10 +24,14 @@ data/*.tmp
 # reasonable way to carry your training data across machines -- see the README's
 # "Training across multiple machines" section.
 
-# Archives from `export-data` land in the project root by default -- keep them out of git
-# unless you specifically want to check one in as a point-in-time backup (in which case,
-# `git add -f` that one file).
+# Archives from `export-data`/`backup_engine.py` land in the project root by default -- keep
+# them out of git unless you specifically want to check one in as a point-in-time backup (in
+# which case, `git add -f` that one file). Matches both the CLI export-data naming
+# (data-archive-*.zip) and backup_engine.py's actual naming (archive_TIMESTAMP_*.zip, which this
+# pattern previously didn't cover -- that mismatch is why ~31 backup archives ended up committed
+# to this repo's history instead of being caught here).
 /data-archive-*.zip
+/archive_*.zip
 
 # Safety net for src/sheets_export.py's Google service-account key: it should live OUTSIDE this
 # repo entirely (see that module's docstring -- data/ gets zipped and auto-pushed to GitHub by
