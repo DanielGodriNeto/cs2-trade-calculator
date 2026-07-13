@@ -29,8 +29,8 @@ see the .gitignore's own comment on this), so wrapping the same data/ into a zip
 it to the SAME repo double-stores everything and bloats history with non-deduplicatable binary
 blobs on every cycle. This is exactly what happened before 2026-07-12: repo_dir was misconfigured
 to point at cs2-trade-calculator itself, growing .git to 1.3GB across ~31 archive commits before
-being caught and fixed (repo_dir now points at a separate local repo, C:\Users\Mancato\
-cs2-backups, with no relation to the source repo's own history).
+being caught and fixed (repo_dir now points at a separate local repo outside this project tree
+entirely, with no relation to the source repo's own history).
 
 Everything is logged to data/backup_log.jsonl (append-only JSONL, same convention as every
 other audit log here).
