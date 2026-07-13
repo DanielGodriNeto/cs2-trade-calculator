@@ -143,7 +143,14 @@ def _load_feed(feed: str) -> dict | None:
     """Returns the feed's {name: entry} data dict, fetching/refreshing under the TTL and
     failure-cooldown rules. Stale data (past TTL, or any age during an outage) is still
     returned rather than nothing -- same stale-beats-empty policy steam_prices' own cache and
-    thirdparty_prices' old skinport cache both follow. Caller must NOT hold _lock."""
+    thirdparty_prices' old skinport cache both follow. Caller must NOT hold _lock.
+
+    A stale-but-present entry is refreshed on a BACKGROUND thread while this call returns the
+    stale data immediately -- the calling request must never pay for someone else's live
+    multi-MB download. (Measured live 2026-07-12: a dashboard poll request landed the moment
+    the TTL lapsed and blocked for ~20s on this exact download, against a normal ~350ms.) Only
+    a genuine first-ever fetch (no cached data at all, nothing else to return) blocks
+    synchronously."""
     now = time.time()
     with _lock:
         entry = _feeds.get(feed)
@@ -167,7 +174,12 @@ def _load_feed(feed: str) -> dict | None:
             # download at a time (see _inflight's comment above).
             return entry["data"] if entry else None
         _inflight.add(feed)
+        if entry is not None:
+            threading.Thread(target=_refresh_feed_background, args=(feed,), daemon=True).start()
+            return entry["data"]
 
+    # No cached data at all (first-ever fetch for this feed) -- there's nothing stale to hand
+    # back, so this is the one path that still blocks the caller.
     fetched = _fetch(feed)  # deliberately outside _lock: a 60s download must not block
     # get_skinport_map()/get_steam_entry() callers that only need the already-loaded data
     with _lock:
@@ -176,15 +188,36 @@ def _load_feed(feed: str) -> dict | None:
             entry = {"_fetched_at": time.time(), "data": fetched}
             _feeds[feed] = entry
             _last_failure.pop(feed, None)
-            try:
-                CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                _FEEDS[feed]["file"].write_text(json.dumps(entry), encoding="utf-8")
-            except OSError:
-                pass  # disk cache is an optimization; in-memory copy is what matters
+            _persist_feed(feed, entry)
             return fetched
         _last_failure[feed] = time.time()
-        entry = _feeds.get(feed)
-        return entry["data"] if entry else None
+        return None
+
+
+def _refresh_feed_background(feed: str) -> None:
+    """The background-thread half of _load_feed's stale-entry path -- runs entirely off the
+    request thread. _inflight already reserved this feed under _lock before the thread
+    started, same single-flight contract _load_feed's synchronous path follows."""
+    fetched = _fetch(feed)
+    with _lock:
+        _inflight.discard(feed)
+        if fetched is not None:
+            entry = {"_fetched_at": time.time(), "data": fetched}
+            _feeds[feed] = entry
+            _last_failure.pop(feed, None)
+            _persist_feed(feed, entry)
+        else:
+            _last_failure[feed] = time.time()
+
+
+def _persist_feed(feed: str, entry: dict) -> None:
+    """Caller must hold _lock. Disk cache is an optimization -- a write failure is swallowed
+    since the in-memory copy in _feeds is what every reader actually consults."""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _FEEDS[feed]["file"].write_text(json.dumps(entry), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def rate_for(currency: int) -> float:

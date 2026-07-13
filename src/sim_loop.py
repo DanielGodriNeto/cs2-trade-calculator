@@ -28,6 +28,7 @@ own sim_learning.py model only ever reads that SAME son's own simulations.jsonl 
 another son's, and never the real outcomes.jsonl.
 """
 import json
+import os
 import random
 import threading
 import time
@@ -37,14 +38,12 @@ from . import adaptive as adaptive_mod
 from . import agents as agents_mod
 from . import bulk_prices as bulk_prices_mod
 from . import data as data_mod
-from . import evolution as evolution_mod
 from . import invalid_skins as invalid_skins_mod
 from . import user_overrides as user_overrides_mod
 from . import market_reliability as market_reliability_mod
 from . import mutation as mutation_mod
 from . import random_trade as random_trade_mod
 from . import ranking as ranking_mod
-from . import recovery as recovery_mod
 from . import sim_blacklist as sim_blacklist_mod
 from . import simulate as simulate_mod
 from . import steam_prices as steam_prices_mod
@@ -129,11 +128,22 @@ def _empty_checkpoint() -> dict:
 
 
 def load_checkpoint(path: Path) -> dict:
+    """One retry on a JSONDecodeError before giving up -- guards against reading a checkpoint
+    mid-write from a concurrent son thread. save_checkpoint() below writes atomically (temp
+    file + os.replace) so a torn read should no longer be possible going forward, but this
+    stays as cheap defense-in-depth (a genuinely corrupt pre-existing file still falls through
+    to _empty_checkpoint on the second failure, same as before)."""
     if not path.exists():
         return _empty_checkpoint()
-    try:
-        cp = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    cp = None
+    for attempt in range(2):
+        try:
+            cp = json.loads(path.read_text(encoding="utf-8"))
+            break
+        except json.JSONDecodeError:
+            if attempt == 0:
+                time.sleep(0.05)
+    if cp is None:
         return _empty_checkpoint()
     for k, v in _empty_checkpoint().items():
         cp.setdefault(k, v)
@@ -141,9 +151,14 @@ def load_checkpoint(path: Path) -> dict:
 
 
 def save_checkpoint(path: Path, cp: dict) -> None:
+    """Atomic write (temp file + os.replace) so a concurrent load_checkpoint() call never
+    observes a partially-written file -- os.replace is atomic on both POSIX and Windows when
+    source/dest share a filesystem, unlike the previous in-place path.write_text()."""
     path.parent.mkdir(parents=True, exist_ok=True)
     cp["updated_at"] = time.time()
-    path.write_text(json.dumps(cp), encoding="utf-8")
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(json.dumps(cp), encoding="utf-8")
+    os.replace(tmp_path, path)
 
 
 def _entry_output_unsellable(entry: dict) -> bool:
@@ -553,7 +568,6 @@ class SimulationLoopState:
                     "memory_weight": live["memory_weight"],
                 },
                 "adaptive": adaptive_mod.summary(adaptive, self.profile) if adaptive else None,
-                "recovery": recovery_mod.summary(cp.get("recovery")),
                 "is_meta_agent": self.son_id in agents_mod.META_AGENT_IDS,
                 "coverage_collections": len(cp.get("coverage") or {}),
                 "temperature": live_temperature,
@@ -814,12 +828,6 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
     # every round.
     steam_prices_mod.set_attribution(f"son_{state.son_id}")
 
-    # Meta agents' base personalities are refreshed by the Evolution Manager while running
-    # (behavioral crossover, see evolution.refresh_meta_agents) -- re-fetch so the refresh
-    # takes effect on the next round instead of the next restart. mtime-cached, cheap.
-    if state.son_id in agents_mod.META_AGENT_IDS:
-        state.profile = agents_mod.profile_for(state.son_id)
-
     skins = data_mod.load_skins()
     idx = data_mod.collections_index(skins)
 
@@ -830,13 +838,10 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
         # memory_weight, so the exploit-vs-explore dial itself adapts over time.
         adaptive = adaptive_mod.ensure_state(state.checkpoint, state.profile)
         live = adaptive_mod.live_params(adaptive)
-        hp = adaptive_mod.hyperparams(adaptive)
-        # Exploration Recovery Mode (recovery.py): while active, layers progressive
-        # multiplicative pressure on the live params + adds novelty/temperature multipliers --
-        # derived only, vanishes the moment the mode exits. Inactive: params pass through
-        # untouched with both multipliers at 1.0.
-        recovery_state = recovery_mod.ensure_state(state.checkpoint)
-        live = recovery_mod.apply(live, recovery_state, STUCK_THRESHOLD_ROUNDS)
+        # novelty_multiplier/temperature_multiplier used to be layered on by the now-removed
+        # Exploration Recovery Mode -- always 1.0 (no-op) now that it's gone.
+        live["novelty_multiplier"] = 1.0
+        live["temperature_multiplier"] = 1.0
         temperature = _effective_temperature(agents_mod.temperature_for(live["memory_weight"]),
                                              state.checkpoint) * live["temperature_multiplier"]
         # Copied so candidate scoring below can read it lock-free; the authoritative dict is
@@ -854,7 +859,7 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
     coverage_total = sum(coverage.values())
     exploration = live["exploration_rate"]
     novelty_multiplier = live["novelty_multiplier"]  # >1.0 only in Recovery Mode
-    novelty_ucb_pp = hp["novelty_ucb_pp"]            # evolvable, see adaptive.HYPERPARAM_BOUNDS
+    novelty_ucb_pp = adaptive_mod.NOVELTY_UCB_PP
 
     def _novelty(c):
         return (exploration * novelty_multiplier
@@ -910,23 +915,11 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
     # agent actually has a best-known list to mutate from; total candidate count (and so
     # the simulate() budget below) is unchanged either way, only the MIX shifts.
     with state.lock:
-        best_entries = list(state.checkpoint["best"])
-    # Evolution Manager hooks (all neutral when disabled -- see evolution.py):
-    #   - cross-agent knowledge sharing: other agents' elite genomes join this son's mutation
-    #     pool, so its (unchanged) mutation operators also improve on siblings' discoveries;
-    #   - adaptive mutation: the species this son works in mutate harder while stagnant.
-    evolution_on = evolution_mod.enabled()
-    shared_parents = evolution_mod.parents_for(state.son_id, rng=state.rng) if evolution_on else []
-    mutation_pool = best_entries + shared_parents
-    effective_mutation = min(1.0, live["mutation_strength"]
-                              * (evolution_mod.mutation_boost(state.son_id) if evolution_on else 1.0))
+        mutation_pool = list(state.checkpoint["best"])
+    effective_mutation = live["mutation_strength"]
     n_mutated = round(len(candidates) * effective_mutation) if mutation_pool else 0
-    # Genome lineage: which best/elite parent each mutated candidate came from -- filled by
-    # mutate_batch, read at admission time below (evolution.record_child).
-    parent_by_candidate: dict = {}
     if n_mutated:
-        mutated = mutation_mod.mutate_batch(mutation_pool, idx, state.rng, n_mutated,
-                                             track_parents=parent_by_candidate if evolution_on else None)
+        mutated = mutation_mod.mutate_batch(mutation_pool, idx, state.rng, n_mutated)
         if mutated:
             candidates = mutated + candidates[len(mutated):]
 
@@ -994,12 +987,6 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
                 admitted = next((e for e in cp["best"] if e["id"] == record.id), None)
                 if admitted is not None:
                     verify_queue_mod.maybe_enqueue(state.son_id, admitted)
-                    # Genome lineage (evolution.py): this admitted find was a mutation child of
-                    # a tracked parent -- record the parent->child edge in the audit trail.
-                    parent_id = parent_by_candidate.get(id(candidate))
-                    if parent_id is not None:
-                        evolution_mod.record_child(record.id, parent_id, state.son_id,
-                                                    record.expected_roi_pct)
         else:  # InvalidSimulation -- not every input/output priced; logged separately, never
             # trained on or ranked (see simulate.py's own docstring for why)
             simulate_mod.log_invalid(record, state.invalid_file)
@@ -1025,9 +1012,6 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
         # son's search params or adopts/reverts the one just measured. Persisted with the
         # checkpoint save below, same as every other per-round counter.
         adaptive_mod.end_round(cp["adaptive"], state.profile, state.rng)
-        # Exploration Recovery Mode state machine -- AFTER rounds_since_improvement was
-        # updated above, so entry/exit/escalation decisions see this round's outcome.
-        recovery_mod.end_round(state.son_id, cp, state.profile, state.rng)
         history_entry = {
             "round": cp["round"], "n_simulated": cp["n_simulated"],
             "best_roi_ever": cp["best_roi_ever"],

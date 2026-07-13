@@ -1,4 +1,4 @@
-"""Rare Pattern Arbitrage Engine: continuously scans marketplace listings for items whose
+"""Rare Pattern Arbitrage Engine: continuously scans STEAM MARKET listings for items whose
 seller priced a documented collector pattern (pattern_db.py) at ordinary market price, and
 turns matches into ranked, auditable Rare Pattern Opportunities.
 
@@ -9,25 +9,26 @@ cached-feed cross-marketplace math the reliability registry uses), marketplace d
 marketplaces.py, and the same start/pause/stop thread conventions as every other loop.
 
 Source coverage -- honest, up front (same disclosure style as thirdparty_prices.py):
-  - CSFloat's listings API returns per-listing float, paint seed, paint index and stickers
-    directly -- the data pattern matching needs. As of 2026-07 (verified live) the endpoint
-    returns HTTP 403 without authentication: a CSFLOAT_API_KEY (env var, shared with
-    thirdparty_prices.py) is required for THIS source. Keys are free -- CSFloat account ->
-    profile -> developers tab. Without one this source reports the 403 plainly in its status
-    and finds nothing -- it never fakes results.
-  - STEAM MARKET (since 2026-07): Steam's own listings pages don't publish float/seed, but
-    each listing DOES carry an in-game inspect link (the market listings /render endpoint
-    exposes it per listing). Those inspect links are resolved to float/paint seed/paint
-    index/stickers through the CSFloat INSPECT API (api.csfloat.com -- a separate, public
-    endpoint from the listings API above; an API key is sent when configured but is not
-    required), giving true per-listing pattern data for items listed ON STEAM. This is the
-    only way to buy a matched pattern directly on the Steam Market. Steam rate-limits the
-    render endpoint aggressively for anonymous callers -- failures back the scanner off and
-    are reported in the status panel, never hidden.
-  - The Skinport/Buff163 bulk mirrors are price-only: they feed the VALUATION side (the base
-    price a pattern's premium is measured against) but cannot be scanned for patterns
-    themselves. Their per-listing scan support is a documented limitation, not a silent gap
-    -- get_status() says so.
+  - STEAM MARKET is the ONLY listing source (2026-07-12: a prior CSFloat listings-API source
+    was removed on user request -- Steam price/listing checks stay Steam-first project-wide,
+    third-party sources are for cross-verification only, never primary discovery). Steam's
+    listings render endpoint (`/market/listings/730/<name>/render/`) returns each live
+    listing's price and an in-game inspect-link template; that link is resolved to
+    float/paint seed/paint index/stickers through CSFloat's separate, public INSPECT endpoint
+    (api.csfloat.com -- an optional CSFLOAT_API_KEY improves its rate budget but is NOT
+    required, unlike the removed listings API). This is also the only way to actually buy a
+    matched pattern directly on the Steam Market.
+  - HONEST CAVEAT: Steam rate-limits this anonymous render endpoint aggressively (the same
+    policy documented in steam_prices.py's history with priceoverview) -- a scan can spend
+    real wall-clock time sitting out 429 cooldowns rather than actively finding listings. An
+    optional STEAM_LOGIN_SECURE_COOKIE env var (your own Steam session's `steamLoginSecure`
+    cookie value) is honored if set and dramatically raises Steam's rate limit for this
+    endpoint, same as any authenticated browser session gets; without it the scanner still
+    runs, just slower and burstier, self-reporting every cooldown in the status panel rather
+    than hiding it.
+  - The Skinport/Buff163 bulk mirrors remain price-only cross-checks for the VALUATION side
+    (the base price a pattern's premium is measured against) -- they were never a listing
+    source and still aren't; that's a documented limitation, not a silent gap.
 
 Valuation base price (since 2026-07) is STEAM-FIRST: the skin's own Steam median-sale price
 from the bulk mirror when it exists, falling back to the cross-market consensus only when
@@ -69,14 +70,18 @@ from . import pattern_db as pattern_db_mod
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OPPORTUNITIES_FILE = DATA_DIR / "pattern_opportunities.json"
 
-CSFLOAT_LISTINGS_URL = "https://csfloat.com/api/v1/listings"
-CSFLOAT_API_KEY = os.environ.get("CSFLOAT_API_KEY")  # optional, shared with thirdparty_prices
+CSFLOAT_API_KEY = os.environ.get("CSFLOAT_API_KEY")  # optional, shared with thirdparty_prices --
+# only used here for the INSPECT endpoint's rate budget (see _resolve_inspect_link); the
+# listings-API source that used to require this key was removed, see module docstring.
+STEAM_LOGIN_SECURE_COOKIE = os.environ.get("STEAM_LOGIN_SECURE_COOKIE")  # optional; see
+# module docstring's honest caveat about anonymous Steam rate limits
 
 
 def configure_csfloat_key(key: str | None):
     """Live setter for CSFLOAT_API_KEY, mirroring thirdparty_prices.configure_csfloat_key() --
-    this module keeps its own separate module-level constant (see the comment above), so the
-    dashboard's Connections settings page has to call both setters, not just one."""
+    this module keeps its own separate module-level constant, so the dashboard's Connections
+    settings page has to call both setters, not just one. Only affects the optional INSPECT
+    rate budget now (see module docstring) -- Steam listing scanning works without it."""
     global CSFLOAT_API_KEY
     CSFLOAT_API_KEY = key or None
 
@@ -122,10 +127,9 @@ STEAM_BLOCK_JITTER_SECONDS = 5  # randomized so repeated failures don't all cool
 _INSPECT_CACHE_MAX = 5000       # resolved inspect links are immutable (an item's float/seed
 # never changes), so cache them in-memory and only pay the API call once per listing
 
-REQUEST_INTERVAL_SECONDS = 4.0   # one listings query per target per this interval -- polite
-# pacing for an unauthenticated public API (a full target cycle takes minutes, and patterns
-# don't appear/vanish second-to-second anyway)
-LISTINGS_PER_QUERY = 50
+REQUEST_INTERVAL_SECONDS = 4.0   # baseline pacing between targets in the scan loop -- polite
+# even though this is now Steam-only (a full target cycle takes minutes regardless, and
+# patterns don't appear/vanish second-to-second)
 OPPORTUNITY_TTL_SECONDS = 24 * 3600  # unrefreshed opportunities age out (delisted/sold)
 CONFIDENCE_FACTOR = {"high": 1.0, "medium": 0.7, "low": 0.4}
 
@@ -141,14 +145,14 @@ GAMMA_DOPPLER_WEAPONS = ["★ Karambit", "★ M9 Bayonet", "★ Bayonet", "★ F
                           "★ Gut Knife", "Glock-18"]
 
 _stats_lock = threading.Lock()
-_stats = {"queries": 0, "listings_seen": 0, "matches": 0, "opportunities_live": 0,
-          "last_attempt_at": None, "last_success_at": None, "last_error": None,
-          "consecutive_failures": 0, "last_cycle_completed_at": None,
-          # Steam Market source (kept separate so a Steam rate-limit streak is visibly a
-          # STEAM problem, not blamed on CSFloat's listings API or vice versa):
+_stats = {"matches": 0, "opportunities_live": 0, "last_attempt_at": None,
+          "last_cycle_completed_at": None,
+          # Steam Market listings (the only source, see module docstring):
           "steam_queries": 0, "steam_listings_seen": 0, "steam_last_success_at": None,
           "steam_last_error": None, "steam_consecutive_failures": 0,
           "steam_blocked_until": None,  # epoch until which the Steam source sits out (429 cooldown)
+          # CSFloat's separate, optional INSPECT endpoint (resolves a Steam listing's inspect
+          # link to float/seed/stickers -- not a listing source, see module docstring):
           "inspects_resolved": 0, "inspects_failed": 0, "inspect_last_error": None}
 
 _inspect_cache: dict = {}  # inspect link -> resolved item dict (see _resolve_inspect_link)
@@ -182,27 +186,33 @@ class PatternScanState:
             stats = dict(_stats)
         stats["opportunities_live"] = len(_load_store()["opportunities"])
         return {"status": status, "current_target": current, **stats,
+                "steam_login_cookie_configured": STEAM_LOGIN_SECURE_COOKIE is not None,
+                "steam_login_cookie_note": (
+                    "Scanning Steam anonymously -- Steam rate-limits this listings endpoint "
+                    "aggressively, so scans can spend real time sitting out cooldowns rather "
+                    "than finding listings (see steam_blocked_until above). Set "
+                    "STEAM_LOGIN_SECURE_COOKIE to your own Steam session's steamLoginSecure "
+                    "cookie value for a much friendlier authenticated rate limit -- optional, "
+                    "the scanner works without it, just slower."
+                    if not STEAM_LOGIN_SECURE_COOKIE else None),
                 "csfloat_key_configured": CSFLOAT_API_KEY is not None,
                 "csfloat_key_note": (None if CSFLOAT_API_KEY else
-                    "CSFloat requires a (free) API key for its LISTINGS queries as of 2026-07: "
-                    "csfloat.com -> profile -> developers tab, then set the CSFLOAT_API_KEY "
-                    "environment variable before starting the server. The Steam Market source "
-                    "below still works without one (its inspect resolutions use CSFloat's "
-                    "separate public inspect endpoint)."),
+                    "Optional -- improves the rate budget of CSFloat's free INSPECT endpoint, "
+                    "used only to resolve a Steam listing's float/paint-seed/stickers, never to "
+                    "find listings (Steam Market is the sole listing source, see the module "
+                    "docstring). Works fine unconfigured, just with a lower inspect budget."),
                 "request_interval_seconds": REQUEST_INTERVAL_SECONDS,
                 "n_targets": len(build_targets()),
                 "scan_sources": {
-                    "steam": "supported -- Steam Market listings scanned directly: each "
-                             "listing's inspect link is resolved to float/seed/stickers via "
-                             "the public CSFloat inspect API "
+                    "steam": "the only listing source -- Steam Market listings scanned "
+                             "directly, each listing's inspect link resolved to "
+                             "float/seed/stickers via CSFloat's separate free inspect endpoint "
                              f"({STEAM_INSPECTS_PER_CYCLE} cheapest listings per target per "
                              "cycle, walking the next batch of "
                              f"{STEAM_INSPECTS_PER_CYCLE} each subsequent cycle until the book "
                              "is covered, then wrapping back to the cheapest)",
-                    "csfloat": "supported (float + paint seed + stickers per listing; needs "
-                               "CSFLOAT_API_KEY)",
-                    "skinport": "valuation only -- bulk mirror carries prices, not seeds",
-                    "buff163": "valuation only -- bulk mirror carries prices, not seeds",
+                    "skinport": "valuation cross-check only -- bulk mirror carries prices, not listings",
+                    "buff163": "valuation cross-check only -- bulk mirror carries prices, not listings",
                 }}
 
 
@@ -213,7 +223,7 @@ def _market_name(weapon: str, skin: str, wear: str) -> str:
 
 
 def build_targets() -> list[dict]:
-    """One target = one CSFloat listings query = (market_hash_name, [entries to match]).
+    """One target = one Steam Market listings query = (market_hash_name, [entries to match]).
     Derived fresh from the live pattern DB so a knowledge refresh/entry edit changes the scan
     plan on the next cycle without a restart. Wildcard-weapon paint_index entries (Doppler
     phases) expand across the carrier lists above; sticker_craft entries have no queryable
@@ -244,46 +254,6 @@ def build_targets() -> list[dict]:
                 add(_market_name(weapon, entry["skin"], wear), entry)
 
     return list(targets.values())
-
-
-# --- CSFloat fetch -----------------------------------------------------------------------------
-
-def _fetch_listings(market_hash_name: str) -> list | None:
-    """One listings query. None = fetch failed (recorded); [] = genuinely no listings."""
-    params = urllib.parse.urlencode({"market_hash_name": market_hash_name,
-                                      "sort_by": "lowest_price", "limit": LISTINGS_PER_QUERY})
-    headers = {"User-Agent": "cs2-trade-calculator pattern scanner"}
-    if CSFLOAT_API_KEY:
-        headers["Authorization"] = CSFLOAT_API_KEY
-    req = Request(f"{CSFLOAT_LISTINGS_URL}?{params}", headers=headers)
-    with _stats_lock:
-        _stats["queries"] += 1
-        _stats["last_attempt_at"] = time.time()
-    try:
-        with urlopen(req, timeout=30, context=net.SSL_CONTEXT) as resp:
-            payload = json.loads(resp.read())
-    except HTTPError as e:
-        with _stats_lock:
-            _stats["last_error"] = f"HTTP {e.code}: {e.reason}"
-            _stats["consecutive_failures"] += 1
-        return None
-    except (URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
-        with _stats_lock:
-            _stats["last_error"] = f"{type(e).__name__}: {e}"
-            _stats["consecutive_failures"] += 1
-        return None
-    listings = payload.get("data") if isinstance(payload, dict) else payload
-    if not isinstance(listings, list):
-        with _stats_lock:
-            _stats["last_error"] = "unexpected response shape"
-            _stats["consecutive_failures"] += 1
-        return None
-    with _stats_lock:
-        _stats["last_success_at"] = time.time()
-        _stats["last_error"] = None
-        _stats["consecutive_failures"] = 0
-        _stats["listings_seen"] += len(listings)
-    return listings
 
 
 # --- Steam Market fetch (listings render endpoint + CSFloat inspect resolution) ------------------
@@ -322,12 +292,18 @@ def _fetch_steam_listings(market_hash_name: str) -> list | None:
     inspect-link TEMPLATE with %listingid%/%assetid% placeholders this fills in. Steam
     rate-limits anonymous callers hard (see steam_prices.py's history with priceoverview) --
     a 429/HTML/null body puts the Steam source on its own minutes-long cooldown and shows up
-    in the status panel."""
+    in the status panel. An optional STEAM_LOGIN_SECURE_COOKIE (see module docstring) rides
+    along with the opt-out cookie and gets Steam's much friendlier authenticated rate limit
+    instead of the anonymous one -- this is the main lever for a Steam-only scanner to see
+    real throughput rather than mostly sitting in cooldown."""
     params = urllib.parse.urlencode({"query": "", "start": 0, "count": STEAM_LISTINGS_PER_QUERY,
                                       "country": "US", "language": "english", "currency": 1})
     url = STEAM_RENDER_URL.format(urllib.parse.quote(market_hash_name)) + f"?{params}"
+    cookie = STEAM_OPTOUT_COOKIE
+    if STEAM_LOGIN_SECURE_COOKIE:
+        cookie += f"; steamLoginSecure={STEAM_LOGIN_SECURE_COOKIE}"
     req = Request(url, headers={"User-Agent": "Mozilla/5.0 cs2-trade-calculator/1.0",
-                                 "Cookie": STEAM_OPTOUT_COOKIE})
+                                 "Cookie": cookie})
     with _stats_lock:
         _stats["steam_queries"] += 1
         _stats["last_attempt_at"] = time.time()
@@ -504,23 +480,6 @@ def _base_price(name: str, metrics: dict) -> tuple[float | None, str]:
     return metrics["consensus_price"], "consensus"
 
 
-def _opportunity_from(listing: dict, entry: dict, market_hash_name: str) -> dict | None:
-    """CSFloat-listing adapter over _opportunity_from_item (the marketplace-agnostic core)."""
-    item = listing.get("item") or {}
-    price_cents = listing.get("price")
-    if price_cents is None:
-        return None
-    ask = round(price_cents / 100.0, 2)
-    name = item.get("market_hash_name") or market_hash_name
-    listing_id = str(listing.get("id") or f"{name}:{item.get('paint_seed')}:{ask}")
-    return _opportunity_from_item(
-        item, ask, entry, name, marketplace="csfloat",
-        listing_id=f"csfloat:{listing_id}",
-        listing_url=f"https://csfloat.com/item/{listing.get('id')}" if listing.get("id") else None,
-        image_url=(f"https://community.fastly.steamstatic.com/economy/image/{item['icon_url']}"
-                   if item.get("icon_url") else None))
-
-
 def _opportunity_from_item(item: dict, ask: float, entry: dict, name: str, *, marketplace: str,
                             listing_id: str, listing_url: str | None,
                             image_url: str | None) -> dict | None:
@@ -635,13 +594,11 @@ def clear_opportunities() -> int:
     with _steam_scan_cursor_lock:
         _steam_scan_cursor.clear()
     with _stats_lock:
-        for key in ("queries", "listings_seen", "matches", "steam_queries", "steam_listings_seen",
-                    "inspects_resolved", "inspects_failed", "consecutive_failures",
-                    "steam_consecutive_failures"):
+        for key in ("matches", "steam_queries", "steam_listings_seen",
+                    "inspects_resolved", "inspects_failed", "steam_consecutive_failures"):
             _stats[key] = 0
-        for key in ("last_attempt_at", "last_success_at", "last_error", "last_cycle_completed_at",
-                    "steam_last_success_at", "steam_last_error", "steam_blocked_until",
-                    "inspect_last_error"):
+        for key in ("last_attempt_at", "last_cycle_completed_at", "steam_last_success_at",
+                    "steam_last_error", "steam_blocked_until", "inspect_last_error"):
             _stats[key] = None
     return n
 
@@ -684,26 +641,12 @@ def list_opportunities(*, weapon: str | None = None, pattern_type: str | None = 
 # --- Scan loop -------------------------------------------------------------------------------------
 
 def scan_target(target: dict) -> list[dict]:
-    """One match pass for one target across BOTH per-listing sources: CSFloat's listings API
-    (when a key is configured) and the Steam Market itself (listings render endpoint +
-    inspect-link resolution -- see _fetch_steam_listings/_resolve_inspect_link). Sticker-craft
-    entries are matched opportunistically against every listing fetched here, whatever the
-    target was."""
+    """One match pass for one target against the Steam Market listings render endpoint +
+    inspect-link resolution (see _fetch_steam_listings/_resolve_inspect_link -- the only
+    listing source, see module docstring). Sticker-craft entries are matched opportunistically
+    against every listing fetched here, whatever the target was."""
     sticker_entries = pattern_db_mod.entries("sticker_craft")
-    found = []
-
-    listings = _fetch_listings(target["market_hash_name"]) or []
-    for listing in listings:
-        item = listing.get("item") or {}
-        for entry in target["entries"] + sticker_entries:
-            if _match_entry(entry, item):
-                o = _opportunity_from(listing, entry, target["market_hash_name"])
-                if o is not None:
-                    found.append(o)
-                break  # one opportunity per listing -- first (most specific) entry wins
-
-    found.extend(_scan_target_steam(target, sticker_entries))
-
+    found = _scan_target_steam(target, sticker_entries)
     if found:
         _record_opportunities(found)
     return found
@@ -788,7 +731,7 @@ def scan_loop(state: PatternScanState) -> None:
                 state.stop_event.wait(timeout=60)
                 continue
             with _stats_lock:
-                if idx == 0 and _stats["queries"]:
+                if idx == 0 and _stats["steam_queries"]:
                     _stats["last_cycle_completed_at"] = time.time()
         target = targets[idx]
         idx += 1
@@ -799,12 +742,11 @@ def scan_loop(state: PatternScanState) -> None:
         except Exception as e:  # noqa: BLE001 -- surface, don't die (same as sim_loop)
             with _stats_lock:
                 _stats["last_error"] = f"{type(e).__name__}: {e}"
-        # Back off harder while the CSFloat listings API is refusing us -- no point hammering
-        # through a 429. (Steam refusals don't slow this loop: the Steam source sits out its
-        # own dedicated cooldown instead -- see _record_steam_failure/_steam_blocked -- so
-        # CSFloat scanning continues at full pace meanwhile.)
+        # Back off the between-target pacing while Steam is refusing us, on top of (not
+        # instead of) the dedicated _steam_blocked() cooldown _scan_target_steam already sits
+        # out -- no point hammering through a run of 429s at the normal cadence either.
         with _stats_lock:
-            failures = _stats["consecutive_failures"]
+            failures = _stats["steam_consecutive_failures"]
         delay = REQUEST_INTERVAL_SECONDS * (1 + min(failures, 10))
         if state.stop_event.wait(timeout=delay):
             with state.lock:

@@ -54,8 +54,6 @@ from src import verify_queue as verify_queue_mod
 from src import sim_blacklist as sim_blacklist_mod
 from src import user_overrides as user_overrides_mod
 from src import xlsx_export as xlsx_export_mod
-from src import evolution as evolution_mod
-from src import recovery as recovery_mod
 from src import pattern_db as pattern_db_mod
 from src import pattern_scanner as pattern_scanner_mod
 from src import backup_engine as backup_engine_mod
@@ -619,18 +617,6 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 limit_param = params.get("limit", ["200"])[0]
                 limit = int(limit_param) if limit_param.isdigit() else 200
                 return self._send_json(market_reliability_mod.list_log(limit=limit))
-            if path == "/api/evolution/status":
-                return self._send_json(evolution_mod.snapshot())
-            if path == "/api/evolution/lineage":
-                params = parse_qs(urlparse(self.path).query)
-                limit_param = params.get("limit", ["100"])[0]
-                limit = int(limit_param) if limit_param.isdigit() else 100
-                return self._send_json(evolution_mod.list_lineage(limit=limit))
-            if path == "/api/recovery/log":
-                params = parse_qs(urlparse(self.path).query)
-                limit_param = params.get("limit", ["100"])[0]
-                limit = int(limit_param) if limit_param.isdigit() else 100
-                return self._send_json(recovery_mod.list_log(limit=limit))
             if path == "/api/patterns/status":
                 return self._send_json({"scanner": pattern_scan_state.snapshot(),
                                          "knowledge": pattern_db_mod.get_status()})
@@ -865,18 +851,6 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 state.pause_event.clear()
                 state.wake_event.set()  # resume_collection_index/partial_tradeup_results are left as-is
                 return self._send_json({"ok": True})
-
-            if path == "/api/evolution/enable":
-                try:
-                    body = self._read_json_body()
-                except json.JSONDecodeError:
-                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
-                evolution_mod.set_enabled(bool(body.get("enabled", True)))
-                return self._send_json({"ok": True, "enabled": evolution_mod.enabled()})
-            if path == "/api/evolution/tick":
-                # On-demand manager step (the dashboard's "Run a tick now" button) -- same
-                # code path the background watcher runs every TICK_SECONDS.
-                return self._send_json({"ok": True, "result": evolution_mod.tick(sim_population)})
 
             if path == "/api/patterns/scan/start":
                 pattern_scan_state.pause_event.clear()
@@ -1431,13 +1405,6 @@ def main():
     # only one at a time.
     verify_queue_state = verify_queue_mod.VerifyQueueState()
     threading.Thread(target=verify_queue_mod.consumer_loop, args=(verify_queue_state,), daemon=True).start()
-
-    # Evolution Manager (see evolution.py): cross-agent cooperation watcher -- safe to
-    # auto-start, it only does cheap in-memory work over checkpoints already loaded, and
-    # every hook goes neutral the moment it's disabled via the dashboard toggle.
-    evolution_stop = threading.Event()
-    threading.Thread(target=evolution_mod.watch, args=(sim_population, evolution_stop),
-                      daemon=True).start()
 
     # Rare Pattern Arbitrage scanner (see pattern_scanner.py): starts PAUSED -- it talks to
     # an external listings API, so scanning is opt-in via the Rare Patterns page's Start
