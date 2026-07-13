@@ -1,0 +1,42 @@
+{
+ "source": "data/evolution/lineage.jsonl",
+ "bytes_archived": 80496361,
+ "lines_archived": 293610,
+ "part_counters": {
+  "2026-07-10": 1,
+  "2026-07-11": 1,
+  "2026-07-12": 1
+ },
+ "chunks": [
+  {
+   "file": "2026-07-10_part001.jsonl.gz",
+   "date": "2026-07-10",
+   "records": 7199,
+   "unique_skins": 0,
+   "first_record_at": "2026-07-10 22:06:22",
+   "last_record_at": "2026-07-10 23:59:10",
+   "raw_bytes": 1996564,
+   "gz_bytes": 246002
+  },
+  {
+   "file": "2026-07-11_part001.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 145379,
+   "unique_skins": 0,
+   "first_record_at": "2026-07-11 00:01:10",
+   "last_record_at": "2026-07-11 19:08:16",
+   "raw_bytes": 39409958,
+   "gz_bytes": 4673493
+  },
+  {
+   "file": "2026-07-12_part001.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 141032,
+   "unique_skins": 0,
+   "first_record_at": "2026-07-12 01:05:50",
+   "last_record_at": "2026-07-12 18:01:15",
+   "raw_bytes": 39089839,
+   "gz_bytes": 4756101
+  }
+ ]
+}

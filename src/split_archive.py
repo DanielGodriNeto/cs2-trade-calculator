@@ -7,6 +7,7 @@ a day or two of running the sim loop:
 
   data/market_reliability_log.jsonl     every reliability transition (~200 MB/day)
   data/sons/son_N/simulations.jsonl     every simulated trade-up, never truncated
+  data/evolution/lineage.jsonl          every elite/mutation/meta-agent lineage event
 
 Those live files are APPEND-ONLY BY CONTRACT -- each son's surrogate model trains on its
 own full simulations.jsonl (see sim_loop.py / sim_learning.py) -- so this module NEVER
@@ -54,7 +55,8 @@ def sources() -> list[tuple[str, Path, tuple[str, ...]]]:
     """(label, live file, timestamp-field candidates) for every log big enough to need
     splitting. The sons are discovered by glob, not hardcoded, so a 5th son's
     simulations.jsonl would be picked up automatically."""
-    out = [("market_reliability_log", DATA_DIR / "market_reliability_log.jsonl", ("at",))]
+    out = [("market_reliability_log", DATA_DIR / "market_reliability_log.jsonl", ("at",)),
+           ("evolution_lineage", DATA_DIR / "evolution" / "lineage.jsonl", ("at",))]
     for sim in sorted((DATA_DIR / "sons").glob("son_*/simulations.jsonl")):
         out.append((f"{sim.parent.name}_simulations", sim, ("simulated_at",)))
     return out

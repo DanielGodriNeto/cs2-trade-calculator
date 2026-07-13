@@ -13,6 +13,7 @@ __pycache__/
 # `split-data --restore` on a fresh clone to rebuild them; see src/split_archive.py).
 data/market_reliability_log.jsonl
 data/sons/son_*/simulations.jsonl
+data/evolution/lineage.jsonl
 # scratch files left behind by interrupted atomic writes
 data/**/*.tmp
 data/*.tmp
