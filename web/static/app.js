@@ -82,6 +82,36 @@ const state = {
 // other JS in this file needs to know about the rename) is one click away via the top nav.
 const VIEWS = ["overview", "results", "calculator", "patterns", "ml-lab", "connections"];
 
+// Which loadX() functions each view's visible DOM actually depends on, so pollStatus() only
+// fetches what the CURRENT view needs instead of all ~28 endpoints on every 3s tick regardless
+// of visibility (verified by tracing every load*->render* pair's getElementById/querySelector
+// targets against index.html's data-view boundaries). "overview" doesn't own any panel of its
+// own -- its KPI strip is a cross-view SUMMARY (see renderOverview) computed from sim-population,
+// best-simulations, and tradeups data, so those three are listed here explicitly rather than
+// pulling in the rest of ml-lab/results/calculator just because overview needs a few numbers
+// from each of them.
+const VIEW_LOADERS = {
+  overview: ["loadSimPopulationStatus", "loadBestSimulations", "loadTradeups"],
+  calculator: ["loadTradeups", "loadAnomalies", "loadCovert", "loadModelStatus"],
+  "ml-lab": ["loadThirdpartyStats", "loadModelStatus", "loadRetrainLoopStatus", "loadOutcomes",
+    "loadPriceScanStatus", "loadRoundRobinStatus", "loadSimPopulationStatus", "loadConvergenceStatus",
+    "loadVerifyQueueStatus", "loadDeadSkins", "loadInvalidSkins", "loadMispricedSkins",
+    "loadWearAnomalies", "loadMarketReliability", "loadEvolutionStatus", "loadRecoveryLog",
+    "loadSkinBlacklist", "loadPriceOverrides"],
+  results: ["loadBestSimulations", "loadSimLeaderboards", "loadBlacklist", "loadPatternOpportunities"],
+  patterns: ["loadPatternsStatus", "loadPatternOpportunities"],
+  connections: ["loadBackupStatus", "loadConnectionsStatus"],
+};
+// Lives in the sticky topbar (index.html lines 27-43), visible regardless of which view is
+// active -- must refresh every tick no matter what.
+const ALWAYS_LOADERS = ["loadNetworkStats"];
+
+// name -> function reference, resolved once after all loadX functions are defined below
+// (pollStatus itself runs long after module load, so forward references are fine).
+function _resolveLoaders(names) {
+  return names.map(n => window[n]).filter(fn => typeof fn === "function");
+}
+
 function currentView() {
   const hash = (location.hash || "").replace("#", "");
   return VIEWS.includes(hash) ? hash : "overview";
@@ -129,11 +159,13 @@ function resizeAllCharts() {
         }
       }
     }
-    // Every other destroyed chart gets recreated for free by the next 3s poll tick (pollStatus
-    // calls every renderXChart function on every tick, regardless of view -- see its own
-    // comment). wearBracketChart is the one exception: it's rendered once from /api/constants
-    // at page load (loadConstants(), never re-polled since wear breakpoints never change at
-    // runtime), so if it was just destroyed nothing would ever recreate it without this.
+    // Every other destroyed chart gets recreated for free the next time its own view's loaders
+    // run (pollStatus only fetches the current view's data -- see VIEW_LOADERS -- and the
+    // hashchange listener below forces an immediate poll on every view switch, so a chart
+    // destroyed here while its view was hidden gets rebuilt as soon as that view becomes visible
+    // again, not up to 3s later). wearBracketChart is the one exception: it's rendered once from
+    // /api/constants at page load (loadConstants(), never re-polled since wear breakpoints never
+    // change at runtime), so if it was just destroyed nothing would ever recreate it without this.
     if (wearBracketDestroyed && state.constants) {
       renderWearBracketChart(state.constants.wear_breakpoints);
     }
@@ -151,7 +183,10 @@ function applyView() {
   });
   resizeAllCharts();
 }
-window.addEventListener("hashchange", applyView);
+// Force an immediate refresh on every view switch (in addition to applyView's show/hide) so a
+// newly-visible view's panels don't sit stale/empty for up to 3s waiting for the ambient poll --
+// pollStatus's own _pollInFlight guard makes this safe to call even if a tick is already running.
+window.addEventListener("hashchange", () => { applyView(); pollStatus(); });
 applyView();
 
 async function loadCurrencies() {
@@ -399,14 +434,13 @@ function wireCopyButtons(container) {
 }
 
 // Guards against overlapping ticks: setInterval fires every 3s regardless of whether the
-// previous pollStatus() finished, and each call fans out ~30 fetches (Promise.all below). If
-// any single one of those is slow even once (e.g. a status endpoint that touches a
-// rate-limited live Steam/CSFloat call while a scan is running), the next tick piles on
-// another ~30 requests on top of the still-pending ones -- browsers cap concurrent
-// connections per origin at ~6 (HTTP/1.1), so this snowballs into every request queuing
-// forever and the whole dashboard looking permanently "disconnected" until a hard reload.
-// Skipping a tick while one is already in flight makes a single slow cycle merely skip a
-// beat instead of cascading into a deadlock.
+// previous pollStatus() finished. If any single fetch is slow even once (e.g. a status endpoint
+// that touches a rate-limited live Steam/CSFloat call while a scan is running), the next tick
+// piling more requests on top of the still-pending ones -- browsers cap concurrent connections
+// per origin at ~6 (HTTP/1.1) -- can snowball into every request queuing forever and the whole
+// dashboard looking permanently "disconnected" until a hard reload. Skipping a tick while one is
+// already in flight makes a single slow cycle merely skip a beat instead of cascading into a
+// deadlock.
 let _pollInFlight = false;
 
 async function pollStatus() {
@@ -416,17 +450,13 @@ async function pollStatus() {
     const res = await fetch("/api/status");
     const s = await res.json();
     renderStatus(s);
-    // Always refresh tables (not just when a full pass finishes) so a scan across many
-    // collections shows results growing live instead of staying empty for a long time.
-    await Promise.all([
-      loadTradeups(), loadAnomalies(), loadCovert(), loadNetworkStats(), loadThirdpartyStats(),
-      loadModelStatus(), loadRetrainLoopStatus(), loadOutcomes(),
-      loadPriceScanStatus(), loadRoundRobinStatus(), loadSimPopulationStatus(), loadBestSimulations(),
-      loadConvergenceStatus(), loadVerifyQueueStatus(), loadDeadSkins(), loadInvalidSkins(),
-      loadSimLeaderboards(), loadBlacklist(), loadMispricedSkins(), loadWearAnomalies(), loadMarketReliability(),
-      loadEvolutionStatus(), loadRecoveryLog(), loadPatternsStatus(), loadPatternOpportunities(),
-      loadBackupStatus(), loadSkinBlacklist(), loadPriceOverrides(), loadConnectionsStatus(),
-    ]);
+    // Only fetch what the CURRENTLY VISIBLE view's DOM actually needs (see VIEW_LOADERS above) --
+    // previously this fanned out all ~28 endpoints every 3s regardless of which of the 6 views
+    // was showing, which was the dashboard's main source of per-tick lag. A view switch triggers
+    // an immediate extra poll (see the hashchange listener below) so newly-visible panels don't
+    // wait up to 3s for fresh data the first time you look at them.
+    const names = new Set([...ALWAYS_LOADERS, ...(VIEW_LOADERS[currentView()] || [])]);
+    await Promise.all(_resolveLoaders([...names]).map(fn => fn()));
     renderOverview();
     updateMarketIntelBadge();
   } catch (e) {
