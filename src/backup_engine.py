@@ -19,10 +19,18 @@ scanning the backup repo's history.
 Git integration is CONFIGURED, never assumed: data/backup_config.json names the local clone
 (repo_dir) + remote + branch. Until the user points it at a real git repository the worker
 stays fully functional but idles in a clearly-reported "not configured" state (get_status()
-explains exactly what to set up) -- this project directory itself is not a git repo, so there
-is nothing safe to auto-discover. Push failures (no remote, auth, offline) are logged and
+explains exactly what to set up). Push failures (no remote, auth, offline) are logged and
 retried on the next cycle; the commit still lands locally, so no archive is ever lost to a
 transient network failure.
+
+IMPORTANT: repo_dir must point at a DEDICATED backup repository, never at this project's own
+source repo. data/ is already tracked directly by the source repo (plain diffable JSON/JSONL --
+see the .gitignore's own comment on this), so wrapping the same data/ into a zip and committing
+it to the SAME repo double-stores everything and bloats history with non-deduplicatable binary
+blobs on every cycle. This is exactly what happened before 2026-07-12: repo_dir was misconfigured
+to point at cs2-trade-calculator itself, growing .git to 1.3GB across ~31 archive commits before
+being caught and fixed (repo_dir now points at a separate local repo, C:\Users\Mancato\
+cs2-backups, with no relation to the source repo's own history).
 
 Everything is logged to data/backup_log.jsonl (append-only JSONL, same convention as every
 other audit log here).
