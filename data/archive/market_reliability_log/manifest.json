@@ -1,10 +1,11 @@
 {
  "source": "data/market_reliability_log.jsonl",
- "bytes_archived": 207668041,
- "lines_archived": 877418,
+ "bytes_archived": 3748389579,
+ "lines_archived": 16116679,
  "part_counters": {
   "2026-07-10": 4,
-  "2026-07-11": 1
+  "2026-07-11": 64,
+  "2026-07-12": 9
  },
  "chunks": [
   {
@@ -56,6 +57,726 @@
    "last_record_at": "2026-07-11 00:20:08",
    "raw_bytes": 8060169,
    "gz_bytes": 673696
+  },
+  {
+   "file": "2026-07-11_part002.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212631,
+   "unique_skins": 645,
+   "first_record_at": "2026-07-11 00:20:09",
+   "last_record_at": "2026-07-11 01:01:59",
+   "raw_bytes": 50331708,
+   "gz_bytes": 3877253
+  },
+  {
+   "file": "2026-07-11_part003.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212231,
+   "unique_skins": 664,
+   "first_record_at": "2026-07-11 01:01:59",
+   "last_record_at": "2026-07-11 01:29:09",
+   "raw_bytes": 50331832,
+   "gz_bytes": 3560482
+  },
+  {
+   "file": "2026-07-11_part004.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212172,
+   "unique_skins": 686,
+   "first_record_at": "2026-07-11 01:29:09",
+   "last_record_at": "2026-07-11 01:51:57",
+   "raw_bytes": 50331676,
+   "gz_bytes": 3090301
+  },
+  {
+   "file": "2026-07-11_part005.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212172,
+   "unique_skins": 701,
+   "first_record_at": "2026-07-11 01:51:57",
+   "last_record_at": "2026-07-11 02:11:50",
+   "raw_bytes": 50331727,
+   "gz_bytes": 2822455
+  },
+  {
+   "file": "2026-07-11_part006.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212019,
+   "unique_skins": 709,
+   "first_record_at": "2026-07-11 02:11:50",
+   "last_record_at": "2026-07-11 02:30:27",
+   "raw_bytes": 50331693,
+   "gz_bytes": 3082527
+  },
+  {
+   "file": "2026-07-11_part007.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212000,
+   "unique_skins": 709,
+   "first_record_at": "2026-07-11 02:30:27",
+   "last_record_at": "2026-07-11 02:48:25",
+   "raw_bytes": 50331671,
+   "gz_bytes": 3046814
+  },
+  {
+   "file": "2026-07-11_part008.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212025,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 02:48:25",
+   "last_record_at": "2026-07-11 03:07:03",
+   "raw_bytes": 50331867,
+   "gz_bytes": 3209990
+  },
+  {
+   "file": "2026-07-11_part009.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212074,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 03:07:03",
+   "last_record_at": "2026-07-11 03:26:28",
+   "raw_bytes": 50331886,
+   "gz_bytes": 3146370
+  },
+  {
+   "file": "2026-07-11_part010.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211931,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 03:26:28",
+   "last_record_at": "2026-07-11 03:34:26",
+   "raw_bytes": 50331855,
+   "gz_bytes": 3718450
+  },
+  {
+   "file": "2026-07-11_part011.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211948,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 03:34:26",
+   "last_record_at": "2026-07-11 03:43:55",
+   "raw_bytes": 50331722,
+   "gz_bytes": 3948488
+  },
+  {
+   "file": "2026-07-11_part012.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211978,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 03:43:55",
+   "last_record_at": "2026-07-11 03:52:52",
+   "raw_bytes": 50331854,
+   "gz_bytes": 3969046
+  },
+  {
+   "file": "2026-07-11_part013.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211969,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 03:52:52",
+   "last_record_at": "2026-07-11 04:01:52",
+   "raw_bytes": 50331666,
+   "gz_bytes": 3876579
+  },
+  {
+   "file": "2026-07-11_part014.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211945,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 04:01:52",
+   "last_record_at": "2026-07-11 04:11:10",
+   "raw_bytes": 50331747,
+   "gz_bytes": 4024420
+  },
+  {
+   "file": "2026-07-11_part015.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211968,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 04:11:10",
+   "last_record_at": "2026-07-11 04:20:28",
+   "raw_bytes": 50331801,
+   "gz_bytes": 3844495
+  },
+  {
+   "file": "2026-07-11_part016.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211955,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 04:20:28",
+   "last_record_at": "2026-07-11 04:29:16",
+   "raw_bytes": 50331650,
+   "gz_bytes": 3815913
+  },
+  {
+   "file": "2026-07-11_part017.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211947,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 04:29:16",
+   "last_record_at": "2026-07-11 04:38:39",
+   "raw_bytes": 50331711,
+   "gz_bytes": 3921581
+  },
+  {
+   "file": "2026-07-11_part018.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211979,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 04:38:39",
+   "last_record_at": "2026-07-11 04:47:46",
+   "raw_bytes": 50331682,
+   "gz_bytes": 3864009
+  },
+  {
+   "file": "2026-07-11_part019.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211973,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 04:47:46",
+   "last_record_at": "2026-07-11 04:57:01",
+   "raw_bytes": 50331759,
+   "gz_bytes": 3859211
+  },
+  {
+   "file": "2026-07-11_part020.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211952,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 04:57:01",
+   "last_record_at": "2026-07-11 05:06:24",
+   "raw_bytes": 50331692,
+   "gz_bytes": 3974580
+  },
+  {
+   "file": "2026-07-11_part021.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211949,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 05:06:24",
+   "last_record_at": "2026-07-11 05:15:24",
+   "raw_bytes": 50331706,
+   "gz_bytes": 3852378
+  },
+  {
+   "file": "2026-07-11_part022.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211949,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 05:15:24",
+   "last_record_at": "2026-07-11 05:24:40",
+   "raw_bytes": 50331807,
+   "gz_bytes": 3936205
+  },
+  {
+   "file": "2026-07-11_part023.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211967,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 05:24:40",
+   "last_record_at": "2026-07-11 05:33:54",
+   "raw_bytes": 50331824,
+   "gz_bytes": 3957640
+  },
+  {
+   "file": "2026-07-11_part024.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211934,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 05:33:54",
+   "last_record_at": "2026-07-11 05:43:24",
+   "raw_bytes": 50331764,
+   "gz_bytes": 3953018
+  },
+  {
+   "file": "2026-07-11_part025.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211970,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 05:43:24",
+   "last_record_at": "2026-07-11 05:52:06",
+   "raw_bytes": 50331691,
+   "gz_bytes": 3895247
+  },
+  {
+   "file": "2026-07-11_part026.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211926,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 05:52:06",
+   "last_record_at": "2026-07-11 06:01:33",
+   "raw_bytes": 50331877,
+   "gz_bytes": 4011448
+  },
+  {
+   "file": "2026-07-11_part027.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211942,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 06:01:33",
+   "last_record_at": "2026-07-11 06:10:27",
+   "raw_bytes": 50331657,
+   "gz_bytes": 3805898
+  },
+  {
+   "file": "2026-07-11_part028.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211981,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 06:10:27",
+   "last_record_at": "2026-07-11 06:19:29",
+   "raw_bytes": 50331860,
+   "gz_bytes": 3762961
+  },
+  {
+   "file": "2026-07-11_part029.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211994,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 06:19:29",
+   "last_record_at": "2026-07-11 06:28:28",
+   "raw_bytes": 50331836,
+   "gz_bytes": 3869509
+  },
+  {
+   "file": "2026-07-11_part030.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211960,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 06:28:28",
+   "last_record_at": "2026-07-11 06:37:55",
+   "raw_bytes": 50331791,
+   "gz_bytes": 3893294
+  },
+  {
+   "file": "2026-07-11_part031.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212002,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 06:37:55",
+   "last_record_at": "2026-07-11 06:47:19",
+   "raw_bytes": 50331655,
+   "gz_bytes": 3943851
+  },
+  {
+   "file": "2026-07-11_part032.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211976,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 06:47:19",
+   "last_record_at": "2026-07-11 06:56:23",
+   "raw_bytes": 50331771,
+   "gz_bytes": 3891766
+  },
+  {
+   "file": "2026-07-11_part033.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211992,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 06:56:23",
+   "last_record_at": "2026-07-11 07:05:41",
+   "raw_bytes": 50331687,
+   "gz_bytes": 3842939
+  },
+  {
+   "file": "2026-07-11_part034.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212002,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 07:05:41",
+   "last_record_at": "2026-07-11 07:14:44",
+   "raw_bytes": 50331706,
+   "gz_bytes": 3923610
+  },
+  {
+   "file": "2026-07-11_part035.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211954,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 07:14:44",
+   "last_record_at": "2026-07-11 07:23:53",
+   "raw_bytes": 50331705,
+   "gz_bytes": 3938654
+  },
+  {
+   "file": "2026-07-11_part036.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211998,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 07:23:53",
+   "last_record_at": "2026-07-11 07:32:55",
+   "raw_bytes": 50331712,
+   "gz_bytes": 3887251
+  },
+  {
+   "file": "2026-07-11_part037.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211997,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 07:32:55",
+   "last_record_at": "2026-07-11 07:42:10",
+   "raw_bytes": 50331905,
+   "gz_bytes": 3963607
+  },
+  {
+   "file": "2026-07-11_part038.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211924,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 07:42:10",
+   "last_record_at": "2026-07-11 07:51:24",
+   "raw_bytes": 50331840,
+   "gz_bytes": 3920926
+  },
+  {
+   "file": "2026-07-11_part039.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212011,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 07:51:24",
+   "last_record_at": "2026-07-11 08:00:29",
+   "raw_bytes": 50331806,
+   "gz_bytes": 3918792
+  },
+  {
+   "file": "2026-07-11_part040.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211986,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 08:00:29",
+   "last_record_at": "2026-07-11 08:09:26",
+   "raw_bytes": 50331732,
+   "gz_bytes": 3819365
+  },
+  {
+   "file": "2026-07-11_part041.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212041,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 08:09:26",
+   "last_record_at": "2026-07-11 08:18:28",
+   "raw_bytes": 50331815,
+   "gz_bytes": 3761534
+  },
+  {
+   "file": "2026-07-11_part042.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211932,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 08:18:28",
+   "last_record_at": "2026-07-11 08:27:55",
+   "raw_bytes": 50331783,
+   "gz_bytes": 3992517
+  },
+  {
+   "file": "2026-07-11_part043.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211983,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 08:27:55",
+   "last_record_at": "2026-07-11 08:36:43",
+   "raw_bytes": 50331679,
+   "gz_bytes": 3769690
+  },
+  {
+   "file": "2026-07-11_part044.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211934,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 08:36:43",
+   "last_record_at": "2026-07-11 08:45:50",
+   "raw_bytes": 50331780,
+   "gz_bytes": 4010804
+  },
+  {
+   "file": "2026-07-11_part045.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211986,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 08:45:50",
+   "last_record_at": "2026-07-11 08:54:55",
+   "raw_bytes": 50331831,
+   "gz_bytes": 3923056
+  },
+  {
+   "file": "2026-07-11_part046.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211970,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 08:54:55",
+   "last_record_at": "2026-07-11 09:04:00",
+   "raw_bytes": 50331874,
+   "gz_bytes": 3846093
+  },
+  {
+   "file": "2026-07-11_part047.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211931,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 09:04:00",
+   "last_record_at": "2026-07-11 09:13:20",
+   "raw_bytes": 50331882,
+   "gz_bytes": 3919103
+  },
+  {
+   "file": "2026-07-11_part048.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211980,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 09:13:20",
+   "last_record_at": "2026-07-11 10:04:00",
+   "raw_bytes": 50331659,
+   "gz_bytes": 3900030
+  },
+  {
+   "file": "2026-07-11_part049.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 211908,
+   "unique_skins": 713,
+   "first_record_at": "2026-07-11 10:04:00",
+   "last_record_at": "2026-07-11 11:28:36",
+   "raw_bytes": 50331877,
+   "gz_bytes": 3880633
+  },
+  {
+   "file": "2026-07-11_part050.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212006,
+   "unique_skins": 724,
+   "first_record_at": "2026-07-11 11:28:36",
+   "last_record_at": "2026-07-11 12:13:01",
+   "raw_bytes": 50331690,
+   "gz_bytes": 3922198
+  },
+  {
+   "file": "2026-07-11_part051.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 212418,
+   "unique_skins": 779,
+   "first_record_at": "2026-07-11 12:13:01",
+   "last_record_at": "2026-07-11 12:40:13",
+   "raw_bytes": 50331857,
+   "gz_bytes": 3915842
+  },
+  {
+   "file": "2026-07-11_part052.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 218751,
+   "unique_skins": 823,
+   "first_record_at": "2026-07-11 12:40:13",
+   "last_record_at": "2026-07-11 13:07:48",
+   "raw_bytes": 50331753,
+   "gz_bytes": 3801812
+  },
+  {
+   "file": "2026-07-11_part053.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 221562,
+   "unique_skins": 828,
+   "first_record_at": "2026-07-11 13:07:48",
+   "last_record_at": "2026-07-11 13:35:30",
+   "raw_bytes": 50331781,
+   "gz_bytes": 4039767
+  },
+  {
+   "file": "2026-07-11_part054.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 222415,
+   "unique_skins": 837,
+   "first_record_at": "2026-07-11 13:35:31",
+   "last_record_at": "2026-07-11 14:02:16",
+   "raw_bytes": 50331690,
+   "gz_bytes": 4014055
+  },
+  {
+   "file": "2026-07-11_part055.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 222493,
+   "unique_skins": 852,
+   "first_record_at": "2026-07-11 14:02:16",
+   "last_record_at": "2026-07-11 14:26:19",
+   "raw_bytes": 50331662,
+   "gz_bytes": 3820486
+  },
+  {
+   "file": "2026-07-11_part056.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 223342,
+   "unique_skins": 853,
+   "first_record_at": "2026-07-11 14:26:19",
+   "last_record_at": "2026-07-11 14:49:59",
+   "raw_bytes": 50331678,
+   "gz_bytes": 3631585
+  },
+  {
+   "file": "2026-07-11_part057.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 223733,
+   "unique_skins": 855,
+   "first_record_at": "2026-07-11 14:49:59",
+   "last_record_at": "2026-07-11 15:13:29",
+   "raw_bytes": 50331769,
+   "gz_bytes": 3581168
+  },
+  {
+   "file": "2026-07-11_part058.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 223888,
+   "unique_skins": 862,
+   "first_record_at": "2026-07-11 15:13:29",
+   "last_record_at": "2026-07-11 15:37:37",
+   "raw_bytes": 50331735,
+   "gz_bytes": 3581537
+  },
+  {
+   "file": "2026-07-11_part059.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 223792,
+   "unique_skins": 860,
+   "first_record_at": "2026-07-11 15:37:37",
+   "last_record_at": "2026-07-11 15:54:56",
+   "raw_bytes": 50331753,
+   "gz_bytes": 3739569
+  },
+  {
+   "file": "2026-07-11_part060.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 229232,
+   "unique_skins": 2683,
+   "first_record_at": "2026-07-11 15:54:56",
+   "last_record_at": "2026-07-11 16:42:55",
+   "raw_bytes": 50331846,
+   "gz_bytes": 3873120
+  },
+  {
+   "file": "2026-07-11_part061.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 232727,
+   "unique_skins": 2191,
+   "first_record_at": "2026-07-11 16:42:55",
+   "last_record_at": "2026-07-11 17:54:30",
+   "raw_bytes": 50331807,
+   "gz_bytes": 4059364
+  },
+  {
+   "file": "2026-07-11_part062.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 232336,
+   "unique_skins": 2191,
+   "first_record_at": "2026-07-11 17:54:30",
+   "last_record_at": "2026-07-11 18:26:39",
+   "raw_bytes": 50331672,
+   "gz_bytes": 4391083
+  },
+  {
+   "file": "2026-07-11_part063.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 232337,
+   "unique_skins": 2191,
+   "first_record_at": "2026-07-11 18:26:39",
+   "last_record_at": "2026-07-11 19:02:18",
+   "raw_bytes": 50331822,
+   "gz_bytes": 4320122
+  },
+  {
+   "file": "2026-07-11_part064.jsonl.gz",
+   "date": "2026-07-11",
+   "records": 60009,
+   "unique_skins": 2191,
+   "first_record_at": "2026-07-11 19:02:18",
+   "last_record_at": "2026-07-11 19:08:34",
+   "raw_bytes": 13000326,
+   "gz_bytes": 1126059
+  },
+  {
+   "file": "2026-07-12_part001.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 232213,
+   "unique_skins": 2199,
+   "first_record_at": "2026-07-12 01:04:38",
+   "last_record_at": "2026-07-12 02:40:40",
+   "raw_bytes": 50331833,
+   "gz_bytes": 4221945
+  },
+  {
+   "file": "2026-07-12_part002.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 231875,
+   "unique_skins": 2222,
+   "first_record_at": "2026-07-12 02:40:40",
+   "last_record_at": "2026-07-12 04:19:36",
+   "raw_bytes": 50331817,
+   "gz_bytes": 4428318
+  },
+  {
+   "file": "2026-07-12_part003.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 231520,
+   "unique_skins": 2233,
+   "first_record_at": "2026-07-12 04:19:36",
+   "last_record_at": "2026-07-12 06:01:37",
+   "raw_bytes": 50331826,
+   "gz_bytes": 4405011
+  },
+  {
+   "file": "2026-07-12_part004.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 231404,
+   "unique_skins": 2242,
+   "first_record_at": "2026-07-12 06:01:37",
+   "last_record_at": "2026-07-12 07:40:53",
+   "raw_bytes": 50331730,
+   "gz_bytes": 4472861
+  },
+  {
+   "file": "2026-07-12_part005.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 231203,
+   "unique_skins": 2249,
+   "first_record_at": "2026-07-12 07:40:53",
+   "last_record_at": "2026-07-12 09:15:22",
+   "raw_bytes": 50331663,
+   "gz_bytes": 4519187
+  },
+  {
+   "file": "2026-07-12_part006.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 231141,
+   "unique_skins": 2250,
+   "first_record_at": "2026-07-12 09:15:22",
+   "last_record_at": "2026-07-12 10:53:58",
+   "raw_bytes": 50331791,
+   "gz_bytes": 4465898
+  },
+  {
+   "file": "2026-07-12_part007.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 231073,
+   "unique_skins": 2260,
+   "first_record_at": "2026-07-12 10:53:58",
+   "last_record_at": "2026-07-12 12:27:00",
+   "raw_bytes": 50331661,
+   "gz_bytes": 4393073
+  },
+  {
+   "file": "2026-07-12_part008.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 231160,
+   "unique_skins": 2260,
+   "first_record_at": "2026-07-12 12:27:00",
+   "last_record_at": "2026-07-12 17:48:39",
+   "raw_bytes": 50331854,
+   "gz_bytes": 4317143
+  },
+  {
+   "file": "2026-07-12_part009.jsonl.gz",
+   "date": "2026-07-12",
+   "records": 20683,
+   "unique_skins": 2260,
+   "first_record_at": "2026-07-12 17:48:39",
+   "last_record_at": "2026-07-12 18:02:00",
+   "raw_bytes": 4497811,
+   "gz_bytes": 378195
   }
  ]
 }
