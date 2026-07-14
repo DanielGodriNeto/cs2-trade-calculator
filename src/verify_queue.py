@@ -211,6 +211,11 @@ def _writeback(son_id: int, entry_id: str, verified_roi_pct: float | None, price
 
 
 def _append_log(result: dict) -> None:
+    """Best-effort durable log, same convention as sim_loop's round_history_file write -- a
+    transient disk hiccup (e.g. antivirus/backup briefly holding the file) here must never take
+    down consumer_loop's whole thread the way an uncaught OSError did once in practice (the
+    surrounding try/except in consumer_loop only covers the verify_simulation_record call, not
+    this write, and this call sits outside it -- see that loop's own try/finally scope)."""
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with _write_lock:
         existing = []
@@ -221,7 +226,10 @@ def _append_log(result: dict) -> None:
                 existing = []
         existing.insert(0, result)
         del existing[MAX_LOG_KEPT:]
-        LOG_FILE.write_text(json.dumps(existing), encoding="utf-8")
+        try:
+            LOG_FILE.write_text(json.dumps(existing), encoding="utf-8")
+        except OSError:
+            pass
 
 
 class VerifyQueueState:

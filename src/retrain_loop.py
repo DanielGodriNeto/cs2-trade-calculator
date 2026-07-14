@@ -38,6 +38,8 @@ class RetrainLoopState:
         self.last_dead_skin_review = None  # dict | None, from the most recent dead_skin.run_weekly_review()
         self.last_market_reliability_recheck = None  # dict | None, from the most recent
         # market_reliability.run_periodic_recheck()
+        self.error = None  # last poll-tick exception message, if any -- see retrain_loop()'s
+        # own try/except for why this exists (mirrors sim_loop.SimulationLoopState.error).
         # stop_event is a genuine thread-terminating stop (used by the CLI's Ctrl+C, where the
         # process exits anyway). The web dashboard's Start/Stop buttons use pause_event instead,
         # so the one background thread started at server boot can be paused/resumed indefinitely
@@ -51,6 +53,7 @@ class RetrainLoopState:
             last_result = self.last_result
             last_dead_skin_review = self.last_dead_skin_review
             last_market_reliability_recheck = self.last_market_reliability_recheck
+            error = self.error
         model_status = learning_mod.get_model_status()
         n_sold = outcomes_mod.stats()["n_sold"]
         if not model_status["trained"]:
@@ -59,6 +62,7 @@ class RetrainLoopState:
             needed = max(0, RETRAIN_TRIGGER_DELTA - (n_sold - model_status.get("n_samples", 0)))
         return {
             "status": status,
+            "error": error,
             "model_trained": model_status["trained"],
             "model_n_samples": model_status.get("n_samples"),
             "model_trained_at": model_status.get("trained_at"),
@@ -104,23 +108,34 @@ def retrain_loop(state: RetrainLoopState, poll_interval: float = POLL_INTERVAL_S
             while state.pause_event.is_set() and not state.stop_event.is_set():
                 state.stop_event.wait(timeout=1.0)
             continue
-        with state.lock:
-            state.status = "watching"
-        model_status = learning_mod.get_model_status()
-        n_sold = outcomes_mod.stats()["n_sold"]
-        if _should_retrain(model_status, n_sold):
+        try:
             with state.lock:
-                state.status = "training"
-            result = learning_mod.train()
-            with state.lock:
-                state.last_result = result
                 state.status = "watching"
-        if dead_skin_mod.review_due():
+            model_status = learning_mod.get_model_status()
+            n_sold = outcomes_mod.stats()["n_sold"]
+            if _should_retrain(model_status, n_sold):
+                with state.lock:
+                    state.status = "training"
+                result = learning_mod.train()
+                with state.lock:
+                    state.last_result = result
+                    state.status = "watching"
+            if dead_skin_mod.review_due():
+                with state.lock:
+                    state.last_dead_skin_review = dead_skin_mod.run_weekly_review()
+            if market_reliability_mod.recheck_due():
+                with state.lock:
+                    state.last_market_reliability_recheck = market_reliability_mod.run_periodic_recheck()
             with state.lock:
-                state.last_dead_skin_review = dead_skin_mod.run_weekly_review()
-        if market_reliability_mod.recheck_due():
+                state.error = None
+        except Exception as e:
+            # Never let one bad poll tick (e.g. a transient OSError from a locked state file --
+            # this has actually happened, see market_reliability._save_state_store) permanently
+            # kill this daemon thread the way it silently did before -- same self-healing
+            # error-surfacing convention as sim_loop.sim_loop().
             with state.lock:
-                state.last_market_reliability_recheck = market_reliability_mod.run_periodic_recheck()
+                state.status = "error"
+                state.error = f"{type(e).__name__}: {e}"
         if state.stop_event.wait(timeout=poll_interval):
             with state.lock:
                 state.status = "stopped"
