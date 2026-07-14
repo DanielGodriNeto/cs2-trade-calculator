@@ -37,3 +37,8 @@
 {"event": "no_change", "at": 1783910719.6395469, "message": "No telemetry mutations detected. Skipping remote push."}
 {"event": "no_change", "at": 1783911222.5348554, "message": "No telemetry mutations detected. Skipping remote push."}
 {"event": "no_change", "at": 1783918439.3153782, "message": "No telemetry mutations detected. Skipping remote push."}
+{"event": "no_change", "at": 1783964306.9313834, "message": "No telemetry mutations detected. Skipping remote push."}
+{"event": "no_change", "at": 1783985907.0920694, "message": "No telemetry mutations detected. Skipping remote push."}
+{"event": "no_change", "at": 1783995194.525707, "message": "No telemetry mutations detected. Skipping remote push."}
+{"event": "not_configured", "at": 1783995505.0745695, "reason": "repo_dir does not exist: C:\\Users\\Mancato\\cs2-backups", "changed_files": ["price_history.jsonl"]}
+{"event": "not_configured", "at": 1783995654.708437, "reason": "repo_dir does not exist: C:\\Users\\Mancato\\cs2-backups", "changed_files": ["price_history.jsonl"]}
