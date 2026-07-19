@@ -65,6 +65,33 @@ import tempfile
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 PORT = 5000
 
+
+def _compute_app_version() -> dict:
+    """Git commit short-hash + date this running server was actually started from, computed
+    ONCE at import time -- a server restart is already required to pick up any code change at
+    all (this project's Python-doesn't-hot-reload convention), so there's no reason to re-shell
+    out to git on every request. Falls back to "unknown"/None if git isn't available (e.g. a
+    deployment without a .git directory) rather than failing server startup over a display-only
+    feature."""
+    import subprocess
+    repo_dir = Path(__file__).resolve().parent.parent
+
+    def _git(*args) -> str:
+        result = subprocess.run(["git", *args], cwd=repo_dir, capture_output=True,
+                                 text=True, timeout=5)
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    try:
+        commit = _git("rev-parse", "--short", "HEAD")
+        date = _git("log", "-1", "--format=%cd", "--date=short")
+        dirty = bool(_git("status", "--porcelain"))
+    except (OSError, subprocess.SubprocessError):
+        return {"commit": "unknown", "date": None, "dirty": False}
+    return {"commit": commit or "unknown", "date": date or None, "dirty": dirty}
+
+
+APP_VERSION = _compute_app_version()
+
 _universe_size_cache = None  # lazily computed, then cached for the process lifetime -- the
 # skin database doesn't change while the server runs, so there's no reason to rebuild
 # price_scan.build_target_list()'s full (skin, wear, stattrak) universe on every top-bar poll
@@ -675,6 +702,7 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 })
             if path == "/api/constants":
                 return self._send_json({
+                    "app_version": APP_VERSION,
                     "steam_sell_fee_pct": tradeup_mod.STEAM_SELL_FEE * 100,
                     "wear_breakpoints": oddsmath_mod.WEAR_BREAKPOINTS,
                     "drought_threshold_pct": 15.0,  # thirdparty_prices.drought_flag()'s default threshold_pct

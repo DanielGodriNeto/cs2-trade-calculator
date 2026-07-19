@@ -37,6 +37,16 @@ header h1 {
   text-transform: uppercase;
 }
 .disclaimer { color: var(--muted); font-size: 0.85em; margin-top: 0; line-height: 1.6; }
+.app-version {
+  color: var(--muted);
+  font-size: 0.6em;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.app-version.dirty { color: var(--warn, #d9a83c); }
 
 .topbar {
   position: sticky;

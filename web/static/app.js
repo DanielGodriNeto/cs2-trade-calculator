@@ -224,6 +224,20 @@ function renderMethodologyConstants() {
   const simRetrainEl = document.getElementById("const-sim-retrain-delta");
   if (simRetrainEl) simRetrainEl.textContent = c.sim_retrain_trigger_delta;
   renderWearBracketChart(c.wear_breakpoints);
+  renderAppVersion(c.app_version);
+}
+
+// Small build-info badge next to the page title -- git commit short-hash (+ date), computed
+// server-side once at startup (see web/server.py's APP_VERSION) so it always reflects whatever
+// code is actually running, never a hand-maintained number that can drift out of sync.
+function renderAppVersion(v) {
+  const el = document.getElementById("app-version");
+  if (!el || !v) return;
+  if (v.commit === "unknown") { el.textContent = ""; el.title = "Build version unavailable (no git info)"; return; }
+  el.textContent = `v${v.commit}${v.dirty ? "+" : ""}`;
+  el.title = v.date ? `Built from commit ${v.commit} (${v.date})${v.dirty ? " -- uncommitted changes present" : ""}`
+                     : `Commit ${v.commit}`;
+  el.classList.toggle("dirty", !!v.dirty);
 }
 
 const WEAR_COLORS = ["#39d97a", "#8bd15c", "#d9a83c", "#e08a3c", "#e0524f"];
