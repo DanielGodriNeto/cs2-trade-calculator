@@ -849,6 +849,16 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
         coverage = dict(state.checkpoint["coverage"])
 
     model_status = sim_learning_mod.get_model_status(state.model_dir)
+    # Computed ONCE per round (same reasoning as model_status above -- stable for this whole
+    # round even though this son's own log_simulation() calls below will keep changing
+    # sims_file's mtime as the round proceeds). This was a real, measured bug: leaving each
+    # predict_expected_roi() call to re-derive its own lookup via sims_file's mtime meant every
+    # candidate's log_simulation() invalidated the NEXT candidate's cache, turning one O(n) pass
+    # per round into a full reload-and-refilter of the entire simulations.jsonl per candidate --
+    # profiling one live round showed ~60 of ~76 seconds going here alone. See
+    # sim_learning.collection_roi_lookup's docstring.
+    collection_roi_lookup = (sim_learning_mod.collection_roi_lookup(state.sims_file)
+                              if model_status["trained"] else {})
     # Selection score = model-predicted ROI + a UCB novelty bonus for collections this son has
     # rarely/never simulated (see adaptive.novelty_bonus), scaled by the live exploration_rate.
     # ROI stays the dominant term once a model exists, but an unexplored collection always
@@ -867,7 +877,8 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
 
     if model_status["trained"]:
         def score_fn(c):
-            pred = sim_learning_mod.predict_expected_roi(c, state.model_dir, state.sims_file)
+            pred = sim_learning_mod.predict_expected_roi(c, state.model_dir, state.sims_file,
+                                                          collection_roi_lookup=collection_roi_lookup)
             return (pred if pred is not None else 0.0) + _novelty(c)
     else:
         score_fn = _novelty
@@ -953,7 +964,8 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
                 # expected_roi_pct as an agreement-based trust signal (see ranking.
                 # _ml_agreement_bonus). Cheap: reuses the already-loaded model, no extra I/O.
                 record.ml_predicted_roi_pct = sim_learning_mod.predict_expected_roi(
-                    candidate, state.model_dir, state.sims_file)
+                    candidate, state.model_dir, state.sims_file,
+                    collection_roi_lookup=collection_roi_lookup)
             simulate_mod.log_simulation(record, state.sims_file)
             round_floats.append(record.avg_input_float)
             round_rois.append(record.expected_roi_pct)

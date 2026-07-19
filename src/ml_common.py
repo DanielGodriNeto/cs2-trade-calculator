@@ -49,10 +49,13 @@ class ModelSelectionResult:
                                       # this project's nonlinear trade-up math (see README).
 
 
-def _candidates(random_state: int, n_samples: int) -> dict:
+def _candidates(random_state: int, n_samples: int, include: set | None = None) -> dict:
     """Small, fixed set of already-regularized candidates -- max_depth/min_samples_leaf/
     n_estimators are chosen to behave reasonably at the small sample sizes this project
-    realistically trains on (tens to low hundreds of rows), not tuned per-dataset."""
+    realistically trains on (tens to low hundreds of rows), not tuned per-dataset.
+
+    include: optional set of candidate names to keep (see fit_best_model's own docstring) --
+    None (default) returns all three, unchanged from this module's original behavior."""
     from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
     from sklearn.linear_model import Ridge
     from sklearn.pipeline import make_pipeline
@@ -90,7 +93,8 @@ def _candidates(random_state: int, n_samples: int) -> dict:
                                criterion="squared_error"))
     ridge = make_pipeline(SimpleImputer(strategy="mean"), StandardScaler(), Ridge(alpha=1.0))
 
-    return {"hist_gradient_boosting": hgb, "random_forest": rf, "ridge": ridge}
+    all_candidates = {"hist_gradient_boosting": hgb, "random_forest": rf, "ridge": ridge}
+    return {k: v for k, v in all_candidates.items() if include is None or k in include}
 
 
 def _fit_kwargs(estimator, sample_weight) -> dict:
@@ -105,7 +109,9 @@ def _fit_kwargs(estimator, sample_weight) -> dict:
 
 
 def fit_best_model(X, y, feature_names: list, random_state: int = 42,
-                    sample_weight=None) -> ModelSelectionResult:
+                    sample_weight=None, candidates: set | None = None,
+                    n_folds: int | None = None,
+                    importance_n_repeats: int = 5) -> ModelSelectionResult:
     """X: 2D array (n_samples, n_features), may contain NaN. y: 1D array of targets.
     feature_names: parallel to X's columns, used only to label the returned importances.
 
@@ -116,7 +122,13 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     the same weighted objective the final fit uses. The CV loop is written out manually
     (rather than cross_val_predict) because that's the only version-stable way to route
     per-fold fit weights through sklearn's pipeline parameter naming across the >=1.3 range
-    this project supports. None behaves exactly like the historical unweighted path."""
+    this project supports. None behaves exactly like the historical unweighted path.
+
+    candidates/n_folds/importance_n_repeats: all optional, all default to this module's
+    original fixed behavior (all 3 candidates, 5 folds, 5 importance repeats) -- used by
+    learning.py's small real-outcomes model unchanged. sim_learning.py's much larger,
+    much-more-often-retrained sim-population model passes its own faster FAST_* profile (see
+    that module) instead -- see this function's callers, not this module, for why."""
     import numpy as np
     from sklearn.model_selection import RepeatedKFold
     from sklearn.metrics import mean_absolute_error
@@ -124,7 +136,7 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     from sklearn.base import clone
 
     n = len(y)
-    n_folds = min(5, n)
+    n_folds = min(n_folds or 5, n)
     # RepeatedKFold (1 repeat -- was 3): repeating with different shuffles stabilizes the
     # winner choice and the honest error estimate against one unlucky split, but costs a
     # full extra fit-cycle per repeat. User accepted less CV stability in exchange for speed
@@ -140,10 +152,10 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     if w is not None and (not np.any(w > 0)):
         w = None  # every row zero-weighted -> degenerate; fall back to unweighted rather than crash
 
-    candidates = _candidates(random_state, n)
+    candidate_estimators = _candidates(random_state, n, include=candidates)
     candidate_maes = {}
     candidate_oof_preds = {}  # name -> (n_repeats, n) array, averaged into one oof estimate below
-    for name, estimator in candidates.items():
+    for name, estimator in candidate_estimators.items():
         sums = np.zeros(n, dtype=float)
         counts = np.zeros(n, dtype=float)
         for train_idx, test_idx in cv.split(X):
@@ -157,15 +169,15 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
         candidate_maes[name] = float(mean_absolute_error(y, preds, sample_weight=w))
 
     best_name = min(candidate_maes, key=candidate_maes.get)
-    best_model = candidates[best_name]
+    best_model = candidate_estimators[best_name]
     oof_residuals = (y - candidate_oof_preds[best_name]).tolist()
     # Final refit on ALL data (with weights), after CV already measured honest error above.
     best_model.fit(X, y, **_fit_kwargs(best_model, w))
 
-    # n_repeats=5 (was 10): permutation importance is a display/diagnostic number, not part
-    # of the model itself -- halving its repeat count halves its cost for a noisier but
-    # still directionally-correct importance ranking.
-    importance_result = permutation_importance(best_model, X, y, n_repeats=5,
+    # importance_n_repeats (default 5, was 10): permutation importance is a display/diagnostic
+    # number, not part of the model itself -- fewer repeats costs less for a noisier but still
+    # directionally-correct importance ranking.
+    importance_result = permutation_importance(best_model, X, y, n_repeats=importance_n_repeats,
                                                 random_state=random_state, sample_weight=w)
     importances = dict(zip(feature_names, [float(v) for v in importance_result.importances_mean]))
 

@@ -41,6 +41,27 @@ MIN_TRAINING_SAMPLES = 20
 RETRAIN_TRIGGER_DELTA = 25  # simulated rows accumulate far faster than real logged outcomes --
 # a higher delta than retrain_loop.py's real-model 5 avoids retraining on every tiny batch
 
+MAX_ROWS_FOR_ANALYSIS = 3000  # caps train()'s CV/fit cost AND _collection_roi_lookup()'s
+# market-reliability rescan cost so both stay bounded as a son's simulations.jsonl grows
+# without limit -- a son that's run for weeks would otherwise pay an ever-growing per-retrain/
+# per-round tax just to keep re-including trials from long ago. Keeps the MOST RECENT rows
+# (load_simulations returns oldest-first, so this is a tail slice) -- recent market conditions
+# are more representative than old ones anyway, and 3000 rows is already far more than an
+# 8-feature model needs to fit well, so this is a real speed win at essentially no accuracy cost.
+
+# Fast candidate-selection profile for THIS (sim-population) model only -- see ml_common.py's
+# fit_best_model(). random_forest is dropped entirely: across every one of the 6 sim agents'
+# real trained models, it has never once won against hist_gradient_boosting (see ml_common.py's
+# own comment), so cutting it loses zero real accuracy while removing the slowest-per-fit of
+# the three candidates. Folds/importance-repeats are trimmed too -- with thousands of rows
+# (this dataset, unlike learning.py's small real-outcomes one), 3-fold CV is still a solid
+# estimate, and permutation importance is a display-only diagnostic. learning.py's real-outcomes
+# model (small sample, retraining was never the reported problem there) deliberately keeps
+# ml_common.py's original 3-candidate/5-fold/5-repeat defaults -- this profile is NOT shared.
+FAST_CANDIDATES = {"hist_gradient_boosting", "ridge"}
+FAST_N_FOLDS = 3
+FAST_IMPORTANCE_REPEATS = 3
+
 FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "filler_fraction",
                   "stattrak", "cost", "collection_mean_expected_roi"]
 
@@ -140,14 +161,29 @@ def _collection_roi_lookup(sims_file: Path) -> dict:
     cached = _collection_roi_caches.get(sims_file)
     if cached and cached["mtime"] == mtime:
         return cached["lookup"]
-    rows = [r for r in simulate_mod.load_simulations(sims_file)
-            if not r.low_volume_warning and _not_excluded(r)]
+    raw_rows = simulate_mod.load_simulations(sims_file)
+    if len(raw_rows) > MAX_ROWS_FOR_ANALYSIS:
+        raw_rows = raw_rows[-MAX_ROWS_FOR_ANALYSIS:]
+    rows = [r for r in raw_rows if not r.low_volume_warning and _not_excluded(r)]
     by_collection: dict = {}
     for r in rows:
         by_collection.setdefault(r.primary_collection, []).append(r.expected_roi_pct)
     lookup = {c: sum(v) / len(v) for c, v in by_collection.items()}
     _collection_roi_caches[sims_file] = {"mtime": mtime, "lookup": lookup}
     return lookup
+
+
+def collection_roi_lookup(sims_file: Path) -> dict:
+    """Public entry point for _collection_roi_lookup -- lets a hot-loop caller (sim_loop.
+    run_round) compute this ONCE per round and pass the same dict into every
+    predict_expected_roi() call in that round (see its collection_roi_lookup param), instead of
+    letting each call re-derive it from sims_file's mtime. That per-call mtime cache is fine for
+    an occasional caller, but inside run_round's own simulate loop each candidate's
+    log_simulation() append changes sims_file's mtime, invalidating the NEXT candidate's cached
+    lookup -- turning what should be one O(n) pass per round into a full reload-and-refilter of
+    the entire (ever-growing) simulations.jsonl on almost every single candidate. This was a real,
+    measured bug: profiling one round on real data showed ~60 of ~76 seconds going here."""
+    return _collection_roi_lookup(sims_file)
 
 
 def train(model_dir: Path, sims_file: Path) -> TrainResult:
@@ -159,9 +195,13 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     Excludes any row flagged low_volume_warning (a counted input/output price rests on Steam's
     own recent-sales volume below price_report.LOW_VOLUME_THRESHOLD -- an unreliable, thinly-
     traded price that shouldn't be allowed to teach the model a pattern that isn't real) --
-    those rows are still preserved in sims_file, just never trained on."""
-    rows = [r for r in simulate_mod.load_simulations(sims_file)
-            if not r.low_volume_warning and _not_excluded(r)]
+    those rows are still preserved in sims_file, just never trained on. Also caps how many of
+    the most recent raw rows are even considered (see MAX_ROWS_FOR_ANALYSIS) so retrain cost
+    stays bounded no matter how long this son has been running."""
+    raw_rows = simulate_mod.load_simulations(sims_file)
+    if len(raw_rows) > MAX_ROWS_FOR_ANALYSIS:
+        raw_rows = raw_rows[-MAX_ROWS_FOR_ANALYSIS:]
+    rows = [r for r in raw_rows if not r.low_volume_warning and _not_excluded(r)]
     if len(rows) < MIN_TRAINING_SAMPLES:
         return TrainResult(trained=False,
                             reason=f"Only {len(rows)} volume-confirmed, reliability-cleared simulated "
@@ -189,9 +229,15 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
         weight_reasons[reason] = weight_reasons.get(reason, 0) + 1
     sample_weight = np.array(weights, dtype=float)
 
-    # Same cross-validated model selection as learning.py -- see ml_common.py's module docstring.
+    # Cross-validated model selection, same underlying algorithm/CV code as learning.py (see
+    # ml_common.py's module docstring) but with this son's own FAST_* speed profile (see the
+    # module-level comment above) -- this dataset is thousands of rows and retrains almost every
+    # round, unlike learning.py's small real-outcomes model, so it gets a deliberately cheaper
+    # (not learning.py-shared) configuration.
     selection = ml_common.fit_best_model(X, y, FEATURE_NAMES, random_state=42,
-                                          sample_weight=sample_weight)
+                                          sample_weight=sample_weight,
+                                          candidates=FAST_CANDIDATES, n_folds=FAST_N_FOLDS,
+                                          importance_n_repeats=FAST_IMPORTANCE_REPEATS)
     model, mae, importances = selection.model, selection.cv_mae, selection.feature_importances
 
     # Same real-residual-based uncertainty band as learning.py's train() -- kept in sync
@@ -235,7 +281,8 @@ def get_model_status(model_dir: Path) -> dict:
     return {"trained": True, "min_samples_required": MIN_TRAINING_SAMPLES, **meta}
 
 
-def predict_expected_roi(candidate, model_dir: Path, sims_file: Path) -> float | None:
+def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
+                          collection_roi_lookup: dict | None = None) -> float | None:
     """Scores a not-yet-simulated random_trade.Candidate for random_trade.generate_batch's
     guided sampling -- estimated from the candidate's structure alone (no pricing needed), so
     it's cheap enough to call on every random draw before deciding which ones are even worth
@@ -243,7 +290,15 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path) -> float |
     for any skin/wear not already cached). Returns None
     if no model is trained yet -- callers must treat that as "no signal", never fabricate a
     number (same contract as learning.predict_roi). model_dir/sims_file identify WHICH son's
-    model/data to use -- see the module docstring for why these aren't fixed constants."""
+    model/data to use -- see the module docstring for why these aren't fixed constants.
+
+    collection_roi_lookup: pass a pre-fetched collection_roi_lookup(sims_file) result to skip
+    this call's own internal lookup -- see sim_loop.run_round, which computes it ONCE per round
+    and reuses it across every candidate instead of paying for a fresh one each time (this
+    function's own per-call lookup is mtime-cached, but a hot loop calling log_simulation()
+    between candidates invalidates that cache on almost every call -- see collection_roi_lookup's
+    docstring). None (default) falls back to the original per-call lookup, fine for an
+    occasional/non-hot-loop caller."""
     status = get_model_status(model_dir)
     model_file = model_dir / MODEL_FILENAME
     if not status["trained"] or not model_file.exists():
@@ -264,7 +319,9 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path) -> float |
     import numpy as np
     input_mix = [{"collection": leg.collection, "wear": u["wear"], "count": u["count"]}
                  for leg in candidate.legs for u in leg.units]
-    collection_mean = _collection_roi_lookup(sims_file).get(candidate.legs[0].collection, float("nan"))
+    if collection_roi_lookup is None:
+        collection_roi_lookup = _collection_roi_lookup(sims_file)
+    collection_mean = collection_roi_lookup.get(candidate.legs[0].collection, float("nan"))
     # cost is unknown pre-simulation -- fed as NaN, which HistGradientBoostingRegressor
     # handles natively (it has real cost values at training time, unlike the all-NaN
     # thirdparty_gap_pct case learning.py's FEATURE_NAMES comment documents avoiding).
