@@ -1366,7 +1366,9 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                         return self._send_json({"ok": True, "trained": result.trained, "reason": result.reason,
                                                  "n_samples": result.n_samples, "validation_mae": result.validation_mae,
                                                  "feature_importances": result.feature_importances,
-                                                 "model_name": result.model_name, "candidate_maes": result.candidate_maes})
+                                                 "model_name": result.model_name, "candidate_maes": result.candidate_maes,
+                                                 "elapsed_seconds": result.elapsed_seconds,
+                                                 "phase_seconds": result.phase_seconds})
 
             self.send_response(404)
             self.end_headers()

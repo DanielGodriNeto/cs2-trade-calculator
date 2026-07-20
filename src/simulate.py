@@ -56,6 +56,7 @@ user-executed trades. Nothing in this module ever reads or writes outcomes.jsonl
 """
 from dataclasses import dataclass, asdict, field
 import json
+import os
 import threading
 from pathlib import Path
 import time
@@ -523,8 +524,11 @@ def load_invalid_simulations(invalid_file: Path) -> list:
 
 
 def load_simulations(sims_file: Path) -> list:
-    """Skips (rather than raises on) any corrupt trailing line, same convention as
-    outcomes.load_outcomes()."""
+    """Every logged simulation, oldest first. Skips (rather than raises on) any corrupt
+    trailing line, same convention as outcomes.load_outcomes().
+
+    Reads and parses the WHOLE file. A caller that only wants the most recent N rows should
+    use load_recent_simulations() instead -- see its docstring for why that matters here."""
     if not sims_file.exists():
         return []
     out = []
@@ -538,3 +542,83 @@ def load_simulations(sims_file: Path) -> list:
             except (json.JSONDecodeError, TypeError):
                 continue
     return out
+
+
+_TAIL_CHUNK_BYTES = 1 << 20  # 1 MiB per backwards read step -- comfortably more than 3000
+# lines' worth for typical records, so the common case is one or two reads.
+
+
+def _tail_lines(sims_file: Path, limit: int) -> tuple:
+    """(lines, reached_start) -- the last `limit` complete lines of sims_file as bytes, oldest
+    first, read by seeking BACKWARDS from EOF in chunks rather than scanning from the start.
+    reached_start reports whether the walk consumed the whole file, so the caller can tell
+    "that's all there is" apart from "stopped at the requested limit".
+
+    Opened in binary mode on purpose: byte offsets from seek()/tell() are only unambiguous
+    there (a text-mode seek argument is an opaque cookie, not a byte count), and the lines are
+    decoded individually below."""
+    with open(sims_file, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        pos = f.tell()
+        chunks = []
+        newlines = 0
+        # One extra newline beyond `limit`: the chunk we stop on almost always begins
+        # mid-line, and that leading partial gets discarded below -- so we need limit+1
+        # boundaries to be sure limit COMPLETE lines survive.
+        while pos > 0 and newlines <= limit:
+            step = min(_TAIL_CHUNK_BYTES, pos)
+            pos -= step
+            f.seek(pos)
+            chunk = f.read(step)
+            newlines += chunk.count(b"\n")
+            chunks.append(chunk)
+    lines = b"".join(reversed(chunks)).split(b"\n")
+    if pos > 0:
+        del lines[0]  # started mid-line, so the first element is a fragment, not a record
+    usable = [ln for ln in lines if ln.strip()]
+    # "Reached the start" must mean the returned lines really are the whole file -- walking back
+    # to offset 0 isn't enough on its own, because `limit` can still cap lines off the front
+    # (a small file is read in one chunk, so pos hits 0 on the very first step regardless of
+    # how many lines the caller asked for). Getting this wrong would tell the caller to stop
+    # widening its window when there was still more file to look at.
+    return usable[-limit:], pos == 0 and len(usable) <= limit
+
+
+def load_recent_simulations(sims_file: Path, limit: int) -> list:
+    """The most recent `limit` logged simulations, oldest first -- identical to
+    load_simulations(sims_file)[-limit:], but without reading or parsing the rest of the file.
+
+    Why this exists: a son's simulations.jsonl is append-only and NEVER truncated (see
+    log_simulation, and sim_loop.list_all_opportunities' own note), so it grows without bound
+    for as long as that son runs -- already ~20-30 MB each after a few weeks. sim_learning.py
+    only ever looks at the newest MAX_ROWS_FOR_ANALYSIS rows, so the full-file version was
+    parsing ~136 MB of JSON across the 6 agents per retrain cycle to then discard roughly half
+    of it, and that waste grew every single round. Reading the tail makes retrain cost depend
+    on MAX_ROWS_FOR_ANALYSIS instead of on total history, so it stays flat forever.
+
+    Deliberately holds no cache: these records are large (~5 KB each), so memoizing a few
+    thousand per son across 6 sons would cost hundreds of MB, and any cross-call cache would
+    also need invalidating against full_reset()/archive-merge rewrites. A bounded tail read is
+    both cheaper and impossible to serve stale.
+
+    Same skip-corrupt-lines convention as load_simulations -- but a skipped line must not eat
+    into the requested count the way it would if we simply parsed the last `limit` lines and
+    returned whatever survived. That case is routine here, not theoretical: sim_loop.py appends
+    to this exact file from the son's own thread while train() reads it, so the final line is
+    sometimes a torn partial write. Widening the window and retrying keeps the result identical
+    to load_simulations()[-limit:] even then, and terminates either once enough rows parse or
+    once the whole file has been walked."""
+    if limit <= 0 or not sims_file.exists():
+        return []
+    want = limit
+    while True:
+        raw_lines, reached_start = _tail_lines(sims_file, want)
+        out = []
+        for raw in raw_lines:
+            try:
+                out.append(SimulationRecord(**json.loads(raw.decode("utf-8"))))
+            except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+                continue
+        if len(out) >= limit or reached_start:
+            return out[-limit:]
+        want *= 2

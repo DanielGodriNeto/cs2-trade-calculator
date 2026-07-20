@@ -425,6 +425,27 @@ function fmtCurrency(n) {
   return typeof n === "number" ? `${state.currencySymbol}${n.toFixed(2)}` : n;
 }
 
+// How long this agent's last retrain actually took, plus its slowest phase and a rolling
+// average over the last few retrains -- all read straight from sim_learning.train()'s persisted
+// metadata (train_seconds / phase_seconds / recent_train_seconds, see that module). Returns ""
+// for a model trained before this metadata existed, so an older sim_roi_model_meta.json keeps
+// rendering exactly as it did rather than showing "undefined".
+function fmtTrainCost(ms) {
+  if (!ms || typeof ms.train_seconds !== "number") return "";
+  const recent = Array.isArray(ms.recent_train_seconds) ? ms.recent_train_seconds : [];
+  const avg = recent.length
+    ? ` avg ${(recent.reduce((a, b) => a + b, 0) / recent.length).toFixed(1)}s over last ${recent.length}`
+    : "";
+  // phase_seconds mixes train()'s own top-level phases with ml_common's cv:*/final_refit
+  // sub-phases, which are a BREAKDOWN of the fit_best_model entry rather than siblings of it --
+  // showing the slowest sub-phase alongside its own parent would double-count, so the parent is
+  // dropped and the sub-phases compete directly with the other top-level phases.
+  const phases = Object.entries(ms.phase_seconds || {}).filter(([k]) => k !== "fit_best_model");
+  const slowest = phases.length ? phases.reduce((a, b) => (b[1] > a[1] ? b : a)) : null;
+  const worst = slowest ? `, slowest ${slowest[0]} ${slowest[1].toFixed(2)}s` : "";
+  return ` — trained in ${ms.train_seconds.toFixed(1)}s${avg}${worst}`;
+}
+
 // A skin name with a small button that copies just the name (no price/wear noise)
 // to the clipboard, so it can be pasted straight into the Steam Market search box.
 // imageUrl (optional) prefixes a small thumbnail hotlinked straight from Steam's own CDN --
@@ -1901,6 +1922,7 @@ function renderSimPopulation(sons) {
     const progress = s.progress && s.progress.total ? ` (${s.progress.current}/${s.progress.total})` : "";
     const model = s.sim_model_status && s.sim_model_status.trained
       ? `model trained on ${s.sim_model_status.n_samples} sims (MAE ${s.sim_model_status.validation_mae != null ? s.sim_model_status.validation_mae.toFixed(1) + "pp" : "?"})`
+        + fmtTrainCost(s.sim_model_status)
       : `model not trained yet (need ${s.sim_model_status ? s.sim_model_status.min_samples_required : "?"}+)`;
     const stuckBadge = s.stuck ? `<span class="stuck-badge">STUCK -- ${s.rounds_since_improvement} rounds w/o improvement</span>` : "";
     const nudgeBadge = s.nudge_rounds_remaining > 0 ? `<span class="nudging-badge">nudged, ${s.nudge_rounds_remaining} rounds left (temp x${(s.effective_temperature / s.temperature).toFixed(1)})</span>` : "";

@@ -290,8 +290,19 @@ def is_excluded(market_hash_name: str, currency: int, *, dead_skin_score: float 
                           dead_skin_reasons=dead_skin_reasons).state == "excluded"
 
 
+def _unit_cache_key(name: str, currency: int, u: dict) -> tuple:
+    """Identity of one unit lookup for the caller-supplied memo (see any_unit_excluded's
+    `cache` parameter). Includes the per-unit dead_skin_score/reasons the caller passes
+    through, not just the skin name -- two rows can name the SAME skin while carrying
+    different per-record scores (simulate.py stamps those per trial), and collapsing those
+    onto one cache entry would silently serve one row's reliability verdict for another's."""
+    reasons = u.get("dead_skin_reasons")
+    return (name, currency, u.get("dead_skin_score"),
+            tuple(reasons) if reasons is not None else None)
+
+
 def any_unit_excluded(input_mix: list, output_distribution: list, currency: int,
-                       stattrak: bool = False) -> bool:
+                       stattrak: bool = False, cache: dict | None = None) -> bool:
     """True if any counted input or output unit is currently Excluded -- the single predicate
     ML training filters, ranking, and best-list admission all gate on (see module docstring's
     "Excluded trade-ups are removed from ML training / Evolution / Elite Population / reward
@@ -299,11 +310,28 @@ def any_unit_excluded(input_mix: list, output_distribution: list, currency: int,
     the unit dict already carries them (every simulate.py-produced input_mix/output_distribution
     entry does) instead of re-deriving from the persisted (weekly-reviewed, possibly stale)
     dead_skin store -- a real Outcome's units (learning.py) don't carry these keys, so this
-    falls back to compute_state's own store-derived default for those."""
+    falls back to compute_state's own store-derived default for those.
+
+    cache: an optional caller-owned dict memoizing per-unit verdicts. A batch caller that walks
+    many rows at once (sim_learning.train, which evaluates up to MAX_ROWS_FOR_ANALYSIS rows and
+    then weights the survivors) hits the same handful of skins over and over -- measured at ~18
+    repeat lookups per distinct skin per retrain, each one re-deriving the same dead_skin /
+    mispriced / rolling-z state. The caller creates one dict, passes it to every call in that
+    batch, and drops it when the batch ends, so freshness is scoped to a single operation
+    instead of becoming a module-level cache that could go stale under the hot loops in
+    ranking.py / sim_loop.py. None (default) is the original uncached behavior."""
     for u in list(input_mix or []) + list(output_distribution or []):
         name = steam_prices_mod.market_hash_name(u["skin"], u["wear"], stattrak)
-        if is_excluded(name, currency, dead_skin_score=u.get("dead_skin_score"),
-                        dead_skin_reasons=u.get("dead_skin_reasons")):
+        if cache is None:
+            excluded = is_excluded(name, currency, dead_skin_score=u.get("dead_skin_score"),
+                                    dead_skin_reasons=u.get("dead_skin_reasons"))
+        else:
+            key = ("excluded",) + _unit_cache_key(name, currency, u)
+            if key not in cache:
+                cache[key] = is_excluded(name, currency, dead_skin_score=u.get("dead_skin_score"),
+                                          dead_skin_reasons=u.get("dead_skin_reasons"))
+            excluded = cache[key]
+        if excluded:
             return True
     return False
 
@@ -489,7 +517,7 @@ def market_metrics(market_hash_name: str, currency: int) -> dict:
 
 
 def training_weight(input_mix: list, output_distribution: list, currency: int,
-                     stattrak: bool = False) -> tuple[float, str]:
+                     stattrak: bool = False, cache: dict | None = None) -> tuple[float, str]:
     """Reliability weight for ONE training sample (a simulated trial or a real outcome),
     per the Stage-4 spec's ladder: fully verified across marketplaces 1.0, minor
     disagreement 0.75, Steam-only 0.35, known anomaly 0. Returns (weight, reason).
@@ -506,7 +534,12 @@ def training_weight(input_mix: list, output_distribution: list, currency: int,
     paying its full computational cost for no real differentiation. Requiring a majority
     still means the sample's price picture is mostly cross-checked, just not unanimously.
     Questionable samples keep their row -- only their influence shrinks (the caller passes
-    these as sklearn sample_weights, see ml_common.fit_best_model)."""
+    these as sklearn sample_weights, see ml_common.fit_best_model).
+
+    cache: optional caller-owned memo, exactly the same contract and rationale as
+    any_unit_excluded's -- and deliberately the SAME dict in sim_learning.train(), since that
+    function walks every row's units through both functions back to back. Keys are namespaced
+    per function so the two never collide."""
     units = list(input_mix or []) + list(output_distribution or [])
     if not units:
         return WEIGHT_STEAM_ONLY, "no_units"
@@ -515,20 +548,29 @@ def training_weight(input_mix: list, output_distribution: list, currency: int,
     any_disagreement = False
     for u in units:
         name = steam_prices_mod.market_hash_name(u["skin"], u["wear"], stattrak)
-        rs = compute_state(name, currency, dead_skin_score=u.get("dead_skin_score"),
-                            dead_skin_reasons=u.get("dead_skin_reasons"))
-        override = _get_override(name, currency)
-        state = override["state"] if override is not None else rs.state
+        key = (("weight_unit",) + _unit_cache_key(name, currency, u)) if cache is not None else None
+        cached = cache.get(key) if cache is not None else None
+        if cached is None:
+            rs = compute_state(name, currency, dead_skin_score=u.get("dead_skin_score"),
+                                dead_skin_reasons=u.get("dead_skin_reasons"))
+            override = _get_override(name, currency)
+            state = override["state"] if override is not None else rs.state
+            metrics = market_metrics(name, currency)
+            has_thirdparty = any(s != "steam" for s in metrics["sources"])
+            disagrees = (has_thirdparty
+                          and metrics["source_agreement_pct"] is not None
+                          and metrics["source_agreement_pct"] < 100.0 - SOURCE_DISAGREEMENT_PCT)
+            cached = (state, has_thirdparty, disagrees)
+            if cache is not None:
+                cache[key] = cached
+        state, has_thirdparty, disagrees = cached
         if state == "excluded":
             return WEIGHT_ANOMALY, "known_anomaly"
         if state == "suspicious":
             any_suspicious = True
-        metrics = market_metrics(name, currency)
-        thirdparty = [s for s in metrics["sources"] if s != "steam"]
-        if thirdparty:
+        if has_thirdparty:
             n_with_thirdparty += 1
-            if (metrics["source_agreement_pct"] is not None
-                    and metrics["source_agreement_pct"] < 100.0 - SOURCE_DISAGREEMENT_PCT):
+            if disagrees:
                 any_disagreement = True
     if n_with_thirdparty == 0:
         return WEIGHT_STEAM_ONLY, "steam_only"

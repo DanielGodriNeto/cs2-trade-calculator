@@ -553,16 +553,36 @@ def cmd_best_simulations(args):
 def cmd_train_sim_model(args):
     son_ids = [args.son] if args.son is not None else list(range(sim_loop_mod.N_SONS))
     rows = []
+    total_seconds = 0.0
+    phase_totals: dict = {}
     for son_id in son_ids:
         result = sim_learning_mod.train(sim_loop_mod.son_model_dir(son_id), sim_loop_mod.son_sims_file(son_id))
+        total_seconds += result.elapsed_seconds or 0.0
+        for phase, seconds in (result.phase_seconds or {}).items():
+            phase_totals[phase] = phase_totals.get(phase, 0.0) + seconds
         rows.append({
             "son": son_id,
+            "agent": agents_mod.AGENT_NAMES.get(son_id, "?"),
             "trained": result.trained,
             "n_samples": result.n_samples,
             "validation_mae": f"{result.validation_mae:.2f}" if result.validation_mae is not None else "-",
+            "seconds": f"{result.elapsed_seconds:.2f}" if result.elapsed_seconds is not None else "-",
             "reason": result.reason or "-",
         })
-    _print_table(rows, ["son", "trained", "n_samples", "validation_mae", "reason"])
+    _print_table(rows, ["son", "agent", "trained", "n_samples", "validation_mae", "seconds", "reason"])
+
+    # Where the time actually went, summed across every agent trained in this run. cv:* /
+    # final_refit / permutation_importance are ml_common's breakdown of the fit_best_model
+    # entry, not siblings of it -- so fit_best_model is dropped here rather than double-counted
+    # against its own children (same reasoning as the dashboard's fmtTrainCost).
+    if phase_totals:
+        print(f"\nTotal training time: {total_seconds:.2f}s across {len(rows)} agent(s)")
+        print("Time by phase (slowest first):")
+        breakdown = [(p, s) for p, s in phase_totals.items() if p != "fit_best_model"]
+        phase_rows = [{"phase": p, "seconds": f"{s:.2f}",
+                        "pct": f"{(100 * s / total_seconds):.1f}%" if total_seconds else "-"}
+                      for p, s in sorted(breakdown, key=lambda kv: -kv[1])]
+        _print_table(phase_rows, ["phase", "seconds", "pct"])
 
 
 def cmd_nudge_son(args):

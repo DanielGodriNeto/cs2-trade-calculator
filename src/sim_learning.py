@@ -38,16 +38,23 @@ MODEL_FILENAME = "sim_roi_model.joblib"
 META_FILENAME = "sim_roi_model_meta.json"
 
 MIN_TRAINING_SAMPLES = 20
+TRAIN_TIME_HISTORY_KEEP = 20  # how many past retrain durations each son's metadata carries
 RETRAIN_TRIGGER_DELTA = 25  # simulated rows accumulate far faster than real logged outcomes --
 # a higher delta than retrain_loop.py's real-model 5 avoids retraining on every tiny batch
 
 MAX_ROWS_FOR_ANALYSIS = 3000  # caps train()'s CV/fit cost AND _collection_roi_lookup()'s
 # market-reliability rescan cost so both stay bounded as a son's simulations.jsonl grows
 # without limit -- a son that's run for weeks would otherwise pay an ever-growing per-retrain/
-# per-round tax just to keep re-including trials from long ago. Keeps the MOST RECENT rows
-# (load_simulations returns oldest-first, so this is a tail slice) -- recent market conditions
-# are more representative than old ones anyway, and 3000 rows is already far more than an
-# 8-feature model needs to fit well, so this is a real speed win at essentially no accuracy cost.
+# per-round tax just to keep re-including trials from long ago. Keeps the MOST RECENT rows --
+# recent market conditions are more representative than old ones anyway, and 3000 rows is
+# already far more than an 8-feature model needs to fit well, so this is a real speed win at
+# essentially no accuracy cost.
+#
+# Both readers get these rows via simulate.load_recent_simulations(), which reads BACKWARDS
+# from the end of the file. That matters: this cap used to be applied by slicing the tail off a
+# full-file parse, so the rows outside the window were still read and JSON-decoded on every
+# retrain -- ~136 MB across the 6 agents per cycle, growing every round, to then throw roughly
+# half of it away. The cap now bounds the I/O too, not just the fitting.
 
 # Fast candidate-selection profile for THIS (sim-population) model only -- see ml_common.py's
 # fit_best_model(). random_forest is dropped entirely: across every one of the 6 sim agents'
@@ -61,6 +68,23 @@ MAX_ROWS_FOR_ANALYSIS = 3000  # caps train()'s CV/fit cost AND _collection_roi_l
 FAST_CANDIDATES = {"hist_gradient_boosting", "ridge"}
 FAST_N_FOLDS = 3
 FAST_IMPORTANCE_REPEATS = 3
+
+# Gradient-boosting speed knobs for THIS model only (ml_common.fit_best_model's hgb_loss/
+# hgb_max_bins), both benchmarked on all 6 sons' real training sets rather than assumed:
+#
+# FAST_HGB_LOSS: squared_error instead of ml_common's absolute_error default -- ~2x faster per
+# fit and, across 3 CV shuffles per son, a LOWER held-out MAE on 5 of the 6 sons (only son_1
+# regressed). See ml_common._candidates' loss comment for the full numbers and for why the
+# default there stays absolute_error for learning.py's real-outcomes model.
+#
+# FAST_MAX_BINS: coarser feature binning for the histogram split-finder (sklearn's default is
+# 255). This is the single biggest lever on the larger sons -- son_2 (2184 rows) went 3x faster
+# for +0.4% MAE. It stops paying off on the small sons, where the fit is already sub-second and
+# the accuracy cost is real (son_0, 638 rows: +12.9% MAE for 1.3x), so it's applied only above
+# FAST_MAX_BINS_MIN_ROWS. Below that threshold the model keeps sklearn's default binning.
+FAST_HGB_LOSS = "squared_error"
+FAST_MAX_BINS = 64
+FAST_MAX_BINS_MIN_ROWS = 1000
 
 FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "filler_fraction",
                   "stattrak", "cost", "collection_mean_expected_roi"]
@@ -81,6 +105,14 @@ class TrainResult:
     feature_importances: dict | None
     model_name: str | None = None       # which candidate algorithm won, see ml_common.py
     candidate_maes: dict | None = None  # every candidate's own CV MAE, for transparency
+    # Wall-clock cost of THIS retrain, for the dashboard's per-agent training-time display.
+    # elapsed_seconds is the whole train() call; phase_seconds breaks it down (load_rows /
+    # filter_rows / featurize / sample_weights / fit_best_model / persist, plus
+    # ml_common's own cv:*/final_refit/permutation_importance sub-phases folded in). Both
+    # default to None so a refused (untrained) result and every existing construction/unpack
+    # site keep their exact current shape -- see this project's return-shape-drift history.
+    elapsed_seconds: float | None = None
+    phase_seconds: dict | None = None
 
 
 def _wear_spread(input_mix: list) -> tuple:
@@ -129,7 +161,7 @@ def _leave_one_out_collection_means(rows: list) -> list:
     return out
 
 
-def _not_excluded(r) -> bool:
+def _not_excluded(r, cache: dict | None = None) -> bool:
     """Extends the existing low_volume_warning filter with market_reliability.py's unified
     Excluded state (see that module's docstring) -- a row can clear the plain volume-based
     dead_skin check yet still rest on a skin currently Excluded for a DIFFERENT reason (a
@@ -137,12 +169,15 @@ def _not_excluded(r) -> bool:
     this son's search heuristic anything either. Also excludes a row whose exact composition was
     itself already Stage-2-verified unprofitable (verified_low_roi.py) -- that row's
     expected_roi_pct label is now known to be an inflated/bugged estimate, so training on it
-    would just re-teach the model the wrong answer for this composition."""
+    would just re-teach the model the wrong answer for this composition.
+
+    cache: optional per-batch memo passed straight through to market_reliability -- see
+    train(), which shares one dict across this filter and the sample-weight loop."""
     if verified_low_roi_mod.is_marked(
             sim_blacklist_mod.signature(r.from_rarity, r.to_rarity, r.stattrak, r.input_mix)):
         return False
     return not market_reliability_mod.any_unit_excluded(
-        r.input_mix, r.output_distribution, currency=1, stattrak=r.stattrak)
+        r.input_mix, r.output_distribution, currency=1, stattrak=r.stattrak, cache=cache)
 
 
 def forget(model_dir: Path, sims_file: Path) -> None:
@@ -161,9 +196,7 @@ def _collection_roi_lookup(sims_file: Path) -> dict:
     cached = _collection_roi_caches.get(sims_file)
     if cached and cached["mtime"] == mtime:
         return cached["lookup"]
-    raw_rows = simulate_mod.load_simulations(sims_file)
-    if len(raw_rows) > MAX_ROWS_FOR_ANALYSIS:
-        raw_rows = raw_rows[-MAX_ROWS_FOR_ANALYSIS:]
+    raw_rows = simulate_mod.load_recent_simulations(sims_file, MAX_ROWS_FOR_ANALYSIS)
     rows = [r for r in raw_rows if not r.low_volume_warning and _not_excluded(r)]
     by_collection: dict = {}
     for r in rows:
@@ -197,17 +230,41 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     traded price that shouldn't be allowed to teach the model a pattern that isn't real) --
     those rows are still preserved in sims_file, just never trained on. Also caps how many of
     the most recent raw rows are even considered (see MAX_ROWS_FOR_ANALYSIS) so retrain cost
-    stays bounded no matter how long this son has been running."""
-    raw_rows = simulate_mod.load_simulations(sims_file)
-    if len(raw_rows) > MAX_ROWS_FOR_ANALYSIS:
-        raw_rows = raw_rows[-MAX_ROWS_FOR_ANALYSIS:]
-    rows = [r for r in raw_rows if not r.low_volume_warning and _not_excluded(r)]
+    stays bounded no matter how long this son has been running.
+
+    Every phase is wall-clock timed into the returned TrainResult (and persisted into this
+    son's model metadata) so a slow retrain can be attributed to a specific phase instead of
+    guessed at -- see TrainResult.phase_seconds."""
+    t_start = time.perf_counter()
+    phase: dict = {}
+
+    def _mark(name: str, since: float) -> float:
+        now = time.perf_counter()
+        phase[name] = round(now - since, 3)
+        return now
+
+    t = t_start
+    raw_rows = simulate_mod.load_recent_simulations(sims_file, MAX_ROWS_FOR_ANALYSIS)
+    t = _mark("load_rows", t)
+
+    # One memo shared by the exclusion filter below and the sample-weight loop further down:
+    # both walk the same rows' same units through market_reliability, which re-derived each
+    # skin's state from scratch every time (~18 repeat lookups per distinct skin per retrain
+    # on real data). Scoped to this single train() call and dropped when it returns, so
+    # nothing outside this function can be served a stale verdict -- see
+    # market_reliability.any_unit_excluded's `cache` parameter.
+    reliability_cache: dict = {}
+    rows = [r for r in raw_rows
+            if not r.low_volume_warning and _not_excluded(r, cache=reliability_cache)]
+    t = _mark("filter_rows", t)
     if len(rows) < MIN_TRAINING_SAMPLES:
         return TrainResult(trained=False,
                             reason=f"Only {len(rows)} volume-confirmed, reliability-cleared simulated "
                                     f"trials logged, need {MIN_TRAINING_SAMPLES}+ (low-volume/thinly-traded/"
                                     f"market-reliability-excluded rows don't count)",
-                            n_samples=len(rows), validation_mae=None, feature_importances=None)
+                            n_samples=len(rows), validation_mae=None, feature_importances=None,
+                            elapsed_seconds=round(time.perf_counter() - t_start, 3),
+                            phase_seconds=phase)
 
     import joblib
     import numpy as np
@@ -215,6 +272,7 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     loo_means = _leave_one_out_collection_means(rows)
     X = np.array([_featurize_record(r, loo_means[i]) for i, r in enumerate(rows)], dtype=float)
     y = np.array([r.expected_roi_pct for r in rows], dtype=float)
+    t = _mark("featurize", t)
 
     # Reliability-weighted training (see market_reliability.training_weight): rows verified
     # across marketplaces teach at full strength, Steam-only rows at 0.35 -- reduced influence
@@ -224,10 +282,12 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     weight_reasons: dict = {}
     for r in rows:
         weight, reason = market_reliability_mod.training_weight(
-            r.input_mix, r.output_distribution, currency=1, stattrak=r.stattrak)
+            r.input_mix, r.output_distribution, currency=1, stattrak=r.stattrak,
+            cache=reliability_cache)
         weights.append(weight)
         weight_reasons[reason] = weight_reasons.get(reason, 0) + 1
     sample_weight = np.array(weights, dtype=float)
+    t = _mark("sample_weights", t)
 
     # Cross-validated model selection, same underlying algorithm/CV code as learning.py (see
     # ml_common.py's module docstring) but with this son's own FAST_* speed profile (see the
@@ -237,8 +297,14 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     selection = ml_common.fit_best_model(X, y, FEATURE_NAMES, random_state=42,
                                           sample_weight=sample_weight,
                                           candidates=FAST_CANDIDATES, n_folds=FAST_N_FOLDS,
-                                          importance_n_repeats=FAST_IMPORTANCE_REPEATS)
+                                          importance_n_repeats=FAST_IMPORTANCE_REPEATS,
+                                          hgb_loss=FAST_HGB_LOSS,
+                                          hgb_max_bins=(FAST_MAX_BINS
+                                                        if len(rows) >= FAST_MAX_BINS_MIN_ROWS
+                                                        else None))
     model, mae, importances = selection.model, selection.cv_mae, selection.feature_importances
+    t = _mark("fit_best_model", t)
+    phase.update(selection.timings)  # ml_common's own cv:*/final_refit/importance sub-phases
 
     # Same real-residual-based uncertainty band as learning.py's train() -- kept in sync
     # deliberately (see this project's documented sibling-drift bug history). NOT threaded
@@ -251,21 +317,31 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     residual_p10 = float(np.percentile(residuals, 10))
     residual_p90 = float(np.percentile(residuals, 90))
 
+    prev_times = get_model_status(model_dir).get("recent_train_seconds") or []
+
     with _lock:
         model_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, model_dir / MODEL_FILENAME)
+        elapsed = round(time.perf_counter() - t_start, 3)
+        phase["persist"] = round(time.perf_counter() - t, 3)
         meta = {"trained_at": time.time(), "n_samples": len(rows), "validation_mae": mae,
                 "feature_importances": importances, "feature_names": FEATURE_NAMES,
                 "model_name": selection.model_name, "candidate_maes": selection.candidate_maes,
                 "sample_weight_breakdown": weight_reasons,
                 "mean_sample_weight": round(float(sample_weight.mean()), 3),
-                "residual_p10": residual_p10, "residual_p90": residual_p90}
+                "residual_p10": residual_p10, "residual_p90": residual_p90,
+                # Training cost of THIS retrain plus a short rolling tail of previous ones, so
+                # the dashboard can show a per-agent trend ("is this agent getting slower as its
+                # simulations.jsonl grows?") without needing a separate history file.
+                "train_seconds": elapsed, "phase_seconds": phase,
+                "recent_train_seconds": (prev_times + [elapsed])[-TRAIN_TIME_HISTORY_KEEP:]}
         (model_dir / META_FILENAME).write_text(json.dumps(meta), encoding="utf-8")
         _loaded_models.pop(model_dir, None)  # force a reload on the next predict_expected_roi() call
 
     return TrainResult(trained=True, reason="", n_samples=len(rows), validation_mae=mae,
                         feature_importances=importances, model_name=selection.model_name,
-                        candidate_maes=selection.candidate_maes)
+                        candidate_maes=selection.candidate_maes,
+                        elapsed_seconds=elapsed, phase_seconds=phase)
 
 
 def get_model_status(model_dir: Path) -> dict:
