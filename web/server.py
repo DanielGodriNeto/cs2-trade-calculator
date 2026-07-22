@@ -39,6 +39,7 @@ from src import data_archive as data_archive_mod
 from src import price_scan as price_scan_mod
 from src import sim_loop as sim_loop_mod
 from src import sim_learning as sim_learning_mod
+from src import ml_common as ml_common_mod
 from src import agents as agents_mod
 from src import adaptive as adaptive_mod
 from src import dead_skin as dead_skin_mod
@@ -1383,6 +1384,14 @@ def main():
     # Apply any previously-saved Connections settings (CSFloat key, NTFY topic/server) before
     # anything else starts -- see src/connections_config.py for why this lives outside data/.
     connections_config_mod.apply_to_runtime()
+
+    # Absorb sklearn's one-time per-process startup cost (~3.2s: the import itself plus a
+    # further ~1.6s hidden inside the first gradient-boosting fit) on a throwaway 32-row fit
+    # here, rather than billing it to whichever population son happens to retrain first after
+    # this restart -- see ml_common.prewarm() for the measurements. Started first and left
+    # unjoined: nothing below waits on it, the sons all boot paused anyway, and the only cost
+    # of it not finishing in time is the behavior we had before.
+    threading.Thread(target=ml_common_mod.prewarm, daemon=True).start()
 
     state = ScanState()
     threading.Thread(target=scan_loop, args=(state,), daemon=True).start()

@@ -29,8 +29,90 @@ particular fold split, not whichever generalizes best) rather than the model. A 
 already-regularized candidate per algorithm avoids that trap while still comparing genuinely
 different algorithm families.
 """
+import contextlib
 import time
 from dataclasses import dataclass, field
+
+
+def _thread_limit(max_threads: int | None):
+    """Caps the native (OpenMP/BLAS) thread pools sklearn's fitting code spins up, for the
+    duration of one fit_best_model() call.
+
+    Why this exists: HistGradientBoostingRegressor parallelizes its split-finding over OpenMP
+    threads and, left alone, grabs ONE THREAD PER CORE (16 here). That is a bad trade twice
+    over on this project's data. First, at these sizes the parallelism doesn't even pay for
+    itself -- benchmarked on a 1500x8 set, a single-threaded fit is FASTER than the 16-thread
+    one (0.042s vs 0.071s per fit), because the per-iteration thread handshake costs more than
+    the work it distributes. Second and much worse, sim_loop.py runs all 6 population sons as
+    real concurrent threads in ONE process (see web/server.py's startup), each free to call
+    train() whenever its own round trips RETRAIN_TRIGGER_DELTA -- so the uncapped version can
+    put 6 x 16 = 96 native threads on 16 cores, on top of the 6 sim loops, the price scan, the
+    pattern scanner and the verify queue all wanting the same cores. That oversubscription, not
+    the model or the row count, is what turns a ~4s retrain into a ~25s one.
+
+    None (default) keeps the historical uncapped behavior for learning.py's real-outcomes
+    model, which is small, retrains rarely, and never dogpiles with 5 siblings.
+
+    threadpoolctl ships as a scikit-learn dependency, but the import is guarded anyway and
+    degrades to "no limit" rather than failing a retrain -- same defensive posture as this
+    project's other optional-dependency paths."""
+    if max_threads is None:
+        return contextlib.nullcontext()
+    try:
+        from threadpoolctl import threadpool_limits
+    except ImportError:
+        return contextlib.nullcontext()
+    return threadpool_limits(limits=max_threads)
+
+
+def prewarm() -> float:
+    """Pays this process's one-time sklearn startup cost up front, on a background thread at
+    server boot, instead of billing it to whichever son happens to retrain first. Returns the
+    seconds it took (callers may log it; nothing depends on the value).
+
+    There are TWO one-time costs, and only the first was ever visible. Importing sklearn is
+    ~1.6s and fit_best_model already times it as its own "sklearn_import" phase. The second is
+    hidden INSIDE the first HistGradientBoostingRegressor.fit() of a process and costs a further
+    ~1.6s -- lazily-loaded compiled extensions and their first-touch page-ins -- which lands in
+    the "cv:hist_gradient_boosting" phase and is indistinguishable there from real fitting work.
+    Measured, same 2181-row input throughout:
+        cold     import 1.609 | fit#0 1.594 | fit#1 0.073 | fit#2 0.072
+        prewarm  import 1.595 | throwaway 32-row fit 1.553 | fit#0 0.074 | fit#1 0.068
+    A 32-row throwaway fit absorbs essentially all of it, and every subsequent fit -- at any row
+    count -- is ~21x faster than the first one was.
+
+    This was not theoretical: son_0's persisted metadata recorded sklearn_import 3.413s and
+    cv:hist_gradient_boosting 2.827s on just 637 rows, against son_1's 0.712s on 1182 rows in
+    the same process. son_0 was simply the first to retrain after a restart, and its dashboard
+    read 9.4s for it. The cost recurs on every server restart, so it belongs at startup.
+
+    Deliberately fits BOTH candidate families sim_learning.py uses (the boosted tree and the
+    Ridge pipeline) on throwaway random data -- 32 rows, 8 features, matching FEATURE_NAMES'
+    width. Nothing is persisted, cached or returned; this touches no project data and no model
+    file. Every failure mode is swallowed: a prewarm that breaks must never take the server down
+    with it, since the only consequence of skipping it is the historical behavior."""
+    t0 = time.perf_counter()
+    try:
+        import numpy as np
+        from sklearn.ensemble import HistGradientBoostingRegressor
+        from sklearn.linear_model import Ridge
+        from sklearn.pipeline import make_pipeline
+        from sklearn.impute import SimpleImputer
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.inspection import permutation_importance  # noqa: F401 -- import cost only
+        from sklearn.model_selection import RepeatedKFold      # noqa: F401 -- import cost only
+
+        rng = np.random.default_rng(0)
+        X = rng.random((32, 8))
+        y = rng.random(32)
+        with _thread_limit(1):
+            HistGradientBoostingRegressor(loss="squared_error", max_depth=4, max_iter=5,
+                                           min_samples_leaf=3, random_state=0).fit(X, y).predict(X)
+            make_pipeline(SimpleImputer(strategy="mean"), StandardScaler(),
+                           Ridge(alpha=1.0)).fit(X, y).predict(X)
+    except Exception:
+        pass
+    return round(time.perf_counter() - t0, 3)
 
 
 @dataclass
@@ -145,7 +227,8 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
                     n_folds: int | None = None,
                     importance_n_repeats: int = 5,
                     hgb_loss: str = "absolute_error",
-                    hgb_max_bins: int | None = None) -> ModelSelectionResult:
+                    hgb_max_bins: int | None = None,
+                    max_threads: int | None = None) -> ModelSelectionResult:
     """X: 2D array (n_samples, n_features), may contain NaN. y: 1D array of targets.
     feature_names: parallel to X's columns, used only to label the returned importances.
 
@@ -158,10 +241,10 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     per-fold fit weights through sklearn's pipeline parameter naming across the >=1.3 range
     this project supports. None behaves exactly like the historical unweighted path.
 
-    candidates/n_folds/importance_n_repeats/hgb_loss/hgb_max_bins: all optional, all default to
-    this module's original fixed behavior (all 3 candidates, 5 folds, 5 importance repeats,
-    absolute_error loss, sklearn's default binning) -- used by learning.py's small real-outcomes
-    model unchanged. sim_learning.py's much larger, much-more-often-retrained sim-population
+    candidates/n_folds/importance_n_repeats/hgb_loss/hgb_max_bins/max_threads: all optional, all
+    default to this module's original fixed behavior (all 3 candidates, 5 folds, 5 importance
+    repeats, absolute_error loss, sklearn's default binning, uncapped native threads) -- used by
+    learning.py's small real-outcomes model unchanged. sim_learning.py's much larger, much-more-often-retrained sim-population
     model passes its own faster FAST_* profile (see that module) instead -- see this function's
     callers, not this module, for why.
 
@@ -207,37 +290,53 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     # folds. Reusing one list keeps the "same split for every candidate" guarantee this module's
     # docstring promises literal rather than incidental.
     splits = list(cv.split(X))
-    for name, estimator in candidate_estimators.items():
+    # Everything below is the actual number-crunching, so it's the whole of what the native
+    # thread cap needs to cover -- see _thread_limit() for why capping is a speed WIN here and
+    # not a sacrifice. Purely a scheduling change: identical arithmetic, identical results,
+    # and random_state pins every candidate, so the chosen model and its MAE are unaffected.
+    with _thread_limit(max_threads):
+        for name, estimator in candidate_estimators.items():
+            t0 = time.perf_counter()
+            sums = np.zeros(n, dtype=float)
+            counts = np.zeros(n, dtype=float)
+            for train_idx, test_idx in splits:
+                fold = clone(estimator)
+                fold_w = w[train_idx] if w is not None else None
+                fold.fit(X[train_idx], y[train_idx], **_fit_kwargs(fold, fold_w))
+                sums[test_idx] += fold.predict(X[test_idx])
+                counts[test_idx] += 1.0
+            preds = sums / counts  # every row appears in exactly one test fold per repeat, so counts == n_repeats
+            candidate_oof_preds[name] = preds
+            candidate_maes[name] = float(mean_absolute_error(y, preds, sample_weight=w))
+            timings[f"cv:{name}"] = round(time.perf_counter() - t0, 3)
+
+        best_name = min(candidate_maes, key=candidate_maes.get)
+        best_model = candidate_estimators[best_name]
+        oof_residuals = (y - candidate_oof_preds[best_name]).tolist()
+        # Final refit on ALL data (with weights), after CV already measured honest error above.
         t0 = time.perf_counter()
-        sums = np.zeros(n, dtype=float)
-        counts = np.zeros(n, dtype=float)
-        for train_idx, test_idx in splits:
-            fold = clone(estimator)
-            fold_w = w[train_idx] if w is not None else None
-            fold.fit(X[train_idx], y[train_idx], **_fit_kwargs(fold, fold_w))
-            sums[test_idx] += fold.predict(X[test_idx])
-            counts[test_idx] += 1.0
-        preds = sums / counts  # every row appears in exactly one test fold per repeat, so counts == n_repeats
-        candidate_oof_preds[name] = preds
-        candidate_maes[name] = float(mean_absolute_error(y, preds, sample_weight=w))
-        timings[f"cv:{name}"] = round(time.perf_counter() - t0, 3)
+        best_model.fit(X, y, **_fit_kwargs(best_model, w))
+        timings["final_refit"] = round(time.perf_counter() - t0, 3)
 
-    best_name = min(candidate_maes, key=candidate_maes.get)
-    best_model = candidate_estimators[best_name]
-    oof_residuals = (y - candidate_oof_preds[best_name]).tolist()
-    # Final refit on ALL data (with weights), after CV already measured honest error above.
-    t0 = time.perf_counter()
-    best_model.fit(X, y, **_fit_kwargs(best_model, w))
-    timings["final_refit"] = round(time.perf_counter() - t0, 3)
-
-    # importance_n_repeats (default 5, was 10): permutation importance is a display/diagnostic
-    # number, not part of the model itself -- fewer repeats costs less for a noisier but still
-    # directionally-correct importance ranking.
-    t0 = time.perf_counter()
-    importance_result = permutation_importance(best_model, X, y, n_repeats=importance_n_repeats,
-                                                random_state=random_state, sample_weight=w)
-    importances = dict(zip(feature_names, [float(v) for v in importance_result.importances_mean]))
-    timings["permutation_importance"] = round(time.perf_counter() - t0, 3)
+        # importance_n_repeats (default 5, was 10): permutation importance is a display/diagnostic
+        # number, not part of the model itself -- fewer repeats costs less for a noisier but still
+        # directionally-correct importance ranking.
+        #
+        # 0 skips it entirely and returns {}. Worth having as an option because this phase costs
+        # more than the model does: profiled on son_2's real data it was 0.37s of a 0.94s retrain,
+        # the single largest phase, for a number that never touches a prediction -- it refits
+        # nothing, changes no weights, and only feeds the dashboard's importance bars. A caller
+        # that skips it must decide what to display instead (sim_learning.py carries the previous
+        # retrain's values forward and flags them stale); returning {} rather than a fabricated
+        # ranking keeps that decision at the caller, where the context is.
+        if importance_n_repeats:
+            t0 = time.perf_counter()
+            importance_result = permutation_importance(best_model, X, y, n_repeats=importance_n_repeats,
+                                                        random_state=random_state, sample_weight=w)
+            importances = dict(zip(feature_names, [float(v) for v in importance_result.importances_mean]))
+            timings["permutation_importance"] = round(time.perf_counter() - t0, 3)
+        else:
+            importances = {}
 
     return ModelSelectionResult(model=best_model, model_name=best_name, cv_mae=candidate_maes[best_name],
                                  candidate_maes=candidate_maes, feature_importances=importances,

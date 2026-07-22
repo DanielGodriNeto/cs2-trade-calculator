@@ -1792,6 +1792,14 @@ function renderSimFeatureImportanceGrid(sons) {
     }
     chartWrap.style.display = "";
     emptyEl.style.display = "none";
+    // Permutation importance is recomputed only every Nth retrain (sim_learning.
+    // IMPORTANCE_EVERY_N_RETRAINS) because it cost more than the model fit itself and feeds
+    // nothing but this chart. In between, the backend carries the last real values forward and
+    // sets this flag -- surfaced as a tooltip so carried-forward bars are never silently read
+    // as "what the model thinks right now".
+    chartWrap.title = ms.feature_importances_stale
+      ? "importances carried over from an earlier retrain (they're refreshed periodically, not every retrain) -- MAE and the model itself are current"
+      : "";
     const entries = Object.entries(ms.feature_importances).sort((a, b) => b[1] - a[1]);
     const labels = entries.map(e => e[0]);
     const data = entries.map(e => e[1]);

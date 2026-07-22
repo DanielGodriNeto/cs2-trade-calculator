@@ -79,12 +79,84 @@ FAST_IMPORTANCE_REPEATS = 3
 #
 # FAST_MAX_BINS: coarser feature binning for the histogram split-finder (sklearn's default is
 # 255). This is the single biggest lever on the larger sons -- son_2 (2184 rows) went 3x faster
-# for +0.4% MAE. It stops paying off on the small sons, where the fit is already sub-second and
-# the accuracy cost is real (son_0, 638 rows: +12.9% MAE for 1.3x), so it's applied only above
-# FAST_MAX_BINS_MIN_ROWS. Below that threshold the model keeps sklearn's default binning.
+# for +0.4% MAE at 64 bins. It stops paying off on the small sons, where the fit is already
+# sub-second and the accuracy cost is real (son_0, 638 rows: +12.9% MAE for 1.3x), so it's
+# applied only above FAST_MAX_BINS_MIN_ROWS. Below that threshold the model keeps sklearn's
+# default binning.
+#
+# Stays at 64 after an explicit "prefer speed, some accuracy loss is fine" pass re-examined it.
+# A sweep across all 6 sons (3 CV shuffles each, same splits per variant) first suggested 32 was
+# the best-value accuracy-for-speed knob available:
+#     max_bins=32      1.82x faster    +7.7% MAE
+#     max_iter=50      1.77x faster   +10.2% MAE
+#     max_depth=3      1.51x faster    +9.6% MAE
+#     early_stopping   1.37x faster    +8.2% MAE
+#     max_iter=30      2.05x faster   +27.2% MAE
+# That 1.82x was misleading and is recorded here so it doesn't get "rediscovered". The sweep's
+# max_bins=32 variant applied 32 bins to EVERY son, including the small ones whose baseline is
+# sklearn's default 255 (they sit below FAST_MAX_BINS_MIN_ROWS) -- so most of the measured
+# speedup came from 255 -> 32 on the small sons, not from the 64 -> 32 this constant actually
+# controls. Measured directly at production settings, 64 -> 32 buys 0.04s (0.329s -> 0.285s on
+# son_2) and costs +16.9% MAE on son_2 and +16.6% on son_5, the two most data-rich sons. Not a
+# trade worth making on a retrain that is already sub-second, at any speed preference.
+#
+# Also measured and deliberately NOT taken: cutting MAX_ROWS_FOR_ANALYSIS 3000 -> 1500. That
+# looks like an obvious speed win and is actually the worst trade available -- 1.2x faster for
+# a 35% WORSE MAE (4.378 -> 5.922 averaged across the sons), because these models are still
+# genuinely data-hungry at a few thousand rows. Left at 3000.
+#
+# The real remaining win was structural, not a quality trade-off: see
+# IMPORTANCE_EVERY_N_RETRAINS below.
 FAST_HGB_LOSS = "squared_error"
 FAST_MAX_BINS = 64
 FAST_MAX_BINS_MIN_ROWS = 1000
+
+# How often the permutation-importance diagnostic is actually recomputed, in retrains. It was
+# the largest single phase of a retrain (0.37s of son_2's 0.94s) and it feeds nothing but the
+# dashboard's importance bars -- no prediction, no weight, no model selection depends on it.
+# Recomputing it every 10th retrain instead of every one makes ~40% of the remaining cost
+# disappear at zero cost to the model, which is a strictly better trade than any of the knobs
+# that actually degrade accuracy. In between, the previous values are carried forward and
+# flagged (see "feature_importances_stale" in the persisted metadata) rather than silently
+# presented as fresh. A model that has never computed them yet always computes them, so a
+# newly-trained son's dashboard is never blank.
+IMPORTANCE_EVERY_N_RETRAINS = 10
+
+# Scheduling, not arithmetic -- the two knobs below change WHEN and on how many cores a retrain
+# runs, never what it computes. They exist because the dominant cost of a retrain on this
+# machine turned out to be neither the row count nor the model: it was six sons fighting each
+# other for the same cores.
+#
+# The evidence, from the sons' own persisted recent_train_seconds histories: all 6 sons show
+# their fast stretch and their slow stretch at the SAME positions in their own history, which a
+# per-son data-size effect cannot produce; cv:ridge -- a fit whose real cost is about a
+# millisecond -- was logged anywhere from 0.089s to 1.067s depending only on what else was
+# running; and re-running son_2's train() on its exact same data with the rest of the app
+# stopped took 4.5s against the 31.1s its metadata had recorded live.
+#
+# FAST_MAX_THREADS = 1: see ml_common._thread_limit(). At this project's row counts a
+# single-threaded gradient-boosting fit is genuinely faster than a 16-thread one, so this costs
+# nothing even for a son training completely alone.
+#
+# TRAIN_MAX_CONCURRENCY = 2: sim_loop.py gives every son its own thread and lets each call
+# train() independently, so up to 6 retrains can land at once. Benchmarked with 6 sons retraining
+# simultaneously on 2200-row data (wall = time for all six to finish; per-son = what a son
+# measures for ITSELF, i.e. the number that reaches the dashboard):
+#     uncapped, free-for-all (before)  wall 4.56s   per-son 4.39s
+#     1 thread, free-for-all           wall 2.06s   per-son 2.01s
+#     1 thread + 2 at a time (chosen)  wall 1.95s   per-son 0.62s
+# Gating to 2 wins on BOTH axes -- best wall-clock of the three, and a ~7x cut in the per-son
+# figure -- because queued sons wait on a semaphore instead of thrashing the scheduler. It also
+# leaves the other 14 cores to the sim loops themselves, which are the actual product work.
+#
+# The semaphore originally wrapped only the fit_best_model call, because that benchmark measured
+# the fit. Re-profiling the whole retrain showed that was gating the minority of the work: row
+# loading, the reliability filter, featurizing and the sample-weight walk are all real CPU and
+# together exceed the fit on every son (son_4: 0.514 + 0.971 vs 1.155). It now wraps the entire
+# retrain -- see train().
+FAST_MAX_THREADS = 1
+TRAIN_MAX_CONCURRENCY = 2
+_train_slots = threading.Semaphore(TRAIN_MAX_CONCURRENCY)
 
 FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "filler_fraction",
                   "stattrak", "cost", "collection_mean_expected_roi"]
@@ -187,22 +259,41 @@ def forget(model_dir: Path, sims_file: Path) -> None:
     with _lock:
         _loaded_models.pop(model_dir, None)
         _collection_roi_caches.pop(sims_file, None)
+    # simulate.py memoizes the parsed tail of this same sims_file (see its
+    # load_recent_simulations). Its own guards would catch a reset on the next read anyway, but
+    # a reset is exactly the moment to drop it outright rather than rely on the backstop.
+    simulate_mod.forget_cached_rows(sims_file)
 
 
 def _collection_roi_lookup(sims_file: Path) -> dict:
     if not sims_file.exists():
         return {}
     mtime = sims_file.stat().st_mtime
-    cached = _collection_roi_caches.get(sims_file)
+    # Read/written under _lock, matching how _loaded_models is handled a few functions down.
+    # Whole-entry dict get/set on a per-file key is atomic under CPython anyway, so this was
+    # never an observed bug -- but the two module caches sitting right next to each other under
+    # different rules is the kind of inconsistency that invites a future non-atomic edit.
+    # The lock covers only the dict access, never the load/filter below.
+    with _lock:
+        cached = _collection_roi_caches.get(sims_file)
     if cached and cached["mtime"] == mtime:
         return cached["lookup"]
     raw_rows = simulate_mod.load_recent_simulations(sims_file, MAX_ROWS_FOR_ANALYSIS)
-    rows = [r for r in raw_rows if not r.low_volume_warning and _not_excluded(r)]
+    # Same per-batch reliability memo train() uses for the identical filter -- this walks up to
+    # MAX_ROWS_FOR_ANALYSIS rows through market_reliability and hits the same handful of skins
+    # over and over. train() got this memo when it was added; this sibling filter was missed and
+    # kept paying the uncached price on a once-per-round hot path (measured 0.471s uncached vs
+    # 0.180s cached over son_2's 3000 rows). Scoped to this call and dropped on return, exactly
+    # as in train() -- see market_reliability.any_unit_excluded's `cache` parameter.
+    reliability_cache: dict = {}
+    rows = [r for r in raw_rows
+            if not r.low_volume_warning and _not_excluded(r, cache=reliability_cache)]
     by_collection: dict = {}
     for r in rows:
         by_collection.setdefault(r.primary_collection, []).append(r.expected_roi_pct)
     lookup = {c: sum(v) / len(v) for c, v in by_collection.items()}
-    _collection_roi_caches[sims_file] = {"mtime": mtime, "lookup": lookup}
+    with _lock:
+        _collection_roi_caches[sims_file] = {"mtime": mtime, "lookup": lookup}
     return lookup
 
 
@@ -243,7 +334,25 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
         phase[name] = round(now - since, 3)
         return now
 
-    t = t_start
+    # The training slot is taken HERE, around the whole retrain, not just around the fit. Every
+    # phase below -- loading rows, the reliability filter, featurizing, the sample-weight walk --
+    # is real CPU work competing for the same cores, and together they outweigh the fit itself on
+    # every son (son_4: filter 0.514 + weights 0.971 against fit_best_model 1.155). Gating only
+    # the fit left that majority running 6-wide, which is the exact thrash TRAIN_MAX_CONCURRENCY
+    # exists to prevent. Waiting is still timed as its own phase so a son that queued behind two
+    # siblings can never be mistaken for a son whose own work was slow.
+    with _train_slots:
+        # Measured from t_start: nothing happens between entering train() and reaching here, so
+        # this is the whole of the queue wait and elapsed_seconds stays exactly accounted for.
+        t = _mark("await_train_slot", t_start)
+        return _train_locked(model_dir, sims_file, t_start, t, phase, _mark)
+
+
+def _train_locked(model_dir: Path, sims_file: Path, t_start: float, t: float,
+                   phase: dict, _mark) -> TrainResult:
+    """train()'s body, running with a training slot already held -- see its call site for why
+    the slot covers the whole retrain rather than only the fit. Split out purely so the gated
+    region is one unindented block instead of the whole function nested a level deeper."""
     raw_rows = simulate_mod.load_recent_simulations(sims_file, MAX_ROWS_FOR_ANALYSIS)
     t = _mark("load_rows", t)
 
@@ -294,15 +403,32 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     # module-level comment above) -- this dataset is thousands of rows and retrains almost every
     # round, unlike learning.py's small real-outcomes model, so it gets a deliberately cheaper
     # (not learning.py-shared) configuration.
+    # Read this son's PREVIOUS metadata once, before fitting: it supplies both the rolling
+    # train-time history and the importance-refresh bookkeeping below.
+    prev_meta = get_model_status(model_dir)
+    prev_times = prev_meta.get("recent_train_seconds") or []
+    prev_importances = prev_meta.get("feature_importances") or None
+    retrain_counter = int(prev_meta.get("retrain_counter") or 0) + 1
+    # Recompute the importance diagnostic on a schedule (see IMPORTANCE_EVERY_N_RETRAINS), but
+    # always compute it if we have no previous values to fall back on -- otherwise a freshly
+    # reset son would show empty importance bars for its first 9 retrains.
+    fresh_importances = (prev_importances is None
+                         or retrain_counter % IMPORTANCE_EVERY_N_RETRAINS == 0)
+
     selection = ml_common.fit_best_model(X, y, FEATURE_NAMES, random_state=42,
                                           sample_weight=sample_weight,
                                           candidates=FAST_CANDIDATES, n_folds=FAST_N_FOLDS,
-                                          importance_n_repeats=FAST_IMPORTANCE_REPEATS,
+                                          importance_n_repeats=(FAST_IMPORTANCE_REPEATS
+                                                                if fresh_importances else 0),
                                           hgb_loss=FAST_HGB_LOSS,
                                           hgb_max_bins=(FAST_MAX_BINS
                                                         if len(rows) >= FAST_MAX_BINS_MIN_ROWS
-                                                        else None))
-    model, mae, importances = selection.model, selection.cv_mae, selection.feature_importances
+                                                        else None),
+                                          max_threads=FAST_MAX_THREADS)
+    model, mae = selection.model, selection.cv_mae
+    # On a skipped refresh fit_best_model returns {} -- carry the last real values forward
+    # rather than blanking the dashboard, and mark them stale so the display can say so.
+    importances = selection.feature_importances if fresh_importances else prev_importances
     t = _mark("fit_best_model", t)
     phase.update(selection.timings)  # ml_common's own cv:*/final_refit/importance sub-phases
 
@@ -317,8 +443,6 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     residual_p10 = float(np.percentile(residuals, 10))
     residual_p90 = float(np.percentile(residuals, 90))
 
-    prev_times = get_model_status(model_dir).get("recent_train_seconds") or []
-
     with _lock:
         model_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, model_dir / MODEL_FILENAME)
@@ -329,6 +453,11 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
                 "model_name": selection.model_name, "candidate_maes": selection.candidate_maes,
                 "sample_weight_breakdown": weight_reasons,
                 "mean_sample_weight": round(float(sample_weight.mean()), 3),
+                # Importance bookkeeping (see IMPORTANCE_EVERY_N_RETRAINS): the counter drives
+                # the refresh schedule, the stale flag tells the dashboard these bars came from
+                # an earlier retrain so it never presents carried-forward numbers as fresh.
+                "retrain_counter": retrain_counter,
+                "feature_importances_stale": not fresh_importances,
                 "residual_p10": residual_p10, "residual_p90": residual_p90,
                 # Training cost of THIS retrain plus a short rolling tail of previous ones, so
                 # the dashboard can show a per-agent trend ("is this agent getting slower as its

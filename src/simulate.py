@@ -57,6 +57,7 @@ user-executed trades. Nothing in this module ever reads or writes outcomes.jsonl
 from dataclasses import dataclass, asdict, field
 import json
 import os
+import sys
 import threading
 from pathlib import Path
 import time
@@ -584,6 +585,220 @@ def _tail_lines(sims_file: Path, limit: int) -> tuple:
     return usable[-limit:], pos == 0 and len(usable) <= limit
 
 
+# ---------------------------------------------------------------------------
+# Incremental tail cache for load_recent_simulations()
+#
+# The tail read below already bounded the I/O, but a retrain still had to json.loads ~3000
+# records (~15 MB) per son EVERY time -- and that parse is pure Python holding the GIL, so the
+# 6 sons cannot actually do it in parallel no matter how many cores are free. Measured with all
+# 6 retraining at once, row loading had become the joint-largest cost of a retrain (4.46s summed
+# across the sons, against 5.11s for all the actual model fitting), and unlike the fitting it
+# could not be fixed by capping threads.
+#
+# What makes an incremental cache safe here is that simulations.jsonl is APPEND-ONLY in normal
+# operation (log_simulation only ever opens it "a"). So between one retrain and the next, the
+# only new bytes are at the end -- typically ~25 rows (sim_learning.RETRAIN_TRIGGER_DELTA)
+# rather than 3000. We keep the parsed tail and extend it, parsing roughly 1% as much JSON.
+#
+# The file is NOT append-only under sim_loop.full_reset() (truncated to empty), split_archive.
+# restore_all() (rebuilt from chunks, but only ever onto an EMPTY live file) or a data_archive
+# backup restore (whole directory replaced via copytree, which can drop a completely different
+# file into place). A cache that missed any of those would serve rows that no longer exist, so
+# three cheap guards must all hold before an entry is reused:
+#   - the file has not shrunk below what we already consumed;
+#   - its first _TAIL_CACHE_PREFIX_BYTES are byte-identical to when we seeded;
+#   - the _TAIL_CACHE_SIG_BYTES immediately BEFORE our consumed offset are unchanged.
+# The first two alone would accept a whole-file replacement that happens to share an opening
+# record and be longer -- which a backup restore can genuinely produce, since every version of
+# a given son's file descends from the same first row. The third makes that case detectable:
+# the replacement would have to coincidentally match the previous content at our exact byte
+# offset too. sim_learning.forget() additionally drops the entry outright on a hard reset, so
+# the guards are a backstop rather than the only defence.
+#
+# Memory is the reason the previous version refused to cache at all, and that concern was real
+# rather than imagined: measured, 3000 parsed rows are ~30 MB per son, ~181 MB across all 6.
+# Two things make it a good trade anyway. Strings are pooled during parsing (see
+# _parse_records), measured at 30 MB -> 18 MB per son. And this largely REPLACES a transient
+# allocation that was already happening -- six concurrent retrains each materialized their own
+# 3000 rows regardless, so the peak during a retrain cycle goes DOWN.
+#
+# Measured on the real files, cache only (excluding sklearn/numpy/the models themselves):
+# 18000 rows across the 6 sons retain 122 MB, ~6.8 MB per 1000 rows, peaking at 149 MB while
+# seeding -- against a previous transient peak of roughly 265 MB for a concurrent cycle. So
+# peak usage improves; what is genuinely new is a ~122 MB steady-state floor that persists
+# BETWEEN cycles. _TAIL_CACHE_MAX_ROWS is the dial if that floor ever needs to come down; it
+# costs parse time on any son whose file is longer than the cache.
+_TAIL_CACHE_MAX_ROWS = 3000  # matches sim_learning.MAX_ROWS_FOR_ANALYSIS, the only real caller
+_TAIL_CACHE_PREFIX_BYTES = 256
+_TAIL_CACHE_SIG_BYTES = 64  # bytes sampled just before the consumed offset -- see above
+_TAIL_CACHE_MAX_POOL = 50000  # see _parse_records
+_tail_cache: dict = {}  # sims_file -> {"prefix","sig","offset","rows","whole_file","pool"}
+
+# One lock PER FILE, not one lock for the module. Every son owns a private simulations.jsonl and
+# never reads a sibling's, so there was never any shared state for them to contend over -- yet a
+# single module-wide lock, held across the open/read/json.loads of a whole cache operation, made
+# all 6 sons queue behind each other anyway. Measured with warm caches, one son at a time vs all
+# 6 at once:
+#     sequential   load_rows = 0.000s for every son
+#     concurrent   load_rows = 0.000 0.082 0.156 0.273 0.279 0.356
+# The wait tracked each son's position in the queue, not its row count -- son_3 (308 rows) waited
+# 0.273s for zero work. That is the whole of the flat ~0.5-0.6s load_rows phase every son's
+# persisted metadata was reporting; the parse itself is genuinely ~0ms once the cache is warm.
+#
+# _tail_cache itself is still touched from several threads, but only ever with whole-entry
+# get/set/pop on a distinct key per file, which CPython's dict makes atomic -- the per-file lock
+# is what protects an ENTRY's multi-step read-modify-write (_extend_cached advances offset, sig
+# and rows together, and must not interleave with another call on the same file).
+_tail_cache_locks: dict = {}
+_tail_cache_locks_guard = threading.Lock()
+
+
+def _lock_for(sims_file: Path) -> threading.Lock:
+    """This file's own cache lock, created on first use. The guard covers only the registry
+    lookup/insert, never any file I/O, so it is held for nanoseconds and cannot reintroduce the
+    queueing described above."""
+    with _tail_cache_locks_guard:
+        lock = _tail_cache_locks.get(sims_file)
+        if lock is None:
+            lock = _tail_cache_locks[sims_file] = threading.Lock()
+        return lock
+
+
+def _parse_records(raw_lines, pool: dict) -> list:
+    """Parses JSONL bytes into SimulationRecords, skipping corrupt lines (same convention as
+    load_simulations), and de-duplicates repeated strings as it goes.
+
+    Pooling matters far more here than it looks: these records are mostly strings, and the same
+    collection names, wear names and skin names recur across thousands of rows. json.loads
+    allocates a fresh object for every occurrence, so without pooling the cache holds thousands
+    of copies of "Field-Tested". Keys go through sys.intern (a small fixed set); values go
+    through a per-file dict, which also covers long values and so beats interning alone
+    (measured 24.1 MB vs 18.2 MB per son). The pool is capped rather than rebuilt on trim --
+    it accumulates entries for rows that have since aged out, and clearing it just means the
+    next rows re-pool among themselves, which costs nothing but a little duplication."""
+    if len(pool) > _TAIL_CACHE_MAX_POOL:
+        pool.clear()
+
+    def hook(pairs):
+        return {sys.intern(k): (pool.setdefault(v, v) if type(v) is str else v) for k, v in pairs}
+
+    out = []
+    for raw in raw_lines:
+        try:
+            out.append(SimulationRecord(**json.loads(raw.decode("utf-8"), object_pairs_hook=hook)))
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+            continue
+    return out
+
+
+def _complete_lines(data: bytes) -> tuple:
+    """(lines, consumed_bytes) -- splits off only the lines terminated by a newline, so a torn
+    trailing write is left unconsumed for a later call to pick up once it's complete. This is
+    routine, not theoretical: sim_loop.py appends from the son's own thread while train() reads.
+    Consuming a partial line would also desynchronize the cache's byte offset, which is why the
+    offset only ever advances past a newline."""
+    cut = data.rfind(b"\n")
+    if cut == -1:
+        return [], 0
+    return [ln for ln in data[:cut].split(b"\n") if ln.strip()], cut + 1
+
+
+def forget_cached_rows(sims_file: Path) -> None:
+    """Drops any cached parsed tail for this file. Called by sim_learning.forget() after a hard
+    reset deletes/rewrites the underlying data -- see the cache guards above, which would also
+    catch it, but only on the next read."""
+    with _lock_for(sims_file):
+        _tail_cache.pop(sims_file, None)
+
+
+def _signature_at(f, offset: int) -> bytes:
+    """The bytes immediately before `offset` -- our fingerprint of the content we've consumed.
+    Read from an already-open handle so a reuse check costs one open, not three."""
+    start = max(0, offset - _TAIL_CACHE_SIG_BYTES)
+    f.seek(start)
+    return f.read(offset - start)
+
+
+def _extend_cached(sims_file: Path, ent: dict, size: int) -> list | None:
+    """Brings a cache entry up to date with whatever was appended since it was last read, or
+    returns None if the file is no longer a pure extension of what we cached (see the guards
+    described in the block comment above _TAIL_CACHE_MAX_ROWS)."""
+    if size < ent["offset"]:
+        return None  # truncated or rewritten shorter -- not an append
+    try:
+        with open(sims_file, "rb") as f:
+            if f.read(_TAIL_CACHE_PREFIX_BYTES) != ent["prefix"]:
+                return None  # rewritten in place -- not an append
+            if _signature_at(f, ent["offset"]) != ent["sig"]:
+                return None  # same opening record, but the content we already consumed changed
+            if size > ent["offset"]:
+                f.seek(ent["offset"])
+                data = f.read(size - ent["offset"])
+            else:
+                data = b""
+    except OSError:
+        return None
+    if data:
+        lines, consumed = _complete_lines(data)
+        if consumed:
+            ent["offset"] += consumed
+            # Roll the signature forward from bytes already in hand rather than re-reading --
+            # concatenating the old one covers a consumed chunk shorter than the window.
+            ent["sig"] = (ent["sig"] + data[:consumed])[-_TAIL_CACHE_SIG_BYTES:]
+        if lines:
+            ent["rows"].extend(_parse_records(lines, ent["pool"]))
+            excess = len(ent["rows"]) - _TAIL_CACHE_MAX_ROWS
+            if excess > 0:
+                del ent["rows"][:excess]
+                ent["whole_file"] = False
+    return ent["rows"]
+
+
+def _seed_cache(sims_file: Path, limit: int, size: int) -> list:
+    """Full (widening) tail read, seeding the cache so later calls only pay for new rows.
+
+    Parses only newline-terminated lines, so the recorded byte offset always sits on a line
+    boundary -- a record whose trailing newline hasn't landed yet is simply picked up by the
+    next call rather than being counted now and again later."""
+    want = max(limit, 1)
+    rows: list = []
+    reached_start = False
+    pool: dict = {}
+    while True:
+        raw_lines, reached_start = _tail_lines(sims_file, want)
+        rows = _parse_records(raw_lines, pool)
+        if len(rows) >= limit or reached_start:
+            break
+        want *= 2
+    rows = rows[-_TAIL_CACHE_MAX_ROWS:]
+    try:
+        offset = _last_newline_offset(sims_file, size)
+        with open(sims_file, "rb") as f:
+            prefix = f.read(_TAIL_CACHE_PREFIX_BYTES)
+            sig = _signature_at(f, offset)
+    except OSError:
+        return rows[-limit:]  # unreadable for caching purposes; the rows we have are still fine
+    _tail_cache[sims_file] = {"prefix": prefix, "sig": sig, "offset": offset, "rows": rows,
+                              "whole_file": reached_start and len(rows) <= _TAIL_CACHE_MAX_ROWS,
+                              "pool": pool}
+    return rows[-limit:]
+
+
+def _last_newline_offset(sims_file: Path, size: int) -> int:
+    """Byte offset just past the file's final newline -- i.e. the end of the last COMPLETE line.
+    Walks backwards in the same chunks as _tail_lines rather than scanning forward."""
+    with open(sims_file, "rb") as f:
+        pos = size
+        while pos > 0:
+            step = min(_TAIL_CHUNK_BYTES, pos)
+            pos -= step
+            f.seek(pos)
+            i = f.read(step).rfind(b"\n")
+            if i != -1:
+                return pos + i + 1
+    return 0
+
+
 def load_recent_simulations(sims_file: Path, limit: int) -> list:
     """The most recent `limit` logged simulations, oldest first -- identical to
     load_simulations(sims_file)[-limit:], but without reading or parsing the rest of the file.
@@ -596,10 +811,11 @@ def load_recent_simulations(sims_file: Path, limit: int) -> list:
     of it, and that waste grew every single round. Reading the tail makes retrain cost depend
     on MAX_ROWS_FOR_ANALYSIS instead of on total history, so it stays flat forever.
 
-    Deliberately holds no cache: these records are large (~5 KB each), so memoizing a few
-    thousand per son across 6 sons would cost hundreds of MB, and any cross-call cache would
-    also need invalidating against full_reset()/archive-merge rewrites. A bounded tail read is
-    both cheaper and impossible to serve stale.
+    Results are cached and extended incrementally between calls -- see the block comment above
+    _TAIL_CACHE_MAX_ROWS for why that's both safe (append-only file, plus explicit guards
+    against the two operations that aren't appends) and worth its memory. An earlier version of
+    this docstring refused a cache on memory grounds; that was re-measured rather than assumed,
+    and the pooling below changed the answer.
 
     Same skip-corrupt-lines convention as load_simulations -- but a skipped line must not eat
     into the requested count the way it would if we simply parsed the last `limit` lines and
@@ -610,15 +826,18 @@ def load_recent_simulations(sims_file: Path, limit: int) -> list:
     once the whole file has been walked."""
     if limit <= 0 or not sims_file.exists():
         return []
-    want = limit
-    while True:
-        raw_lines, reached_start = _tail_lines(sims_file, want)
-        out = []
-        for raw in raw_lines:
-            try:
-                out.append(SimulationRecord(**json.loads(raw.decode("utf-8"))))
-            except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
-                continue
-        if len(out) >= limit or reached_start:
-            return out[-limit:]
-        want *= 2
+    try:
+        size = sims_file.stat().st_size
+    except OSError:
+        return []
+    with _lock_for(sims_file):
+        ent = _tail_cache.get(sims_file)
+        if ent is not None:
+            rows = _extend_cached(sims_file, ent, size)
+            # A short cache can still be the honest answer, but only if it holds the whole file;
+            # otherwise there are older rows on disk we haven't looked at, so fall through and
+            # re-read a wider window.
+            if rows is not None and (len(rows) >= limit or ent["whole_file"]):
+                return rows[-limit:]
+            _tail_cache.pop(sims_file, None)
+        return _seed_cache(sims_file, limit, size)

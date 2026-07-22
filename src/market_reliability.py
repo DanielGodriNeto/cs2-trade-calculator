@@ -301,6 +301,31 @@ def _unit_cache_key(name: str, currency: int, u: dict) -> tuple:
             tuple(reasons) if reasons is not None else None)
 
 
+def _resolved_state(name: str, currency: int, u: dict, cache: dict | None) -> str:
+    """The unit's effective reliability state ("healthy"/"suspicious"/"excluded") -- a manual
+    override wins outright, otherwise it's computed fresh. Exactly what is_excluded() compares
+    against, and exactly what training_weight() classifies on.
+
+    Extracted so those two share ONE memo entry instead of two. sim_learning.train() walks every
+    row through any_unit_excluded and then walks the survivors through training_weight with the
+    same dict, and the two used to key the identical compute_state()+_get_override() derivation
+    under separate "excluded"/"weight_unit" prefixes -- so the second pass recomputed a state the
+    first pass had already discarded down to a bool. Keyed on the full _unit_cache_key (the
+    per-record dead_skin_score genuinely changes this answer)."""
+    key = (("state",) + _unit_cache_key(name, currency, u)) if cache is not None else None
+    if key is not None and key in cache:
+        return cache[key]
+    override = _get_override(name, currency)
+    if override is not None:
+        state = override["state"]
+    else:
+        state = compute_state(name, currency, dead_skin_score=u.get("dead_skin_score"),
+                               dead_skin_reasons=u.get("dead_skin_reasons")).state
+    if key is not None:
+        cache[key] = state
+    return state
+
+
 def any_unit_excluded(input_mix: list, output_distribution: list, currency: int,
                        stattrak: bool = False, cache: dict | None = None) -> bool:
     """True if any counted input or output unit is currently Excluded -- the single predicate
@@ -322,16 +347,10 @@ def any_unit_excluded(input_mix: list, output_distribution: list, currency: int,
     ranking.py / sim_loop.py. None (default) is the original uncached behavior."""
     for u in list(input_mix or []) + list(output_distribution or []):
         name = steam_prices_mod.market_hash_name(u["skin"], u["wear"], stattrak)
-        if cache is None:
-            excluded = is_excluded(name, currency, dead_skin_score=u.get("dead_skin_score"),
-                                    dead_skin_reasons=u.get("dead_skin_reasons"))
-        else:
-            key = ("excluded",) + _unit_cache_key(name, currency, u)
-            if key not in cache:
-                cache[key] = is_excluded(name, currency, dead_skin_score=u.get("dead_skin_score"),
-                                          dead_skin_reasons=u.get("dead_skin_reasons"))
-            excluded = cache[key]
-        if excluded:
+        # Memoizes the full state string rather than this call's own bool, so training_weight()
+        # -- which needs the same state for a three-way classification, not a yes/no -- can
+        # reuse the entry instead of re-deriving it. See _resolved_state.
+        if _resolved_state(name, currency, u, cache) == "excluded":
             return True
     return False
 
@@ -471,7 +490,18 @@ def market_metrics(market_hash_name: str, currency: int) -> dict:
     values = sorted(prices.values())
     n = len(values)
     consensus = statistics.median(values) if values else None
-    variance = statistics.pvariance(values) if n >= 2 else None
+    # Population variance, computed in plain float rather than via statistics.pvariance.
+    # `values` is at most 3 numbers (steam/skinport/buff163), and pvariance runs exact
+    # Fraction arithmetic to protect a precision this caller has no use for -- profiled over
+    # 835 distinct units it was 66% of this whole function's cost and called math.gcd 19,441
+    # times to average three floats. The two-pass formula below is 28x faster and returned a
+    # bit-identical result on real inputs. Two-pass (mean first, then squared deviations)
+    # rather than the E[x^2]-E[x]^2 shortcut, which is the numerically unstable one.
+    if n >= 2:
+        _mean = sum(values) / n
+        variance = sum((v - _mean) ** 2 for v in values) / n
+    else:
+        variance = None
 
     # source_agreement_pct measures whether the INDEPENDENT third-party feeds (Skinport,
     # Buff163) corroborate each other -- deliberately EXCLUDING Steam. Steam Community Market
@@ -538,8 +568,9 @@ def training_weight(input_mix: list, output_distribution: list, currency: int,
 
     cache: optional caller-owned memo, exactly the same contract and rationale as
     any_unit_excluded's -- and deliberately the SAME dict in sim_learning.train(), since that
-    function walks every row's units through both functions back to back. Keys are namespaced
-    per function so the two never collide."""
+    function walks every row's units through both functions back to back. The two SHARE their
+    state entries (see _resolved_state) rather than merely avoiding collisions; the metrics
+    entries below are this function's alone, under their own key prefix."""
     units = list(input_mix or []) + list(output_distribution or [])
     if not units:
         return WEIGHT_STEAM_ONLY, "no_units"
@@ -548,22 +579,26 @@ def training_weight(input_mix: list, output_distribution: list, currency: int,
     any_disagreement = False
     for u in units:
         name = steam_prices_mod.market_hash_name(u["skin"], u["wear"], stattrak)
-        key = (("weight_unit",) + _unit_cache_key(name, currency, u)) if cache is not None else None
-        cached = cache.get(key) if cache is not None else None
+        # State comes from the shared memo any_unit_excluded already populated for this batch
+        # (see _resolved_state) -- in sim_learning.train() every unit reaching here has
+        # necessarily been through that filter first, so this half is a dict hit.
+        state = _resolved_state(name, currency, u, cache)
+        # The market-metrics half is memoized SEPARATELY, and on (name, currency) alone:
+        # market_metrics() takes no per-record arguments, so units that differ only in their
+        # stamped dead_skin_score share one entry here even though they need distinct state
+        # entries above. This is the expensive half (profiled at ~89% of a weight pass).
+        m_key = ("metrics", name, currency) if cache is not None else None
+        cached = cache.get(m_key) if cache is not None else None
         if cached is None:
-            rs = compute_state(name, currency, dead_skin_score=u.get("dead_skin_score"),
-                                dead_skin_reasons=u.get("dead_skin_reasons"))
-            override = _get_override(name, currency)
-            state = override["state"] if override is not None else rs.state
             metrics = market_metrics(name, currency)
             has_thirdparty = any(s != "steam" for s in metrics["sources"])
             disagrees = (has_thirdparty
                           and metrics["source_agreement_pct"] is not None
                           and metrics["source_agreement_pct"] < 100.0 - SOURCE_DISAGREEMENT_PCT)
-            cached = (state, has_thirdparty, disagrees)
+            cached = (has_thirdparty, disagrees)
             if cache is not None:
-                cache[key] = cached
-        state, has_thirdparty, disagrees = cached
+                cache[m_key] = cached
+        has_thirdparty, disagrees = cached
         if state == "excluded":
             return WEIGHT_ANOMALY, "known_anomaly"
         if state == "suspicious":

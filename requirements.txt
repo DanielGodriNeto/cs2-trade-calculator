@@ -19,6 +19,13 @@ scikit-learn>=1.3
 # since src/learning.py imports it directly to save/load the trained ROI model.
 joblib>=1.3
 
+# Already installed transitively by scikit-learn; listed explicitly because src/ml_common.py
+# imports it directly to cap the native OpenMP/BLAS thread pools during a fit (see
+# _thread_limit() there -- sim_loop.py's 6 concurrent population sons would otherwise put ~96
+# native threads on 16 cores and turn a 4s retrain into a 25s one). The import is guarded and
+# falls back to "no limit", so a missing threadpoolctl costs speed, never correctness.
+threadpoolctl>=3.1
+
 # Used ONLY by web/server.py's "Export full spreadsheet (.xlsx)" button (src/xlsx_export.py) --
 # builds a formatted, multi-sheet local Excel workbook (every archived trade-up opportunity,
 # agent stats/history, leaderboards, model quality) with embedded charts. Imported lazily inside
