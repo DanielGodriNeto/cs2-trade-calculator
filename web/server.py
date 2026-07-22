@@ -691,6 +691,13 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                         "masked_key": connections_config_mod.masked_key(cfg.get("csfloat_api_key")),
                         "note": pattern_status.get("csfloat_key_note"),
                     },
+                    # Steam session token -- masked_key() only, the raw value never leaves the
+                    # server (see connections_config.configure/pattern_scanner.configure_steam_cookie).
+                    "steam_session": {
+                        "configured": bool(pattern_status.get("steam_login_cookie_configured")),
+                        "masked_key": connections_config_mod.masked_key(cfg.get("steam_login_secure")),
+                        "note": pattern_status.get("steam_login_cookie_note"),
+                    },
                     "github_backup": backup_engine_mod.get_status(backup_worker),
                     "ntfy": {
                         "configured": alerts_mod.configured(),
@@ -922,6 +929,45 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 result = backup_engine_mod.run_backup(force=True)
                 return self._send_json({"ok": result.get("ok", False), "result": result})
 
+            if path == "/api/connections/steam-session":
+                # Written to ONLY by the bundled helper extension (extension/), which is the one
+                # thing that can read the steamLoginSecure cookie -- it is HttpOnly, so no page
+                # script or bookmarklet can, by design.
+                #
+                # Threat model, since this accepts a session token: the server already binds
+                # 127.0.0.1 only, so nothing off-machine can reach it. The remaining exposure is
+                # a malicious PAGE in the user's own browser POSTing here cross-origin. Two
+                # things close that: (1) a browser extension sends Origin: chrome-extension://...
+                # (or moz-extension://), and a normal web page cannot forge that header; (2) a
+                # page attempting this with Content-Type: application/json triggers a CORS
+                # preflight we never answer. Worst case for a forged post is a bogus cookie that
+                # makes scanning fail loudly -- it can never read the stored value back, since
+                # every read path masks it.
+                origin = self.headers.get("Origin") or ""
+                if origin and not origin.startswith(("chrome-extension://", "moz-extension://",
+                                                      "safari-web-extension://")):
+                    return self._send_json(
+                        {"ok": False, "error": "this endpoint only accepts posts from the "
+                                                "bundled browser extension"}, 403)
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                value = (body.get("steam_login_secure") or "").strip()
+                if not value:
+                    return self._send_json(
+                        {"ok": False, "error": "no steamLoginSecure value sent -- are you "
+                                                "logged into Steam in this browser?"}, 400)
+                cfg = connections_config_mod.save_config({"steam_login_secure": value})
+                connections_config_mod.apply_to_runtime(cfg)
+                # Never echo the value, not even to the extension that just sent it.
+                return self._send_json({
+                    "ok": True,
+                    "masked_key": connections_config_mod.masked_key(cfg.get("steam_login_secure")),
+                    "message": "Steam session saved -- the Rare Patterns scanner now uses "
+                               "Steam's authenticated rate limit.",
+                })
+
             if path == "/api/connections/config":
                 try:
                     body = self._read_json_body()
@@ -932,6 +978,8 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 return self._send_json({"ok": True, "config": {
                     "csfloat_configured": bool(cfg.get("csfloat_api_key")),
                     "csfloat_masked_key": connections_config_mod.masked_key(cfg.get("csfloat_api_key")),
+                    "steam_session_configured": bool(cfg.get("steam_login_secure")),
+                    "steam_session_masked_key": connections_config_mod.masked_key(cfg.get("steam_login_secure")),
                     "ntfy_enabled": cfg.get("ntfy_enabled"),
                     "ntfy_topic": cfg.get("ntfy_topic"),
                     "ntfy_server": cfg.get("ntfy_server"),
@@ -1130,12 +1178,22 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                                              "error": friendly.get(reason, f"not a legal contract: {reason}")}, 400)
                 record = simulate_mod.simulate(candidate, currency=currency, live_fetch=True)
                 if isinstance(record, simulate_mod.InvalidSimulation):
+                    errors = {
+                        "incomplete_inputs": ("couldn't price every input "
+                                               f"({record.n_priced_input_units}/"
+                                               f"{record.n_required_input_units} priced)"),
+                        # Distinct from no_output_price: SOME outputs priced, not all. Worth
+                        # saying plainly -- the ROI isn't merely unavailable, it would have been
+                        # inflated (see oddsmath's unpriced-outputs section), and the user is
+                        # staring at a contract that looks perfectly fine.
+                        "incomplete_outputs": ("couldn't price every possible output -- this "
+                                                "contract can land on a skin with no price, so any "
+                                                "ROI would only count the outputs that did price "
+                                                "and come out too high"),
+                    }
                     return self._send_json({
                         "ok": False,
-                        "error": ("couldn't price every input "
-                                   f"({record.n_priced_input_units}/{record.n_required_input_units} priced)"
-                                   if record.reason == "incomplete_inputs"
-                                   else "no output skin has a usable price right now"),
+                        "error": errors.get(record.reason, "no output skin has a usable price right now"),
                         "reason": record.reason}, 422)
                 return self._send_json({"ok": True, "result": asdict(record)})
 

@@ -163,3 +163,55 @@ def group_odds(groups: list[tuple[int, int]]) -> list[float]:
         group_share = c / total_inputs
         out.append(group_share / n_out * 100)
     return out
+
+
+# --- Unpriced outputs: the single rule every EV engine shares ---------------------------------
+#
+# An output skin with no usable price is still a real outcome you can land on. Every EV engine
+# here used to average ONLY the outputs it managed to price -- i.e. divide by the priced subset
+# instead of the contract's full odds. That silently renormalizes the unpriced outcomes away and
+# hands their probability mass to the priced ones, so a contract where 4 of 7 outputs are
+# unpriced reported the average of the 3 priced (usually the expensive, liquid ones) as if it
+# were certain. Measured on this project's own checkpoints, that turned a real -52% ROI into a
+# displayed +19.7%, and those inflated rows then fed sim_learning.py as training labels.
+#
+# Two rules replace it, both applied through the helpers below:
+#   1. expected_revenue_full_odds() divides by the FULL odds mass. An unpriced output
+#      contributes 0 revenue, never a free re-weighting of the priced ones, so the EV is an
+#      honest floor rather than a best case.
+#   2. fully_priced() gates the result. A price this tool can't see is not evidence of a cheap
+#      skin -- it usually means nothing has sold on Steam recently, which is exactly the output
+#      you can't liquidate. So a contract is only reported/trained on when EVERY output carries
+#      a price; anything less is incomplete data, handled the same way simulate.py already
+#      handles an incompletely-priced INPUT side (InvalidSimulation, reason="incomplete_*").
+PRICED_ODDS_EPSILON_PP = 0.05  # float-comparison slack on the "all outputs priced" check --
+# per-output odds are computed by division (group_share / n_out * 100), so a fully priced
+# contract's priced mass can land a hair under the total instead of exactly on it.
+
+
+def expected_revenue_full_odds(revenue_weighted: list, total_odds_pct: float) -> float:
+    """Expected revenue over the contract's FULL odds -- see this section's header.
+
+    revenue_weighted: [(price, odds_pct), ...] for the PRICED outputs only.
+    total_odds_pct: the summed odds of EVERY output, priced or not (normally 100.0, but
+    callers pass their own computed total so a group_odds() rounding residue doesn't shift
+    the result).
+
+    Unpriced outputs are the difference between the two and contribute 0."""
+    if total_odds_pct <= 0:
+        return 0.0
+    return sum(v * p for v, p in revenue_weighted) / total_odds_pct
+
+
+def priced_odds_pct(revenue_weighted: list) -> float:
+    """The share of the contract's outcomes (in odds, not skin count) that carry a price."""
+    return sum(p for _, p in revenue_weighted)
+
+
+def fully_priced(priced_odds: float, total_odds_pct: float) -> bool:
+    """Whether EVERY output of this contract is priced -- the gate described in this section's
+    header. Compares odds mass rather than counting skins so it reads the same for a uniform
+    single-collection contract and a multi-group mixed one."""
+    if total_odds_pct <= 0:
+        return False
+    return priced_odds >= total_odds_pct - PRICED_ODDS_EPSILON_PP

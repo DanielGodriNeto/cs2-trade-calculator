@@ -121,7 +121,7 @@ def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
     # Same positive-ROI wear-order sanity check as the regular scan (see tradeup.py /
     # wear_anomaly.py): a priced output whose own better condition is cheaper is a bad data
     # point, not revenue -- drop it before this result can look profitable off it.
-    if revenues and cost and (sum(revenues) / len(revenues)) * (1 - STEAM_SELL_FEE) >= cost:
+    if revenues and cost and (sum(revenues) / len(outputs)) * (1 - STEAM_SELL_FEE) >= cost:
         for out_skin, drop in zip(outputs, drops):
             if drop.price is None or (abort_check and abort_check()):
                 continue
@@ -135,10 +135,14 @@ def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
         revenues = [d.price for d in drops if d.price is not None]
         priced = len(revenues)
 
-    if not revenues:
+    # Same all-or-nothing output rule as the regular scan (see tradeup.py's own comment and
+    # oddsmath's unpriced-outputs section) -- and it bites hardest here: a knife/glove pool
+    # where only the headline knife prices would otherwise report that knife's price as the
+    # expected outcome of every single contract.
+    if not revenues or priced < len(outputs):
         return None
     drops.sort(key=lambda d: (d.price is None, -(d.price or 0)))
-    expected_revenue = sum(revenues) / len(revenues)
+    expected_revenue = sum(revenues) / len(outputs)
     after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
     profit = after_fee - cost
     roi = (profit / cost * 100) if cost else 0.0

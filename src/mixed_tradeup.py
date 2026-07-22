@@ -127,10 +127,17 @@ def find_best_filler_mix(primary_collection: str, primary_baseline_roi: float, i
                 price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
                 if price_val is not None:
                     revenues_weighted.append((price_val, filler_odds))
-            total_prob = sum(p for _, p in revenues_weighted)
-            if total_prob <= 0:
+            # Full odds mass of both groups' outputs, priced or not -- an unpriced output is
+            # still an outcome this contract can land on, so it must stay in the denominator
+            # rather than have its probability handed to the priced ones. Filler mixes are
+            # especially exposed: a filler collection is picked for its cheap INPUTS, and its
+            # outputs are correspondingly the thin, often-unpriced ones. See oddsmath's
+            # unpriced-outputs section.
+            total_prob = primary_odds * len(primary_outputs) + filler_odds * len(f_outputs)
+            priced_prob = oddsmath.priced_odds_pct(revenues_weighted)
+            if total_prob <= 0 or not oddsmath.fully_priced(priced_prob, total_prob):
                 continue
-            expected_revenue = sum(v * p for v, p in revenues_weighted) / total_prob
+            expected_revenue = oddsmath.expected_revenue_full_odds(revenues_weighted, total_prob)
             after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
             profit = after_fee - cost
             roi = (profit / cost * 100) if cost else 0.0

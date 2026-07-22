@@ -142,16 +142,23 @@ def evaluate_float_strategies(input_skin: dict, outputs: list, stattrak: bool, c
 
         revenues = []
         landed_counts: dict[str, int] = {}
+        unpriced = False
         for skin, price_map in zip(outputs, output_price_maps):
             landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
             if landed_wear not in price_map:
-                continue  # this output skin doesn't have a listing at the wear it would land in
+                # This output has no listing at the wear this mix would land it in. Skipping it
+                # and averaging the rest is what made float-mixing look like free ROI: steering
+                # the landed wear into a bracket where the cheap outputs happen to have no
+                # listings doesn't remove those outcomes from the contract, it only removes them
+                # from the average. See oddsmath's unpriced-outputs section.
+                unpriced = True
+                break
             revenues.append(price_map[landed_wear])
             landed_counts[landed_wear] = landed_counts.get(landed_wear, 0) + 1
-        if not revenues:
+        if unpriced or not revenues:
             continue
 
-        expected_revenue = sum(revenues) / len(revenues)
+        expected_revenue = sum(revenues) / len(outputs)
         after_fee = expected_revenue * (1 - fee)
         profit = after_fee - cost
         roi = (profit / cost * 100) if cost else 0.0

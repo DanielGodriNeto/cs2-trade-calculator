@@ -159,7 +159,29 @@ TRAIN_MAX_CONCURRENCY = 2
 _train_slots = threading.Semaphore(TRAIN_MAX_CONCURRENCY)
 
 FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "filler_fraction",
-                  "stattrak", "cost", "collection_mean_expected_roi"]
+                  "stattrak", "collection_mean_expected_roi"]
+# `cost` deliberately excluded -- the same train/serve-skew reasoning as learning.py's
+# thirdparty_gap_pct comment, arrived at from the opposite direction. It USED to be in this
+# list, and by permutation importance it looked like one of the strongest features (2nd of 8 on
+# sons 1/2/4). But a candidate isn't priced until simulate.simulate() runs, so the only caller
+# that matters -- predict_expected_roi(), scoring not-yet-simulated candidates -- could only
+# ever pass cost=NaN. Training rows, in contrast, always carry a real cost, so the model never
+# saw a missing value for this column during fitting and HistGradientBoosting fell back to its
+# arbitrary default branch at every cost split the moment it was asked to actually select
+# something. The reported CV MAE measured a condition (true cost known) that never occurs at
+# selection time, so it was flattering a model that was materially worse at its only job.
+#
+# Measured 4-fold on all 6 sons' real rows, the three regimes:
+#     train with cost, score with the true cost (what the dashboard used to report)   3.726
+#     train with cost, score with cost=NaN      (what selection ACTUALLY received)    7.927
+#     train without cost                        (train and serve agree -- this)       4.582
+# So dropping the feature cuts real selection error 42% (son_2, the most data-rich: 10.04 ->
+# 2.45). The dashboard's MAE will read HIGHER than it used to (3.7 -> 4.6) -- that is the point:
+# the old number was measuring a fiction. Nothing else about the model changed.
+#
+# Re-adding it later is a real option, but only alongside a cost ESTIMATE cheap enough to
+# compute pre-simulation (warm-cache unit prices would cover most candidates); feeding NaN
+# again would just reproduce the skew.
 
 RARITY_RANK_BY_NAME = {name: idx for idx, (_, name) in enumerate(data_mod.RARITY_CHAIN)}
 
@@ -196,6 +218,12 @@ def _wear_spread(input_mix: list) -> tuple:
 
 def _feature_vector(*, from_rarity, input_mix, primary_collection, stattrak, cost,
                      collection_mean_roi) -> list:
+    # `cost` is accepted but NOT included below -- see the FEATURE_NAMES comment for why
+    # (it's unknowable at candidate-selection time, so training on it taught the model a
+    # split it could never take when it mattered). Kept in the signature so both call sites
+    # stay unchanged and re-adding it later, once a pre-simulation cost estimate exists,
+    # doesn't mean touching them again -- same convention as learning._feature_vector's
+    # thirdparty_gap_pct.
     n_legs = len({row["collection"] for row in input_mix}) or 1
     n_distinct_wears, wear_spread = _wear_spread(input_mix)
     primary_count = sum(row["count"] for row in input_mix if row["collection"] == primary_collection)
@@ -208,7 +236,6 @@ def _feature_vector(*, from_rarity, input_mix, primary_collection, stattrak, cos
         wear_spread,
         filler_fraction,
         1.0 if stattrak else 0.0,
-        float(cost),
         float(collection_mean_roi) if collection_mean_roi is not None else float("nan"),
     ]
 
@@ -483,6 +510,16 @@ def get_model_status(model_dir: Path) -> dict:
     except json.JSONDecodeError:
         return {"trained": False, "n_samples": 0, "validation_mae": None, "trained_at": None,
                 "min_samples_required": MIN_TRAINING_SAMPLES}
+    # A model persisted against a DIFFERENT feature set can't be used: predict_expected_roi
+    # would hand sklearn an array with the wrong column count and raise mid-round. Reporting
+    # it as untrained instead makes the next round fall back to novelty-only scoring and the
+    # next retrain overwrite it -- the same self-healing path a son that never trained takes,
+    # so changing FEATURE_NAMES never needs a manual model wipe. (This bit first, when `cost`
+    # was dropped from FEATURE_NAMES -- every son on disk carried an 8-column model.)
+    if list(meta.get("feature_names") or []) != FEATURE_NAMES:
+        return {"trained": False, "n_samples": 0, "validation_mae": None, "trained_at": None,
+                "min_samples_required": MIN_TRAINING_SAMPLES,
+                "stale_feature_set": True, "stale_feature_names": meta.get("feature_names")}
     return {"trained": True, "min_samples_required": MIN_TRAINING_SAMPLES, **meta}
 
 

@@ -862,3 +862,135 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   .table-scroll table { display: table; white-space: normal; }
   .kpi-grid, .leaderboards-grid, .nav-card-grid, .conn-summary-grid { grid-template-columns: 1fr; }
 }
+
+/* --- Rare Patterns: card view -------------------------------------------------------------
+   Results as scannable cards (image, price, profit, direct buy link) instead of a dense row.
+   Pattern tier drives a colour ladder -- gold / purple / blue, the same rarity-colour instinct
+   CS players already read -- so a Tier 1 is recognisable before any number is parsed. Tiers
+   come from pattern_db's own entries, not a separate hand-kept list. */
+.view-toggle { display: inline-flex; margin-left: 10px; vertical-align: middle; }
+.view-toggle-btn {
+  font: inherit;
+  font-size: 0.8em;
+  padding: 2px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.view-toggle-btn + .view-toggle-btn { border-left: none; }
+.view-toggle-btn.is-active { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+
+.pattern-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.pattern-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--border-strong);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.pattern-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.pattern-card.tier-1 { border-top-color: var(--warn); }
+.pattern-card.tier-2 { border-top-color: var(--classified); }
+.pattern-card.tier-3 { border-top-color: var(--restricted); }
+
+.pattern-card-media {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 118px;
+  background: var(--panel-raised);
+  border-bottom: 1px solid var(--border);
+}
+.pattern-card-media img { max-height: 104px; max-width: 92%; object-fit: contain; }
+.pattern-card-media.no-img::after {
+  content: "no image";
+  color: var(--muted);
+  font-size: 0.75em;
+}
+.pattern-card-tier,
+.pattern-card-edge {
+  position: absolute;
+  top: 6px;
+  font-size: 0.7em;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  background: rgba(10, 12, 10, 0.85);
+}
+.pattern-card-tier { left: 6px; color: var(--muted); }
+.tier-1 .pattern-card-tier { color: var(--warn); border-color: var(--warn); }
+.tier-2 .pattern-card-tier { color: var(--classified); border-color: var(--classified); }
+.tier-3 .pattern-card-tier { color: var(--restricted); border-color: var(--restricted); }
+.pattern-card-edge { right: 6px; }
+.pattern-card-edge.pos { color: var(--profit); border-color: var(--accent-dim); }
+.pattern-card-edge.neg { color: var(--loss); border-color: var(--loss); }
+
+.pattern-card-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; flex: 1; }
+.pattern-card-name { margin: 0; font-size: 0.9em; font-weight: 600; line-height: 1.35; }
+.pattern-card-pattern { font-size: 0.8em; color: var(--muted); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.pattern-card-pattern strong { color: var(--text); font-weight: 500; }
+
+.pattern-card-specs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 10px; margin: 0; font-size: 0.78em; }
+.pattern-card-specs div { display: flex; justify-content: space-between; gap: 6px; border-bottom: 1px dotted var(--border); padding-bottom: 2px; }
+.pattern-card-specs dt { color: var(--muted); }
+.pattern-card-specs dd { margin: 0; }
+
+.pattern-card-prices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+.pattern-card-prices div { display: flex; flex-direction: column; gap: 1px; }
+.pattern-card-prices span { color: var(--muted); font-size: 0.7em; letter-spacing: 0.03em; }
+.pattern-card-prices strong { font-size: 0.92em; font-weight: 600; }
+
+.pattern-card-buy {
+  display: block;
+  text-align: center;
+  padding: 6px;
+  font-size: 0.82em;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  text-decoration: none;
+}
+.pattern-card-buy:hover { background: rgba(57, 217, 122, 0.1); border-color: var(--accent); }
+.pattern-card-buy.disabled { color: var(--muted); border-color: var(--border); cursor: default; }
+
+/* Connections: the Steam session cookie is a login token, not an API key -- its warning block
+   is deliberately louder than the surrounding disclaimers. */
+.disclaimer.warn-strong {
+  color: var(--text);
+  background: rgba(217, 168, 60, 0.07);
+  border-left: 2px solid var(--warn);
+  padding: 8px 10px;
+}
+.howto-list { margin: 0; padding-left: 18px; font-size: 0.85em; color: var(--muted); line-height: 1.7; }
+.howto-list code, .howto-list kbd { color: var(--text); }
+kbd {
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  padding: 0 4px;
+  font-size: 0.9em;
+}
+
+@media (max-width: 560px) {
+  .pattern-cards { grid-template-columns: 1fr; }
+}
+
+/* The recommended path for the Steam session cookie -- called out above the manual fallback. */
+.disclaimer.easiest-way {
+  color: var(--text);
+  background: rgba(57, 217, 122, 0.06);
+  border-left: 2px solid var(--accent-dim);
+  padding: 8px 10px;
+}

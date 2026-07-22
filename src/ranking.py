@@ -180,6 +180,13 @@ def _discovery_value(entry: dict) -> float:
     return min(100.0, (n - 1) / (MAX_MIXED_COLLECTIONS - 1) * 100.0)
 
 
+def _has_unpriced_output(entry: dict) -> bool:
+    """Whether any outcome this contract can land on has no price. An entry with no
+    output_distribution at all (a hand-built entry in a test, a legacy shape) is NOT treated as
+    unpriced -- there's nothing to judge, and rank() shouldn't silently drop it."""
+    return any(o.get("price") is None for o in (entry.get("output_distribution") or []))
+
+
 def score_breakdown(entry: dict, roi_lo: float, roi_hi: float, profit_lo: float, profit_hi: float) -> dict:
     return {
         "roi": _normalize(_effective_roi(entry), roi_lo, roi_hi),
@@ -217,6 +224,13 @@ def rank(entries: list) -> list:
     entries = [e for e in entries if not market_reliability_mod.any_unit_excluded(
         e.get("input_mix") or [], e.get("output_distribution") or [],
         currency=1, stattrak=e.get("stattrak", False))]
+    # Same hard exclusion for a partially-priced output side. simulate() now refuses to build a
+    # SimulationRecord at all in that case (reason="incomplete_outputs"), so this only ever
+    # catches entries admitted to a best list BEFORE that gate existed -- but those are already
+    # sitting in every son's checkpoint, and their ROI is the inflated priced-subset average
+    # (see oddsmath's unpriced-outputs section), so they'd otherwise keep ranking as top
+    # opportunities forever. Filtering on read retires them without rewriting live checkpoints.
+    entries = [e for e in entries if not _has_unpriced_output(e)]
     if not entries:
         return []
     rois = [_effective_roi(e) for e in entries]

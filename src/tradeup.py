@@ -306,7 +306,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
         # fake ROI dies here instead of reaching the results list, and let the registry keep
         # it excluded everywhere (including the strategy searches below) for the next 24h.
         # Prices come from the bulk mirror already in memory, so this costs no extra requests.
-        if revenues and cost and (sum(revenues) / len(revenues)) * (1 - STEAM_SELL_FEE) >= cost:
+        if revenues and cost and (sum(revenues) / len(outputs)) * (1 - STEAM_SELL_FEE) >= cost:
             for out_skin, drop in zip(outputs, drops):
                 if drop.price is None or (abort_check and abort_check()):
                     continue
@@ -320,10 +320,17 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
             revenues = [d.price for d in drops if d.price is not None]
             priced = len(revenues)
 
-        if not revenues:
+        # All-or-nothing on the output side: this contract can land on any of `outputs`, so one
+        # unpriced output means the honest expected revenue is unknown -- not "the average of
+        # the ones that worked". Averaging the priced subset silently hands the unpriced
+        # outcomes' probability to the priced ones, and the outputs that fail to price are
+        # disproportionately the illiquid cheap ones, so what survives is the expensive tail:
+        # the ROI comes out inflated in exactly the cases where it's least trustworthy.
+        # See oddsmath's unpriced-outputs section.
+        if not revenues or priced < len(outputs):
             continue
         drops.sort(key=lambda d: (d.price is None, -(d.price or 0)))
-        expected_revenue = sum(revenues) / len(revenues)
+        expected_revenue = sum(revenues) / len(outputs)
         after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
         profit = after_fee - cost
         roi = (profit / cost * 100) if cost else 0.0

@@ -13,19 +13,41 @@ Source coverage -- honest, up front (same disclosure style as thirdparty_prices.
     was removed on user request -- Steam price/listing checks stay Steam-first project-wide,
     third-party sources are for cross-verification only, never primary discovery). Steam's
     listings render endpoint (`/market/listings/730/<name>/render/`) returns each live
-    listing's price and an in-game inspect-link template; that link is resolved to
-    float/paint seed/paint index/stickers through CSFloat's separate, public INSPECT endpoint
-    (api.csfloat.com -- an optional CSFLOAT_API_KEY improves its rate budget but is NOT
-    required, unlike the removed listings API). This is also the only way to actually buy a
-    matched pattern directly on the Steam Market.
-  - HONEST CAVEAT: Steam rate-limits this anonymous render endpoint aggressively (the same
-    policy documented in steam_prices.py's history with priceoverview) -- a scan can spend
-    real wall-clock time sitting out 429 cooldowns rather than actively finding listings. An
-    optional STEAM_LOGIN_SECURE_COOKIE env var (your own Steam session's `steamLoginSecure`
-    cookie value) is honored if set and dramatically raises Steam's rate limit for this
-    endpoint, same as any authenticated browser session gets; without it the scanner still
-    runs, just slower and burstier, self-reporting every cooldown in the status panel rather
-    than hiding it.
+    listing's price and an in-game inspect-link template. This is also the only way to
+    actually buy a matched pattern directly on the Steam Market.
+  - WHY STEAM AND NOT A SEED-INDEXED MARKETPLACE (2026-07-22, user's call, and it is the right
+    one): CSFloat/Skinport expose paint_seed as a server-side indexed filter, so "find every
+    Blue Gem" there is one request instead of thousands. But that index is exactly why the EDGE
+    is gone there -- a seller on a seed-indexed marketplace can see their own pattern, and
+    prices it accordingly. The mispricing this engine hunts only exists where the seller does
+    not know what they have, and that is Steam: no seed display, no pattern filter, casual
+    sellers dumping inventory at "ordinary" prices. Scanning fast against the wrong market
+    finds nothing worth buying.
+  - Float/paint seed/paint index come from THE RENDER PAYLOAD ITSELF -- zero extra network
+    calls, microseconds per listing, no API key. Verified live 2026-07-22 against 85 AK-47 Case
+    Hardened listings: each asset carries `asset_properties` with propid 1 = paint seed,
+    propid 2 = float, propid 6 = a self-encoding inspect payload, and the inspect link is a
+    template (`+csgo_econ_action_preview %propid:6%`) filled from those same properties.
+    Decoding propid 6 (inspect_decode.py) reproduced Steam's own propid 1 and 2 EXACTLY on
+    85/85 assets, so the two sources independently corroborate each other; the decode is what
+    also yields paint_index, which Steam does not publish as a property and which the
+    Doppler/Gamma Doppler entries match on. This is the same trick the fast browser extensions
+    use (CS2 Float Scanner: "instant float display -- no delays or queues", "no external
+    requests"). It replaces the old per-listing call to CSFloat's hosted INSPECT endpoint,
+    which is GONE: api.csfloat.com no longer resolves (NXDOMAIN) and csfloat/inspect was
+    archived 2026-03-25. Legacy M/A/D links carry no embedded data; those fall back to Steam's
+    own properties, then to an inspect service only if INSPECT_API_URL is set, and are counted
+    honestly in the status panel rather than silently dropped.
+  - CORRECTED 2026-07-22, and this module was wrong about it for a long time: the endless
+    "HTTP 429" from the render endpoint was NOT primarily a rate limit. That URL is an XHR the
+    market page fires, and Steam rejects calls that don't carry the headers a browser sends with
+    it -- answering 429 rather than 403, which is exactly why it read as throttling. Same URL,
+    same cookie, same second: without the headers 429, with them 200 and a full page of
+    listings (see _fetch_steam_listings). Sending them is mandatory, not politeness.
+    A real rate limit does exist on top of that, so REQUEST_INTERVAL_SECONDS pacing and the
+    429 cooldown below both stay. STEAM_LOGIN_SECURE_COOKIE (settable from the dashboard's
+    Connections page, or as an env var) raises that limit the way any logged-in browser gets.
+    Since seed resolution is now free, this render call is the ONLY per-target network cost.
   - The Skinport/Buff163 bulk mirrors remain price-only cross-checks for the VALUATION side
     (the base price a pattern's premium is measured against) -- they were never a listing
     source and still aren't; that's a documented limitation, not a silent gap.
@@ -56,6 +78,7 @@ have their confidence demoted and are marked accordingly rather than silently tr
 import json
 import os
 import random
+import re
 import threading
 import time
 import urllib.parse
@@ -63,15 +86,17 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+from . import inspect_decode
 from . import market_reliability as market_reliability_mod
 from . import net
+from . import oddsmath
 from . import pattern_db as pattern_db_mod
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OPPORTUNITIES_FILE = DATA_DIR / "pattern_opportunities.json"
 
 CSFLOAT_API_KEY = os.environ.get("CSFLOAT_API_KEY")  # optional, shared with thirdparty_prices --
-# only used here for the INSPECT endpoint's rate budget (see _resolve_inspect_link); the
+# only used here for the optional fallback INSPECT service (see _resolve_via_api); the
 # listings-API source that used to require this key was removed, see module docstring.
 STEAM_LOGIN_SECURE_COOKIE = os.environ.get("STEAM_LOGIN_SECURE_COOKIE")  # optional; see
 # module docstring's honest caveat about anonymous Steam rate limits
@@ -84,6 +109,25 @@ def configure_csfloat_key(key: str | None):
     rate budget now (see module docstring) -- Steam listing scanning works without it."""
     global CSFLOAT_API_KEY
     CSFLOAT_API_KEY = key or None
+
+
+def configure_steam_cookie(value: str | None):
+    """Live setter for STEAM_LOGIN_SECURE_COOKIE, so the dashboard's Connections page can set it
+    without a process restart (_fetch_steam_listings reads this at call time).
+
+    SECURITY, stated plainly because this value is not an API key: steamLoginSecure IS a Steam
+    session token. Anything holding it can act as that Steam account on Steam's web endpoints.
+    It is therefore persisted ONLY to connections.local.json -- gitignored, and deliberately
+    outside data/ so backup_engine's 6-hourly archive sweep can never push it anywhere (see
+    connections_config.py's docstring) -- never logged, and never echoed back to the browser in
+    full (connections_config.masked_key)."""
+    global STEAM_LOGIN_SECURE_COOKIE
+    value = (value or "").strip() or None
+    # Users paste either the raw value or the whole "steamLoginSecure=<value>" cookie pair from
+    # devtools; accept both rather than silently sending a malformed cookie header.
+    if value and value.lower().startswith("steamloginsecure="):
+        value = value.split("=", 1)[1].strip()
+    STEAM_LOGIN_SECURE_COOKIE = value
 
 # Steam Market per-listing scan (see module docstring, "STEAM MARKET"): the listings render
 # endpoint returns each live listing's price AND its inspect-link template; the CSFloat
@@ -104,28 +148,44 @@ def configure_csfloat_key(key: str | None):
 #     blind fixed-minutes wait either undershoots a real block or (far more often) way
 #     overshoots a block that already lifted -- see steam_prices.py's _mark_rate_limited.
 STEAM_RENDER_URL = "https://steamcommunity.com/market/listings/730/{}/render/"
+STEAM_LISTING_PAGE_URL = "https://steamcommunity.com/market/listings/730/{}"  # Referer for the above
 STEAM_OPTOUT_COOKIE = "bMarketOptOut=1"
-INSPECT_API_URL = "https://api.csfloat.com/"
 STEAM_LISTINGS_PER_QUERY = 100  # listings fetched per Steam render call (cheapest-first) --
 # 100 is the Market render endpoint's own page-size ceiling, i.e. every live listing Steam
 # will hand back in one call, not an arbitrary choice
-STEAM_INSPECTS_PER_CYCLE = 10   # of those, how many get an inspect resolution in ONE cycle --
-# 2026-07-11 (user request): rather than re-resolving the same top N every cycle, each target
-# keeps a cursor (_steam_scan_cursor) into its cheapest-first book and walks it in chunks of
-# this size -- cycle 1 covers the 10 cheapest listings, cycle 2 the next 10, cycle 3 the next
-# 10 after that, wrapping back to the cheapest once the book (or the 100-listing page ceiling
-# above) is exhausted. Each resolution is its own throttled API call (INSPECT_INTERVAL_SECONDS
-# apart), so this keeps a single cycle short while still covering the full book over time.
-INSPECT_INTERVAL_SECONDS = 1.5  # pacing between inspect resolutions (the public endpoint's
-# long-standing informal budget is ~1/second; stay under it)
+
+# Fallback inspect service for LEGACY M/A/D links only (see inspect_decode.py). Ships DISABLED:
+# the old default (api.csfloat.com) is a dead hostname, and pointing at a dead host just burns
+# the cycle on DNS failures. Set INSPECT_API_URL to a working resolver to re-enable; the
+# scanner works without it whenever Steam serves self-encoding links, which is the normal case.
+INSPECT_API_URL = os.environ.get("INSPECT_API_URL") or None
+MAX_API_INSPECTS_PER_CYCLE = 5  # hard cap on fallback calls per target per cycle, so a target
+# whose links are all legacy can never blow up a cycle the way the old design did
+INSPECT_INTERVAL_SECONDS = 1.5  # pacing between FALLBACK inspect calls only (~1/second is the
+# long-standing informal budget for such endpoints). The offline decode path never sleeps.
+
+STEAM_CHEAPEST_LISTINGS = 30    # how many of the cheapest listings to match per target, EVERY
+# cycle. 2026-07-22: this replaces the old per-target cursor that walked 10 listings deeper
+# each cycle and wrapped around. That walk was backwards for this engine's whole thesis -- an
+# uninformed seller prices a rare pattern at the ORDINARY price, so the opportunity is always
+# at the cheap end of the book, and a gem listed at ordinary price gets sniped in minutes. The
+# old design spent 9 of every 10 cycles resolving listings too expensive to ever be a deal and
+# only returned to the cheap end every ~2.8 hours. Now that decoding is free (no API call, no
+# sleep) there is no reason to ration: re-check the cheap end on every single cycle.
+
 STEAM_BLOCK_BASE_SECONDS = 60   # first 429 -> skip Steam scanning this long; doubles per
 STEAM_BLOCK_MAX_SECONDS = 300   # consecutive block, capped here; any success resets it.
 # Matches steam_prices.py's RATE_LIMIT_BACKOFF_SECONDS/MAX_RATE_LIMIT_BACKOFF_SECONDS -- that
 # module hit the same Steam 429 wall earlier and 60s/300s is what real-world tuning landed on;
 # this scanner's old 300s/3600s was 5-20x more conservative than necessary for no known reason.
 STEAM_BLOCK_JITTER_SECONDS = 5  # randomized so repeated failures don't all cool down in lockstep
-_INSPECT_CACHE_MAX = 5000       # resolved inspect links are immutable (an item's float/seed
-# never changes), so cache them in-memory and only pay the API call once per listing
+
+INSPECT_CACHE_FILE = DATA_DIR / "inspect_cache.json"
+_INSPECT_CACHE_MAX = 200000     # a resolved item is IMMUTABLE (float/seed never change), so the
+# cache is write-once per listing and persists to disk across restarts -- see _load_inspect_cache.
+# The old in-memory-only cache was wiped on every restart and cleared WHOLESALE on overflow, so
+# the scanner kept re-paying for items it had already seen. Entries are tiny (~120 bytes), so a
+# ceiling this high is a few tens of MB at worst and realistically never reached.
 
 REQUEST_INTERVAL_SECONDS = 4.0   # baseline pacing between targets in the scan loop -- polite
 # even though this is now Steam-only (a full target cycle takes minutes regardless, and
@@ -151,15 +211,19 @@ _stats = {"matches": 0, "opportunities_live": 0, "last_attempt_at": None,
           "steam_queries": 0, "steam_listings_seen": 0, "steam_last_success_at": None,
           "steam_last_error": None, "steam_consecutive_failures": 0,
           "steam_blocked_until": None,  # epoch until which the Steam source sits out (429 cooldown)
-          # CSFloat's separate, optional INSPECT endpoint (resolves a Steam listing's inspect
-          # link to float/seed/stickers -- not a listing source, see module docstring):
-          "inspects_resolved": 0, "inspects_failed": 0, "inspect_last_error": None}
+          # Seed/float resolution (see module docstring -- offline decode is the primary path):
+          "inspects_resolved": 0, "inspects_failed": 0, "inspect_last_error": None,
+          "decoded_offline": 0,      # resolved locally from the link, zero network cost
+          "resolved_from_properties": 0,  # fell back to Steam's own published seed/float props
+          "resolved_via_api": 0,     # legacy M/A/D links sent to a configured fallback service
+          "legacy_links_skipped": 0, # legacy links seen with no fallback configured
+          "cache_hits": 0,           # already known from a previous cycle/run (disk-backed)
+          "skipped_price_ceiling": 0}  # too expensive to ever be a deal -- never even decoded
 
-_inspect_cache: dict = {}  # inspect link -> resolved item dict (see _resolve_inspect_link)
-
-_steam_scan_cursor: dict = {}  # market_hash_name -> offset into that target's cheapest-first
-# Steam listings; advanced by STEAM_INSPECTS_PER_CYCLE each cycle (see _scan_target_steam)
-_steam_scan_cursor_lock = threading.Lock()
+_inspect_cache: dict = {}  # inspect link -> resolved item dict (see _resolve_item)
+_inspect_cache_lock = threading.Lock()
+_inspect_cache_loaded = False
+_inspect_cache_dirty = False
 
 _store_lock = threading.Lock()
 
@@ -189,28 +253,39 @@ class PatternScanState:
                 "steam_login_cookie_configured": STEAM_LOGIN_SECURE_COOKIE is not None,
                 "steam_login_cookie_note": (
                     "Scanning Steam anonymously -- Steam rate-limits this listings endpoint "
-                    "aggressively, so scans can spend real time sitting out cooldowns rather "
-                    "than finding listings (see steam_blocked_until above). Set "
-                    "STEAM_LOGIN_SECURE_COOKIE to your own Steam session's steamLoginSecure "
-                    "cookie value for a much friendlier authenticated rate limit -- optional, "
-                    "the scanner works without it, just slower."
+                    "aggressively, often refusing the very first request, so scans can spend "
+                    "real time sitting out cooldowns rather than finding listings (see "
+                    "steam_blocked_until above). Save your own Steam session cookie under "
+                    "Connections > Steam session (or set the STEAM_LOGIN_SECURE_COOKIE env "
+                    "var) for the much friendlier authenticated rate limit. This is now the "
+                    "scanner's ONLY network cost -- float and paint seed are decoded locally "
+                    "-- so it is the single biggest lever on scan speed. Optional: the scanner "
+                    "works without it, just far slower and burstier."
                     if not STEAM_LOGIN_SECURE_COOKIE else None),
                 "csfloat_key_configured": CSFLOAT_API_KEY is not None,
-                "csfloat_key_note": (None if CSFLOAT_API_KEY else
-                    "Optional -- improves the rate budget of CSFloat's free INSPECT endpoint, "
-                    "used only to resolve a Steam listing's float/paint-seed/stickers, never to "
-                    "find listings (Steam Market is the sole listing source, see the module "
-                    "docstring). Works fine unconfigured, just with a lower inspect budget."),
+                "csfloat_key_note": (
+                    "Not needed for scanning any more -- float/paint seed are decoded from the "
+                    "inspect link locally, with no API call at all (see inspect_decode.py). "
+                    "Only used if you configure INSPECT_API_URL as a fallback for legacy "
+                    "inspect links."),
+                "inspect_api_configured": INSPECT_API_URL is not None,
+                "inspect_api_note": (None if INSPECT_API_URL else
+                    "No external inspect service configured -- and none is needed: modern CS2 "
+                    "inspect links self-encode float/paint seed/paint index, so the scanner "
+                    "decodes them locally at zero cost. Set INSPECT_API_URL only if you see "
+                    "'legacy_links_skipped' climbing, which means Steam is serving old-style "
+                    "M/A/D links that carry no embedded data."),
+                "inspect_cache_size": len(_inspect_cache),
                 "request_interval_seconds": REQUEST_INTERVAL_SECONDS,
                 "n_targets": len(build_targets()),
                 "scan_sources": {
                     "steam": "the only listing source -- Steam Market listings scanned "
-                             "directly, each listing's inspect link resolved to "
-                             "float/seed/stickers via CSFloat's separate free inspect endpoint "
-                             f"({STEAM_INSPECTS_PER_CYCLE} cheapest listings per target per "
-                             "cycle, walking the next batch of "
-                             f"{STEAM_INSPECTS_PER_CYCLE} each subsequent cycle until the book "
-                             "is covered, then wrapping back to the cheapest)",
+                             "directly; each listing's float/paint seed is decoded from its "
+                             "inspect link locally (no API call, no rate limit). The "
+                             f"{STEAM_CHEAPEST_LISTINGS} cheapest listings per target are "
+                             "re-checked EVERY cycle, because an uninformed seller prices a "
+                             "rare pattern at the ordinary price, so opportunities only ever "
+                             "appear at the cheap end -- and get sniped within minutes",
                     "skinport": "valuation cross-check only -- bulk mirror carries prices, not listings",
                     "buff163": "valuation cross-check only -- bulk mirror carries prices, not listings",
                 }}
@@ -302,8 +377,26 @@ def _fetch_steam_listings(market_hash_name: str) -> list | None:
     cookie = STEAM_OPTOUT_COOKIE
     if STEAM_LOGIN_SECURE_COOKIE:
         cookie += f"; steamLoginSecure={STEAM_LOGIN_SECURE_COOKIE}"
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0 cs2-trade-calculator/1.0",
-                                 "Cookie": cookie})
+    # 2026-07-22, verified live: the persistent "HTTP 429" from this endpoint was NOT a rate
+    # limit. The classic /render/ URL is an XHR the market page fires, and Steam rejects calls
+    # that don't carry the headers a real browser sends with it -- same URL, same cookie, same
+    # second: without these headers 429, with them 200 and a full listing page. Sending them is
+    # what makes the endpoint usable at all, authenticated or not, so they are not optional
+    # politeness. Referer must point at the item's own listing page (Sec-Fetch-Site:
+    # same-origin is only truthful if it does).
+    req = Request(url, headers={
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+        "Cookie": cookie,
+        "Referer": STEAM_LISTING_PAGE_URL.format(urllib.parse.quote(market_hash_name)),
+        "X-Requested-With": "XMLHttpRequest",
+        "X-Prototype-Version": "1.7",
+        "Accept": "text/javascript, text/html, application/xml, text/xml, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+    })
     with _stats_lock:
         _stats["steam_queries"] += 1
         _stats["last_attempt_at"] = time.time()
@@ -352,9 +445,15 @@ def _fetch_steam_listings(market_hash_name: str) -> list | None:
                      if isinstance(a, dict) and "csgo_econ_action_preview" in (a.get("link") or "")), None)
         if not link:
             continue
-        inspect = link.replace("%listingid%", str(lid)).replace("%assetid%", str(asset_ref.get("id", "")))
+        inspect = _fill_inspect_template(link, lid, asset_ref.get("id", ""), asset)
+        props = _asset_properties(asset)
         out.append({"listing_id": str(lid), "ask": round(price_cents / 100.0, 2),
-                    "inspect_link": inspect, "icon_url": asset.get("icon_url")})
+                    "inspect_link": inspect, "icon_url": asset.get("icon_url"),
+                    "sticker_names": _sticker_names_from_asset(asset),
+                    # Steam's own published values, used to cross-check the decode (see
+                    # _resolve_item). PROP_PAINT_SEED/PROP_FLOAT are authoritative when present.
+                    "prop_paint_seed": _as_int(props.get(PROP_PAINT_SEED)),
+                    "prop_float": _as_float(props.get(PROP_FLOAT))})
     out.sort(key=lambda l: l["ask"])
     with _stats_lock:
         _stats["steam_last_success_at"] = time.time()
@@ -365,15 +464,205 @@ def _fetch_steam_listings(market_hash_name: str) -> list | None:
     return out
 
 
-def _resolve_inspect_link(inspect_link: str) -> dict | None:
-    """Resolves one in-game inspect link to {float_value, paint_seed, paint_index, stickers}
-    via CSFloat's public INSPECT endpoint (api.csfloat.com -- distinct from the key-gated
-    listings API; the key is sent when configured, for a friendlier rate budget). Cached
-    permanently in-memory: an item's float/seed never change, so each listing costs one call
-    ever. None = resolution failed (recorded, never guessed)."""
-    cached = _inspect_cache.get(inspect_link)
-    if cached is not None:
-        return cached
+# Steam's asset_properties (2026-07 market payload). VERIFIED live against 85 AK-47 Case Hardened
+# listings: propid 1 == paint seed, propid 2 == float, propid 6 == the masked inspect payload.
+# Decoding propid 6 reproduced propid 1 and 2 exactly on 85/85 assets, so the two sources agree
+# and either can validate the other. paint_index is NOT published as a property -- it only comes
+# out of the decode, and Doppler/Gamma Doppler entries match on it, so the decode stays essential.
+PROP_PAINT_SEED = 1
+PROP_FLOAT = 2
+PROP_INSPECT_PAYLOAD = 6
+
+_PROPID_RE = re.compile(r"%propid:(\d+)%")
+# Steam renders each sticker as its own <img title="Sticker: <name>"> inside the sticker_info
+# block -- NOT as a comma-separated "Sticker: A, B, C" line. Matching on the quoted attribute is
+# what keeps names intact; a naive [^<]+ scrape captures the attribute's own closing '">' and
+# produces names like 'Crown (Foil)">'.
+_STICKER_RE = re.compile(r'title="Sticker:\s*([^"]+)"', re.IGNORECASE)
+_STICKER_TEXT_RE = re.compile(r"Sticker:\s*([^<\"]+)", re.IGNORECASE)  # older plain-text shape
+
+
+def _as_int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _asset_properties(asset: dict) -> dict:
+    """{propertyid: value} from Steam's asset_properties list, whichever typed field it used."""
+    out = {}
+    for pr in (asset.get("asset_properties") or []):
+        if not isinstance(pr, dict) or "propertyid" not in pr:
+            continue
+        for k in ("string_value", "int_value", "float_value"):
+            if k in pr:
+                out[pr["propertyid"]] = pr[k]
+                break
+    return out
+
+
+def _fill_inspect_template(link: str, listing_id, asset_id, asset: dict) -> str:
+    """Substitute Steam's inspect-link template placeholders.
+
+    2026-07: CS2 market listings hand back `steam://run/730//+csgo_econ_action_preview %propid:6%`
+    -- the item data rides in the asset's OWN properties, not in an M/A/D handle the way it used
+    to. Filling %propid:N% from asset_properties yields a self-encoding link that decodes offline
+    (inspect_decode.py). The legacy %listingid%/%assetid% substitutions are kept so older-shaped
+    payloads still work."""
+    props = _asset_properties(asset)
+    link = _PROPID_RE.sub(lambda m: str(props.get(_as_int(m.group(1)), m.group(0))), link)
+    return link.replace("%listingid%", str(listing_id)).replace("%assetid%", str(asset_id))
+
+
+def _sticker_names_from_asset(asset: dict) -> list:
+    """Sticker NAMES straight out of Steam's own listing description -- free, already in the
+    render payload we just fetched. Offline link decoding yields sticker IDs, not names, and
+    pattern_db's sticker_craft entries match on names ("Katowice 2014", "Holo"), so without this
+    the two sticker_craft entries would silently stop matching. Steam renders them as a single
+    "Sticker: A, B, C" line inside the sticker_info description block."""
+    for d in (asset.get("descriptions") or []):
+        if not isinstance(d, dict):
+            continue
+        value = d.get("value") or ""
+        names = [n.strip() for n in _STICKER_RE.findall(value) if n.strip()]
+        if names:
+            return names
+        m = _STICKER_TEXT_RE.search(value)
+        if m:
+            return [s.strip() for s in m.group(1).split(",") if s.strip()]
+    return []
+
+
+# --- Inspect cache (disk-backed) -----------------------------------------------------------
+
+def _load_inspect_cache() -> None:
+    """Loads the persistent resolved-item cache once per process. A resolved item is IMMUTABLE
+    (an item's float/paint seed never change), so this is a pure write-once store: after the
+    first pass over a target's book, every listing already seen is free forever -- including
+    across restarts, which the old in-memory-only cache threw away every time."""
+    global _inspect_cache_loaded
+    with _inspect_cache_lock:
+        if _inspect_cache_loaded:
+            return
+        _inspect_cache_loaded = True
+        if not INSPECT_CACHE_FILE.exists():
+            return
+        try:
+            data = json.loads(INSPECT_CACHE_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return  # corrupt/unreadable cache is a performance loss, never a correctness one
+        if isinstance(data, dict) and isinstance(data.get("items"), dict):
+            _inspect_cache.update(data["items"])
+
+
+def save_inspect_cache() -> None:
+    """Flushes the resolved-item cache to disk (called at the end of each scan cycle)."""
+    global _inspect_cache_dirty
+    with _inspect_cache_lock:
+        if not _inspect_cache_dirty:
+            return
+        snapshot = dict(_inspect_cache)
+        _inspect_cache_dirty = False
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = INSPECT_CACHE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps({"items": snapshot, "updated_at": time.time()}),
+                       encoding="utf-8")
+        tmp.replace(INSPECT_CACHE_FILE)  # atomic, same convention as the other stores here
+    except OSError:
+        pass  # a cache we couldn't persist just costs speed next run
+
+
+def _cache_put(inspect_link: str, item: dict) -> None:
+    global _inspect_cache_dirty
+    with _inspect_cache_lock:
+        if len(_inspect_cache) < _INSPECT_CACHE_MAX:
+            _inspect_cache[inspect_link] = item
+            _inspect_cache_dirty = True
+
+
+def _resolve_item(inspect_link: str, *, market_hash_name: str, sticker_names: list,
+                   allow_api: bool, prop_paint_seed: int | None = None,
+                   prop_float: float | None = None) -> dict | None:
+    """One listing -> {float_value, paint_seed, paint_index, stickers, wear_name,
+    market_hash_name}, in the cheapest way that works:
+
+      1. disk-backed cache (free)
+      2. OFFLINE decode of the inspect link (free, microseconds -- the normal path, see
+         inspect_decode.py and the module docstring)
+      3. a configured fallback inspect service, ONLY for legacy M/A/D links that genuinely
+         carry no embedded data, and only if allow_api left budget this cycle
+
+    None = could not resolve; every reason is counted in _stats rather than guessed at."""
+    _load_inspect_cache()
+    core = _inspect_cache.get(inspect_link)
+    if core is not None:
+        with _stats_lock:
+            _stats["cache_hits"] += 1
+    else:
+        core = inspect_decode.decode_inspect_link(inspect_link)
+        if core is not None:
+            with _stats_lock:
+                _stats["decoded_offline"] += 1
+                _stats["inspects_resolved"] += 1
+            _cache_put(inspect_link, core)
+        elif prop_paint_seed is not None and prop_float is not None:
+            # Decode didn't apply (legacy link, or a payload shape we don't know), but Steam
+            # published the seed and float as asset properties anyway. Those are authoritative
+            # -- verified identical to the decode on 85/85 live listings -- so paint_seed
+            # entries still match. paint_index stays None, so Doppler entries correctly do NOT
+            # match rather than matching on a guess.
+            core = {"paint_seed": prop_paint_seed, "float_value": prop_float,
+                    "paint_index": None}
+            with _stats_lock:
+                _stats["resolved_from_properties"] = _stats.get("resolved_from_properties", 0) + 1
+                _stats["inspects_resolved"] += 1
+            _cache_put(inspect_link, core)
+        else:
+            # No embedded data (legacy M/A/D link). Only a real inspect service can help.
+            if not (allow_api and INSPECT_API_URL):
+                with _stats_lock:
+                    _stats["legacy_links_skipped"] += 1
+                    if not INSPECT_API_URL:
+                        _stats["inspect_last_error"] = (
+                            "legacy M/A/D inspect link carries no embedded item data and no "
+                            "INSPECT_API_URL fallback is configured -- skipped, not guessed")
+                return None
+            core = _resolve_via_api(inspect_link)
+            if core is None:
+                return None
+            with _stats_lock:
+                _stats["resolved_via_api"] += 1
+                _stats["inspects_resolved"] += 1
+            _cache_put(inspect_link, core)
+    fv = core.get("float_value")
+    return {
+        "float_value": fv,
+        "paint_seed": core.get("paint_seed"),
+        "paint_index": core.get("paint_index"),
+        # Sticker NAMES come from Steam's own description (see _sticker_names_from_asset);
+        # an API-resolved item may already carry them, in which case prefer those.
+        "stickers": ([{"name": n} for n in (core.get("sticker_names") or sticker_names or [])]),
+        "wear_name": (core.get("wear_name")
+                      or (oddsmath.wear_from_float(fv) if isinstance(fv, (int, float)) else None)),
+        "market_hash_name": core.get("market_hash_name") or market_hash_name,
+    }
+
+
+def _resolve_via_api(inspect_link: str) -> dict | None:
+    """FALLBACK ONLY: resolve a legacy M/A/D link through a configured external inspect service
+    (INSPECT_API_URL). Ships disabled -- the historical default, api.csfloat.com, is a dead
+    hostname (NXDOMAIN) since csfloat/inspect was archived 2026-03-25. Kept because a legacy
+    link is genuinely undecodable offline, so a self-hosted resolver is the only remedy.
+    None = failed (recorded, never guessed)."""
     headers = {"User-Agent": "cs2-trade-calculator pattern scanner"}
     if CSFLOAT_API_KEY:
         headers["Authorization"] = CSFLOAT_API_KEY
@@ -397,22 +686,18 @@ def _resolve_inspect_link(inspect_link: str) -> dict | None:
             _stats["inspects_failed"] += 1
             _stats["inspect_last_error"] = "unexpected response shape"
         return None
-    item = {
+    with _stats_lock:
+        _stats["inspect_last_error"] = None
+    # Same shape the offline decoder returns, so _resolve_item can treat both identically.
+    return {
         "float_value": info.get("floatvalue"),
         "paint_seed": info.get("paintseed"),
         "paint_index": info.get("paintindex"),
-        "stickers": [{"name": s.get("name")} for s in (info.get("stickers") or [])
-                     if isinstance(s, dict)],
+        "sticker_names": [s.get("name") for s in (info.get("stickers") or [])
+                          if isinstance(s, dict) and s.get("name")],
         "wear_name": info.get("wear_name"),
         "market_hash_name": info.get("full_item_name"),
     }
-    with _stats_lock:
-        _stats["inspects_resolved"] += 1
-        _stats["inspect_last_error"] = None
-    if len(_inspect_cache) >= _INSPECT_CACHE_MAX:
-        _inspect_cache.clear()  # crude but sufficient: refilling costs one call per live listing
-    _inspect_cache[inspect_link] = item
-    return item
 
 
 # --- Matching + valuation -----------------------------------------------------------------------
@@ -590,12 +875,19 @@ def clear_opportunities() -> int:
         store = _load_store()
         n = len(store["opportunities"])
         _save_store({"opportunities": {}, "updated_at": None})
-    _inspect_cache.clear()
-    with _steam_scan_cursor_lock:
-        _steam_scan_cursor.clear()
+    global _inspect_cache_dirty
+    with _inspect_cache_lock:
+        _inspect_cache.clear()
+        _inspect_cache_dirty = False
+    try:
+        INSPECT_CACHE_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
     with _stats_lock:
         for key in ("matches", "steam_queries", "steam_listings_seen",
-                    "inspects_resolved", "inspects_failed", "steam_consecutive_failures"):
+                    "inspects_resolved", "inspects_failed", "steam_consecutive_failures",
+                    "decoded_offline", "resolved_via_api", "legacy_links_skipped",
+                    "cache_hits", "skipped_price_ceiling"):
             _stats[key] = 0
         for key in ("last_attempt_at", "last_cycle_completed_at", "steam_last_success_at",
                     "steam_last_error", "steam_blocked_until", "inspect_last_error"):
@@ -642,7 +934,7 @@ def list_opportunities(*, weapon: str | None = None, pattern_type: str | None = 
 
 def scan_target(target: dict) -> list[dict]:
     """One match pass for one target against the Steam Market listings render endpoint +
-    inspect-link resolution (see _fetch_steam_listings/_resolve_inspect_link -- the only
+    inspect-link resolution (see _fetch_steam_listings/_resolve_item -- the only
     listing source, see module docstring). Sticker-craft entries are matched opportunistically
     against every listing fetched here, whatever the target was."""
     sticker_entries = pattern_db_mod.entries("sticker_craft")
@@ -652,38 +944,69 @@ def scan_target(target: dict) -> list[dict]:
     return found
 
 
+def _price_ceiling(name: str, entries: list) -> float | None:
+    """Highest ask at which ANY entry considered for this target could still be a deal, i.e.
+    base price x the most generous premium multiplier in play. Listings above it cannot be
+    profitable even if they DO carry the pattern, so they are never even decoded.
+
+    None = no base price known, in which case no listing is filtered (never guess)."""
+    try:
+        metrics = market_reliability_mod.market_metrics(name, 1)
+        base, _src = _base_price(name, metrics)
+    except Exception:  # noqa: BLE001 -- a valuation hiccup must not stop the scan
+        return None
+    if not base:
+        return None
+    mults = [float(e.get("premium_multiplier") or 1.0) for e in entries]
+    return base * max(mults) if mults else None
+
+
 def _scan_target_steam(target: dict, sticker_entries: list) -> list[dict]:
     """The Steam Market half of scan_target: fetch this target's cheapest live Steam listings,
-    resolve each one's inspect link to real float/seed/sticker data (throttled, cached), and
-    match exactly like the CSFloat path. The ask used for edge math is Steam's full
-    buyer-pays price, and the listing link goes straight to the item's own Steam Market page.
+    resolve each one's float/seed/stickers (offline decode first -- see _resolve_item), and
+    match. The ask used for edge math is Steam's full buyer-pays price, and the listing link
+    goes straight to the item's own Steam Market page.
 
-    Only resolves STEAM_INSPECTS_PER_CYCLE listings THIS cycle, starting from a per-target
-    cursor (_steam_scan_cursor): the first cycle covers the 10 cheapest, the next cycle the
-    next 10, and so on, wrapping back to the cheapest once the fetched book is exhausted --
-    see STEAM_INSPECTS_PER_CYCLE's comment."""
+    Scans the STEAM_CHEAPEST_LISTINGS cheapest listings EVERY cycle rather than walking deeper
+    into the book each cycle -- see that constant's comment for why the old cursor walk was
+    backwards for this engine. Listings priced above _price_ceiling() are skipped outright."""
     if _steam_blocked():
-        return []  # sitting out a Steam 429 cooldown -- CSFloat scanning continues meanwhile
+        return []  # sitting out a Steam 429 cooldown
     name = target["market_hash_name"]
     listings = _fetch_steam_listings(name)
     if not listings:
         return []
-    with _steam_scan_cursor_lock:
-        offset = _steam_scan_cursor.get(name, 0)
-        if offset >= len(listings):
-            offset = 0  # walked past the end of this cycle's book -- wrap back to the cheapest
-        _steam_scan_cursor[name] = offset + STEAM_INSPECTS_PER_CYCLE
+    all_entries = target["entries"] + sticker_entries
+    ceiling = _price_ceiling(name, all_entries)
     found = []
+    api_budget = MAX_API_INSPECTS_PER_CYCLE
     market_url = f"https://steamcommunity.com/market/listings/730/{urllib.parse.quote(name)}"
-    for listing in listings[offset:offset + STEAM_INSPECTS_PER_CYCLE]:
-        was_cached = listing["inspect_link"] in _inspect_cache
-        item = _resolve_inspect_link(listing["inspect_link"])
-        if not was_cached:
-            time.sleep(INSPECT_INTERVAL_SECONDS)  # polite pacing for the public inspect API
+    window = listings[:STEAM_CHEAPEST_LISTINGS]
+    for i, listing in enumerate(window):
+        # listings are sorted cheapest-first, so the first one over the ceiling ends the walk
+        if ceiling is not None and listing["ask"] > ceiling:
+            with _stats_lock:
+                _stats["skipped_price_ceiling"] += len(window) - i
+            break
+        link = listing["inspect_link"]
+        # Decides only whether the fallback-pacing sleep below applies. This decodes the link a
+        # second time (_resolve_item decodes it too), which is deliberate: a decode is ~10us of
+        # pure CPU, so ~30ms per full cycle, against a cycle measured in minutes -- not worth
+        # threading an extra out-param through _resolve_item to avoid.
+        needs_api = (link not in _inspect_cache
+                     and inspect_decode.decode_inspect_link(link) is None)
+        item = _resolve_item(link, market_hash_name=name,
+                             sticker_names=listing.get("sticker_names") or [],
+                             allow_api=(api_budget > 0),
+                             prop_paint_seed=listing.get("prop_paint_seed"),
+                             prop_float=listing.get("prop_float"))
+        if needs_api and INSPECT_API_URL and api_budget > 0:
+            api_budget -= 1
+            time.sleep(INSPECT_INTERVAL_SECONDS)  # pacing applies to the fallback path ONLY
         if item is None:
             continue
         item = {**item, "icon_url": listing.get("icon_url")}
-        for entry in target["entries"] + sticker_entries:
+        for entry in all_entries:
             if _match_entry(entry, item):
                 o = _opportunity_from_item(
                     item, listing["ask"], entry, item.get("market_hash_name") or name,
@@ -725,6 +1048,7 @@ def scan_loop(state: PatternScanState) -> None:
             except Exception:  # noqa: BLE001 -- refresh failure must never stop scanning
                 pass
         if idx == 0 or idx >= len(targets):
+            save_inspect_cache()  # flush newly-resolved items at each cycle boundary
             targets = build_targets()
             idx = 0
             if not targets:

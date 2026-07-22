@@ -139,10 +139,16 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
             price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
             if price_val is not None:
                 revenues_weighted.append((price_val, filler_odds))
-        total_prob = sum(p for _, p in revenues_weighted)
-        if total_prob <= 0:
+        # Full odds mass of every output, priced or not -- see mixed_tradeup.py's copy of this
+        # comment and oddsmath's unpriced-outputs section. This search combines wear-mixing with
+        # filler dilution, so it stacks BOTH ways of accidentally dropping outputs out of the
+        # average: a filler collection's thin outputs, and outputs with no listing at the wear
+        # the mix steers them into.
+        total_prob = primary_odds * len(primary_outputs) + filler_odds * len(f_outputs)
+        priced_prob = oddsmath.priced_odds_pct(revenues_weighted)
+        if total_prob <= 0 or not oddsmath.fully_priced(priced_prob, total_prob):
             return
-        expected_revenue = sum(v * p for v, p in revenues_weighted) / total_prob
+        expected_revenue = oddsmath.expected_revenue_full_odds(revenues_weighted, total_prob)
         after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
         profit = after_fee - cost
         roi = (profit / cost * 100) if cost else 0.0

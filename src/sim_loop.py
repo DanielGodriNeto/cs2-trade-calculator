@@ -506,6 +506,60 @@ def most_profitable_skins(limit: int = 10) -> list:
     return out[:limit]
 
 
+def _sims_file_size(sims_file: Path) -> int:
+    """Byte size of this son's training log, 0 if it doesn't exist yet. Never raises -- an
+    integrity CHECK must not be the thing that fails a round."""
+    try:
+        return sims_file.stat().st_size
+    except OSError:
+        return 0
+
+
+class TrainingLogStalled(RuntimeError):
+    """This son logged valid simulations but its simulations.jsonl didn't grow -- see
+    _verify_sims_log_grew. Its own class (rather than a bare RuntimeError) so the dashboard
+    or a future consumer can tell this apart from an ordinary round failure."""
+
+
+def _verify_sims_log_grew(state: "SimulationLoopState", size_before: int, n_logged: int) -> None:
+    """Confirms this round's log_simulation() calls actually reached disk, by the only measure
+    that can't be faked from inside the process: the file is bigger than it was at the top of
+    the round. Raises TrainingLogStalled if it isn't.
+
+    Deliberately a size comparison rather than a write-succeeded flag. log_simulation() opening
+    the file "a" and returning without raising already "succeeded" in every run where this went
+    wrong -- the rows stopped being there for reasons OUTSIDE this process (see run_round's own
+    comment). What that history shows is that the loop cannot trust its own bookkeeping about a
+    file other things can also touch; it has to re-read the file. Anything that rolls the log
+    back -- a data_archive.import_archive(merge=False) restore, a directory copied over the
+    top, an editor saving an old buffer -- now shows up on the NEXT round instead of being
+    discovered days later from an unexplained flat best-ROI curve. (data_archive's export
+    deliberately excludes simulations.jsonl, since split_archive.py owns it, so a plain
+    export/import round-trip really can drop the live file back to whatever the committed
+    chunks last carried.)
+
+    Called only AFTER the round's checkpoint has been saved, so raising costs none of the
+    round's real work -- the simulations themselves were genuine and the best-known list,
+    coverage and round history they produced are all still valid and already persisted. What
+    raising does buy is sim_loop()'s existing failure handling: status="error" plus the message
+    on the dashboard (a plain state.error assignment would be wiped by the `state.error = None`
+    that follows every clean run_round return), and a retry after the normal cooldown, so the
+    son self-heals the moment the log starts growing again. Retraining is skipped meanwhile,
+    which is the point -- refitting a log that hasn't changed is the wasted work this whole
+    check exists to stop."""
+    if n_logged <= 0:
+        return
+    size_after = _sims_file_size(state.sims_file)
+    if size_after > size_before:
+        return
+    raise TrainingLogStalled(
+        f"training log did not grow: logged {n_logged} valid simulation(s) to "
+        f"{state.sims_file.name} but it went {size_before} -> {size_after} bytes. Retraining is "
+        f"paused for this son because the model would only refit identical rows. Something "
+        f"outside the sim loop is rewriting or reverting this file -- check for a data "
+        f"restore/copy over data/sons/, then confirm the file is growing again.")
+
+
 def _effective_temperature(base_temperature: float, cp: dict) -> float:
     boosted = cp["nudge_rounds_remaining"] > 0
     return base_temperature * (NUDGE_KICK_FACTOR if boosted else 1.0)
@@ -942,6 +996,18 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
     # that made the curated best-known list) -- feeds the dashboard's "stats over rounds" chart
     # (avg_input_float/avg_roi_pct/avg_confidence) alongside the existing best-ROI-so-far line.
     round_floats, round_rois, round_confidences = [], [], []
+    # Training-log integrity: this son's whole reason to exist is that every valid record it
+    # produces lands in simulations.jsonl, which is the ONLY thing sim_learning.train() ever
+    # reads. Nothing used to check that it actually did, and the failure is completely silent
+    # from every angle the dashboard shows: rounds still advance, n_simulated still climbs,
+    # best-known finds still update, retrains still report "trained" -- on a frozen file.
+    #
+    # This is not hypothetical. Across rounds 135-725 of a real ~36h run this son's n_simulated
+    # went 5,386 -> 28,953 while simulations.jsonl kept its last row (and its mtime) from nine
+    # days earlier, so all 33 retrains in that window refit the identical rows and the search
+    # had no way to learn anything from 23,567 simulations. See _verify_sims_log_grew.
+    sims_size_before = _sims_file_size(state.sims_file)
+    n_logged = 0
 
     for i, candidate in enumerate(candidates, 1):
         if state.stop_event.is_set():
@@ -967,6 +1033,7 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
                     candidate, state.model_dir, state.sims_file,
                     collection_roi_lookup=collection_roi_lookup)
             simulate_mod.log_simulation(record, state.sims_file)
+            n_logged += 1
             round_floats.append(record.avg_input_float)
             round_rois.append(record.expected_roi_pct)
             round_confidences.append(record.confidence_score or 0.0)
@@ -1049,6 +1116,10 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
         state.status = "idle"
         n_simulated = cp["n_simulated"]
         n_at_last_train = cp["n_simulated_at_last_train"]
+
+    # Checked after the checkpoint save so a stalled log can never cost this son the round's
+    # real work, and before the retrain trigger so it can skip it -- see _verify_sims_log_grew.
+    _verify_sims_log_grew(state, sims_size_before, n_logged)
 
     if (n_simulated - n_at_last_train >= sim_learning_mod.RETRAIN_TRIGGER_DELTA
             and n_simulated >= sim_learning_mod.MIN_TRAINING_SAMPLES):

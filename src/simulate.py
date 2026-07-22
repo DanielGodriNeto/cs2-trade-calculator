@@ -268,18 +268,21 @@ class SimulationRecord:
 
 @dataclass
 class InvalidSimulation:
-    """A candidate that could NOT be turned into a real SimulationRecord -- either not every
-    input unit had a cached price (a real trade-up needs ALL of them, never a subset), or
-    nothing on the output side had a price at all. Logged separately (see log_invalid /
-    data/sons/son_N/invalid_simulations.jsonl) purely for visibility into how often/why the
-    cache is coming up short -- never trained on, never ranked, never treated as a candidate."""
+    """A candidate that could NOT be turned into a real SimulationRecord -- not every input
+    unit had a cached price (a real trade-up needs ALL of them, never a subset), or not every
+    OUTPUT had one. Logged separately (see log_invalid / data/sons/son_N/invalid_simulations.
+    jsonl) purely for visibility into how often/why the cache is coming up short -- never
+    trained on, never ranked, never treated as a candidate."""
     id: str
     simulated_at: float
     from_rarity: str
     to_rarity: str
     stattrak: bool
     reason: str  # "incomplete_inputs" (fewer than n_required_input_units got priced) |
-    # "no_output_price" (every input priced, but no output has a usable price)
+    # "no_output_price" (every input priced, but no output has a usable price) |
+    # "incomplete_outputs" (every input priced and SOME output priced, but not all of them --
+    # see oddsmath's unpriced-outputs section for why a partial output side is unusable rather
+    # than merely approximate)
     n_priced_input_units: int
     n_required_input_units: int
     primary_collection: str  # best-effort label (the leg with the most priced units); "" if
@@ -296,12 +299,16 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
     (oddsmath.average_normalized_float + remap_float_to_wear per possible output skin), and
     the probability-weighted expected ROI across every possible output.
 
-    Returns an InvalidSimulation (never None, never a guess) if either: (a) fewer than every
+    Returns an InvalidSimulation (never None, never a guess) if: (a) fewer than every
     single input unit got a real price (cached or, on a miss, freshly live-fetched -- see
     _price()) -- a real trade-up needs all 10 (or 5) inputs, so a partially-priced candidate
-    isn't a smaller version of the same trade, it's just not a valid trade; or (b) every input
+    isn't a smaller version of the same trade, it's just not a valid trade; (b) every input
     priced fine but nothing on the output side has a usable price, so there's no revenue to
-    compute at all."""
+    compute at all; or (c) the output side is only PARTIALLY priced. (c) holds the output side
+    to the same all-or-nothing standard as (a) for the same reason: you can land on an output
+    with no price, so an ROI built from only the priced ones is not a rougher estimate of this
+    contract, it's an estimate of a different contract that can't lose. See oddsmath's
+    unpriced-outputs section."""
     # User skin blacklist (user_overrides.py) -- a HARD gate, checked before any pricing is
     # spent: a contract touching a blacklisted skin on EITHER side can never be honestly
     # valued (the user has personally branded its data garbage), so whatever generator
@@ -448,14 +455,30 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
                 if group_prob > 0 and is_dead_output:
                     any_low_volume = True
 
-    total_prob = sum(p for _, p in revenue_weighted)
+    # Odds mass of EVERY output, priced or not -- the honest denominator. Summed from the same
+    # per-output group_prob values that built output_dist rather than assumed to be 100, so a
+    # group_odds() rounding residue can't shift the EV.
+    total_prob = sum(o["prob_pct"] for o in output_dist)
+    priced_prob = oddsmath.priced_odds_pct(revenue_weighted)
     if not revenue_weighted or total_prob <= 0:
         return InvalidSimulation(
             id=_new_id("invalid"), simulated_at=time.time(), from_rarity=candidate.from_rarity_name,
             to_rarity=candidate.to_rarity_name, stattrak=candidate.stattrak, reason="no_output_price",
             n_priced_input_units=n_priced_input_units, n_required_input_units=n_required_input_units,
             primary_collection=primary_collection)
-    expected_revenue = sum(v * p for v, p in revenue_weighted) / total_prob
+    # A PARTIALLY priced output side is invalid for the same reason a partially priced input
+    # side is: the contract can land on an output this tool has no price for, so any ROI built
+    # from the rest is a guess dressed up as a number. Critically, this record would otherwise
+    # become a training LABEL for sim_learning.py -- teaching the model that thin, half-unpriced
+    # collections are the profitable ones, since those are exactly the contracts whose surviving
+    # priced outputs skew expensive. See oddsmath's unpriced-outputs section.
+    if not oddsmath.fully_priced(priced_prob, total_prob):
+        return InvalidSimulation(
+            id=_new_id("invalid"), simulated_at=time.time(), from_rarity=candidate.from_rarity_name,
+            to_rarity=candidate.to_rarity_name, stattrak=candidate.stattrak, reason="incomplete_outputs",
+            n_priced_input_units=n_priced_input_units, n_required_input_units=n_required_input_units,
+            primary_collection=primary_collection)
+    expected_revenue = oddsmath.expected_revenue_full_odds(revenue_weighted, total_prob)
     after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
     profit = after_fee - cost
     roi = (profit / cost * 100) if cost else 0.0

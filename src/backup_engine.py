@@ -17,11 +17,21 @@ logged outcomes (outcomes.jsonl lines) -- both readable straight off the filenam
 scanning the backup repo's history.
 
 Git integration is CONFIGURED, never assumed: data/backup_config.json names the local clone
-(repo_dir) + remote + branch. Until the user points it at a real git repository the worker
-stays fully functional but idles in a clearly-reported "not configured" state (get_status()
-explains exactly what to set up). Push failures (no remote, auth, offline) are logged and
-retried on the next cycle; the commit still lands locally, so no archive is ever lost to a
-transient network failure.
+(repo_dir) + remote + branch. Until the user points it at a real git repository WITH THAT
+REMOTE ACTUALLY DEFINED (see _repo_ready -- a bare `git init` with no remote is the one
+misconfiguration that used to pass every check and still never reach GitHub), the worker stays
+fully functional but idles in a clearly-reported "not configured" state (get_status() explains
+exactly what to set up). Push failures (auth, offline) are logged and retried on the next
+cycle; the commit still lands locally, so no archive is ever lost to a transient network
+failure.
+
+SIZE WARNING: each cycle writes a FULL archive of data/ (~340 MB across 4 parts today) as new
+files and commits them without removing the previous cycle's -- they are compressed zips, so
+git can't delta them against each other. Every backup therefore adds its full size to .git
+permanently. Three archives already put repo_dir at 721 MB of .git / 1.7 GB on disk. GitHub
+rejects pushes over 2 GB and flags repos over 5 GB, so this repo will stop being pushable after
+a handful more cycles unless old archives are pruned (or the archive strategy changes to
+something git can actually delta, e.g. committing data/ uncompressed).
 
 IMPORTANT: repo_dir must point at a DEDICATED backup repository, never at this project's own
 source repo. data/ is already tracked directly by the source repo (plain diffable JSON/JSONL --
@@ -187,6 +197,18 @@ def _repo_ready(cfg: dict) -> tuple[bool, str]:
     ok, out = _git(repo_dir, "rev-parse", "--is-inside-work-tree")
     if not ok or out.strip() != "true":
         return False, f"repo_dir is not a git repository: {repo_dir} ({out})"
+    # A local repo with no remote is NOT ready, even though every check above passes. Without
+    # this, `git init`-ing repo_dir and never adding a remote left the engine reporting
+    # configured=True while every single push failed with "'origin' does not appear to be a git
+    # repository" -- the archives committed locally, the dashboard's Backup panel stayed green,
+    # and nothing ever reached GitHub. The failure was only visible by reading backup_log.jsonl.
+    # Checking it here means get_status() explains the problem in the one place the user looks.
+    remote = cfg.get("remote") or "origin"
+    ok, out = _git(repo_dir, "remote", "get-url", remote)
+    if not ok or not out.strip():
+        return False, (f"repo_dir has no '{remote}' remote: {repo_dir} -- archives would commit "
+                        f"locally but never reach GitHub. Create the backup repo on GitHub, then: "
+                        f"git -C \"{repo_dir}\" remote add {remote} <url>")
     return True, ""
 
 

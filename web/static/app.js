@@ -1009,16 +1009,25 @@ function renderPatternsStatus(ps) {
   const parts = [
     `${s.status}${s.current_target ? ` -- checking ${s.current_target}` : ""}`,
     `${s.n_targets || 0} scan targets from the knowledge base`,
-    `Steam Market: ${s.steam_queries || 0} queries | ${s.steam_listings_seen || 0} listings | ${s.inspects_resolved || 0} inspect links resolved | last success ${fmtTime(s.steam_last_success_at)}`,
+    `Steam Market: ${s.steam_queries || 0} queries | ${s.steam_listings_seen || 0} listings | last success ${fmtTime(s.steam_last_success_at)}`,
+    // Seed/float resolution: decoded locally at zero network cost (see inspect_decode.py).
+    // Broken out so it is obvious the scanner is no longer paying per listing for this.
+    `Patterns read: ${s.decoded_offline || 0} decoded offline (free) | ${s.cache_hits || 0} cache hits`
+      + (s.resolved_via_api ? ` | ${s.resolved_via_api} via fallback API` : "")
+      + (s.skipped_price_ceiling ? ` | ${s.skipped_price_ceiling} skipped as too expensive` : ""),
     `${s.matches || 0} matches | ${s.opportunities_live || 0} live opportunities`,
   ];
   if (s.steam_blocked_until && s.steam_blocked_until * 1000 > Date.now()) {
     parts.push(`Steam cooling down after a rate limit -- resumes ${fmtTime(s.steam_blocked_until)}`);
   }
   if (s.steam_last_error) parts.push(`Steam last error: ${s.steam_last_error}`);
+  // Legacy M/A/D links carry no embedded data -- surfaced rather than silently counted as misses.
+  if (s.legacy_links_skipped) {
+    parts.push(`${s.legacy_links_skipped} legacy inspect links skipped (no embedded data`
+      + `${s.inspect_api_configured ? "" : "; set INSPECT_API_URL to resolve them"})`);
+  }
   if (s.inspect_last_error) parts.push(`inspect last error: ${s.inspect_last_error}`);
   if (!s.steam_login_cookie_configured && s.steam_login_cookie_note) parts.push(s.steam_login_cookie_note);
-  if (!s.csfloat_key_configured && s.csfloat_key_note) parts.push(s.csfloat_key_note);
   el.textContent = parts.join(" | ");
   document.getElementById("patterns-scan-start-btn").disabled = s.status === "scanning";
   document.getElementById("patterns-scan-pause-btn").disabled = s.status !== "scanning";
@@ -1089,19 +1098,90 @@ async function loadPatternOpportunities() {
   renderCollectorOpps(state.lastPatternOpps);
 }
 
+function _esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Card view for the Rare Patterns results: image, price, profit and a direct buy link, with the
+// pattern tier colour-coded so a Tier 1 (Blue Gem class) is recognisable at a glance -- the same
+// idea as the pattern-tier colours in the market extensions, driven off pattern_db's own tiers
+// rather than a separate hand-maintained list.
+function _patternCard(o) {
+  const profitPos = (o.expected_profit || 0) >= 0;
+  const img = o.image_url
+    ? `<img src="${_esc(o.image_url)}" alt="" loading="lazy" onerror="this.closest('.pattern-card-media').classList.add('no-img');this.remove();">`
+    : "";
+  const spec = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  const seed = o.paint_seed != null ? o.paint_seed
+    : (o.paint_index != null ? `idx ${o.paint_index}` : "&mdash;");
+  return `
+  <article class="pattern-card tier-${o.pattern_tier || 0}" title="${_esc(o.explanation || "")}">
+    <div class="pattern-card-media${o.image_url ? "" : " no-img"}">
+      ${img}
+      <span class="pattern-card-tier">${o.pattern_tier ? `Tier ${o.pattern_tier}` : "Pattern"}</span>
+      ${o.edge_pct != null ? `<span class="pattern-card-edge ${profitPos ? "pos" : "neg"}">${o.edge_pct > 0 ? "+" : ""}${fmtMoney(o.edge_pct)}%</span>` : ""}
+    </div>
+    <div class="pattern-card-body">
+      <h4 class="pattern-card-name">${copyableName(o.market_hash_name)}</h4>
+      <div class="pattern-card-pattern">
+        <strong>${_esc(o.pattern_label || "documented pattern")}</strong>
+        ${o.source_url ? `<a href="${_esc(o.source_url)}" target="_blank" rel="noopener noreferrer" class="buy-link" title="Public source documenting this pattern">source</a>` : ""}
+      </div>
+      <dl class="pattern-card-specs">
+        ${spec("Float", o.float_value != null ? o.float_value.toFixed(4) : "&mdash;")}
+        ${spec(o.paint_seed != null ? "Seed" : "Paint", seed)}
+        ${spec("Wear", _esc(o.wear || "&mdash;"))}
+        ${spec("Confidence", patConfBadge(o.confidence))}
+      </dl>
+      <div class="pattern-card-prices">
+        <div><span>Ask</span><strong>${fmtCurrency(o.asking_price)}</strong></div>
+        <div title="base ${o.base_market_price != null ? o.base_market_price.toFixed(2) : "?"} across ${o.base_n_sources || 0} source(s) x documented premium">
+          <span>Est. value</span><strong>${fmtCurrency(o.estimated_collector_value)}</strong></div>
+        <div><span>Est. profit</span><strong class="${profitPos ? "profit-positive" : "profit-negative"}">${fmtCurrency(o.expected_profit)}</strong></div>
+      </div>
+      ${o.listing_url
+        ? `<a class="pattern-card-buy" href="${_esc(o.listing_url)}" target="_blank" rel="noopener noreferrer">Buy on ${_esc(MARKETPLACE_LABELS[o.marketplace] || o.marketplace)} &rarr;</a>`
+        : `<span class="pattern-card-buy disabled">No listing link</span>`}
+    </div>
+  </article>`;
+}
+
+function _applyPatternView() {
+  const cards = document.getElementById("patterns-cards");
+  const table = document.getElementById("patterns-table");
+  const asCards = state.patternView !== "table";
+  if (cards) cards.hidden = !asCards;
+  if (table) table.hidden = asCards;
+  const cb = document.getElementById("pat-view-cards");
+  const tb = document.getElementById("pat-view-table");
+  if (cb && tb) {
+    cb.classList.toggle("is-active", asCards);
+    tb.classList.toggle("is-active", !asCards);
+    cb.setAttribute("aria-pressed", String(asCards));
+    tb.setAttribute("aria-pressed", String(!asCards));
+  }
+}
+
 function renderPatternOpportunities(rows) {
   const table = document.getElementById("patterns-table");
+  const cards = document.getElementById("patterns-cards");
   const emptyEl = document.getElementById("patterns-empty");
   const countEl = document.getElementById("patterns-opps-count");
   if (!table || !emptyEl) return;
   countEl.textContent = rows.length ? `(${rows.length})` : "";
   if (!rows.length) {
-    table.style.display = "none";
+    table.hidden = true;
+    if (cards) { cards.hidden = true; cards.innerHTML = ""; }
     emptyEl.style.display = "block";
     return;
   }
-  table.style.display = "";
   emptyEl.style.display = "none";
+  if (cards) {
+    cards.innerHTML = rows.map(_patternCard).join("");
+    wireCopyButtons(cards);
+  }
+  _applyPatternView();
   table.querySelector("tbody").innerHTML = rows.map(o => `
     <tr title="${(o.explanation || "").replace(/"/g, "&quot;")}">
       <td>${copyableName(o.market_hash_name, o.image_url)}</td>
@@ -1119,6 +1199,19 @@ function renderPatternOpportunities(rows) {
     </tr>`).join("");
   wireCopyButtons(table.querySelector("tbody"));
 }
+
+// Cards vs table is a display preference, so it persists locally like the other view prefs
+// rather than resetting on every reload.
+state.patternView = localStorage.getItem("patternView") || "cards";
+["cards", "table"].forEach(v => {
+  const btn = document.getElementById(`pat-view-${v}`);
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    state.patternView = v;
+    localStorage.setItem("patternView", v);
+    _applyPatternView();
+  });
+});
 
 // The Results page's companion table: same data, clearly identified as Collector Arbitrage
 // (NOT trade-ups), top 10 by score, linking back to the dedicated page for the rest.
@@ -1249,6 +1342,16 @@ function renderConnectionsStatus(c) {
       : (c.csfloat.note || "no key set -- Rare Patterns' CSFloat source and third-party price checks that need it stay skipped, never an error.");
   }
 
+  // Steam session cookie -- only ever rendered masked; the raw value never leaves the server.
+  const steam = c.steam_session || {};
+  _setConnBadge("steam-session-badge", steam.configured, "configured", "not set");
+  const steamStatusEl = document.getElementById("steam-session-status");
+  if (steamStatusEl) {
+    steamStatusEl.textContent = steam.configured
+      ? `stored session cookie: ${steam.masked_key || "(set)"} -- scanner is using Steam's authenticated rate limit`
+      : (steam.note || "not set -- scanning Steam anonymously, expect frequent rate-limit cooldowns.");
+  }
+
   const backupOk = !!(c.github_backup && c.github_backup.configured);
   _setConnBadge("backup-badge", backupOk, "configured", "not set");
 
@@ -1285,6 +1388,34 @@ document.getElementById("csfloat-config-form").addEventListener("submit", async 
   const data = await res.json();
   keyInput.value = "";
   _flashPanelMsg("csfloat-config-msg", data.ok ? "Saved." : (data.error || "Save failed."), !data.ok);
+  await loadConnectionsStatus();
+});
+
+// Steam session cookie. Blank submit = keep current (same convention as the CSFloat key form);
+// clearing is an explicit, separate button so it can never happen by accident.
+document.getElementById("steam-session-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("steam-session-input");
+  const body = {};
+  if (input.value.trim()) body.steam_login_secure = input.value.trim();
+  const res = await fetch("/api/connections/config", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  input.value = "";  // never leave a session token sitting in a DOM input
+  _flashPanelMsg("steam-session-msg", data.ok ? "Saved. The scanner picks it up immediately -- no restart needed." : (data.error || "Save failed."), !data.ok);
+  await loadConnectionsStatus();
+});
+
+document.getElementById("steam-session-clear-btn").addEventListener("click", async () => {
+  if (!confirm("Remove the stored Steam session cookie?\n\nThe Rare Patterns scanner will fall back to anonymous scanning, which Steam rate-limits aggressively.")) return;
+  const res = await fetch("/api/connections/config", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ steam_login_secure: null }),
+  });
+  const data = await res.json();
+  document.getElementById("steam-session-input").value = "";
+  _flashPanelMsg("steam-session-msg", data.ok ? "Cleared." : (data.error || "Clear failed."), !data.ok);
   await loadConnectionsStatus();
 });
 

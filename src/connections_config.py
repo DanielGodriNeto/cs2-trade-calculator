@@ -27,6 +27,11 @@ _lock = threading.Lock()
 def _default_config() -> dict:
     return {
         "csfloat_api_key": None,
+        # Steam session token (steamLoginSecure). NOT an API key -- whoever holds it can act as
+        # that Steam account on Steam's web endpoints, so it lives here for exactly the reason
+        # this module exists (gitignored, outside data/, never in the backup archive) and is
+        # only ever returned to the UI through masked_key().
+        "steam_login_secure": None,
         "ntfy_topic": None,
         "ntfy_server": "https://ntfy.sh",
         "ntfy_enabled": False,
@@ -92,5 +97,10 @@ def apply_to_runtime(cfg: dict | None = None) -> None:
     if explicit or cfg.get("csfloat_api_key"):
         thirdparty_prices_mod.configure_csfloat_key(cfg.get("csfloat_api_key"))
         pattern_scanner_mod.configure_csfloat_key(cfg.get("csfloat_api_key"))
+    # Same env-var-vs-saved-config rule as the keys above: only clobber the value
+    # pattern_scanner picked up from STEAM_LOGIN_SECURE_COOKIE at import time when the user
+    # explicitly saved the form, never on the implicit startup pass.
+    if explicit or cfg.get("steam_login_secure"):
+        pattern_scanner_mod.configure_steam_cookie(cfg.get("steam_login_secure"))
     if explicit or cfg.get("ntfy_topic"):
         alerts_mod.configure(cfg.get("ntfy_topic"), cfg.get("ntfy_server"))

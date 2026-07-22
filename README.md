@@ -753,8 +753,20 @@ exists to catch.
 
 Guardrails: every adaptive parameter stays within `BAND_RADIUS` of that agent's base personality
 (the four agents remain genuinely different searchers), `exploration_rate` can never drop below
-`EXPLORATION_RATE_FLOOR`, and `memory_weight` can never exceed `MEMORY_WEIGHT_CEIL` -- so no
-agent can ever collapse into pure exploitation, no matter how well it's currently paying.
+`EXPLORATION_RATE_FLOOR`, `memory_weight` can never exceed `MEMORY_WEIGHT_CEIL`, and
+`mutation_strength` can never exceed `MUTATION_STRENGTH_CEIL` -- so no agent can ever collapse
+into pure exploitation, no matter how well it's currently paying.
+
+That last ceiling was added after a measured collapse, and it is the one that had actually been
+missing. `mutation_strength` is the share of each round spent re-mutating the agent's OWN
+best-known list; left unbounded it drifted to 0.94-1.00 on four of the six agents, so
+essentially the whole budget was variations of a best-50 list that had not changed in ~600
+rounds. Because mutated candidates are blended in *after* selection has run, they also bypass
+both the model's scoring and the novelty bonus described below -- which is why, on those agents,
+tuning novelty did nothing measurable: novelty only ever reached the few percent of the batch
+that wasn't a mutant. A tightened clamp is applied to already-adopted values too, not just newly
+proposed ones (`adaptive._clamp_to_bounds`), so it takes effect on the next round rather than
+waiting for a coin-flip trial to be adopted.
 
 Separately from parameter adaptation, candidate **selection** carries a UCB-style novelty bonus:
 each agent tracks how much of its simulated history has used each collection
@@ -785,12 +797,24 @@ search can never simulate (let alone auto-verify) something that isn't a real, l
 Random generation alone only ever explores fresh, uniformly random candidates. `src/mutation.py`
 adds the other half: given a candidate an agent already knows is good (its own best-known list),
 it produces a small variation -- change the collection ratio (spec example: 7/3 → 5/5 → 4/5/1),
-replace one or several input units' skins, change a unit's wear, or retarget the whole contract
-to a different adjacent rarity pair -- and `sim_loop.run_round()` simulates those alongside fresh
+replace one or several input units' skins, change a unit's wear, retarget the whole contract
+to a different adjacent rarity pair, or move a whole leg to a different collection -- and
+`sim_loop.run_round()` simulates those alongside fresh
 random draws, blended in a `mutation_strength`-controlled ratio per agent. Every mutation is
 re-validated through the rules engine before use; a mutation only survives into an agent's
 best-list if it actually beats what's already there (the existing best-list logic already only
 keeps the top ROI entries, so no separate bookkeeping was needed for this).
+
+The leg-move operator (`_mutate_replace_collection`) is what keeps this from being a trap. Every
+other operator preserves the collections the parent was built from, and the one path that could
+introduce a new one only fires on a *single-leg* candidate -- so a multi-leg parent was
+mathematically confined to its own collections. Measured across the six agents' real best-lists,
+400 mutants each, the old operator set reached **0 new collections** for four of them; with the
+leg-move operator those same agents reach 34-44 (all 1,500 results still passing
+`validate_contract`). Combined with `MUTATION_STRENGTH_CEIL` above, replaying the agents' real
+checkpoints and models moves the worst-collapsed agent from 170 distinct input skins across 4
+collections to 1,736 across all 91, with its 90th-percentile predicted ROI unchanged
+(-62.5 → -63.1, against a model MAE of ~4.6pp).
 
 ### Dead-skin protection (scored, not a blacklist)
 

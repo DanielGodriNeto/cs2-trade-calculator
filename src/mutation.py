@@ -6,9 +6,15 @@ random_trade.py's generate_batch() only ever draws fresh, uniformly random candi
 softmax-weighted sampling -- see its own docstring). This module is the other half of
 the search strategy: given a candidate an agent already knows is good (its own
 checkpoint's `best` list, see sim_loop._consider_best), produce a small variation of it
--- change the collection ratio, swap out an input skin, change a wear-mix, or retarget
-the rarity path -- and let sim_loop.run_round() simulate those alongside fresh random
-draws. A mutation only survives into an agent's best-list if it actually beats what's
+-- change the collection ratio, swap out an input skin, change a wear-mix, retarget
+the rarity path, or move a whole leg to a different collection -- and let
+sim_loop.run_round() simulate those alongside fresh random draws.
+
+That last operator (_mutate_replace_collection) is what stops this module being a trap.
+Every other operator keeps the candidate inside the collections it started in, so with
+mutation_strength high enough to make mutants most of a round's batch, an agent could not
+reach a collection its best-list didn't already contain -- measured at 0 new collections
+across 400 mutants for four of the six sons. See that function's docstring. A mutation only survives into an agent's best-list if it actually beats what's
 already there -- sim_loop._consider_best already only keeps the top BEST_KEPT by ROI,
 so no extra "did this improve things" bookkeeping is needed here.
 
@@ -24,6 +30,10 @@ from copy import deepcopy
 from . import data as data_mod
 from . import random_trade as random_trade_mod
 from . import rules_engine as rules_engine_mod
+
+
+_REPLACE_COLLECTION_TRIES = 8  # how many shuffled candidate collections
+# _mutate_replace_collection will try before giving up on the mutation -- see its docstring.
 
 
 def _rarity_id_for_name(name: str) -> str | None:
@@ -231,6 +241,68 @@ def _mutate_wear_mix(candidate, idx: dict, rng: random_mod.Random):
     return _rebuild(candidate, legs)
 
 
+def _mutate_replace_collection(candidate, idx: dict, rng: random_mod.Random):
+    """Repoints ONE leg at a different eligible collection, keeping that leg's unit count and
+    drawing a fresh skin/wear mix from the new collection's input pool.
+
+    This is the operator that lets a mutant leave the collections its parent was built from at
+    all. Without it the set above can only introduce a new collection through
+    _mutate_collection_ratio's else-branch, which fires only when the candidate is SINGLE-leg --
+    so every multi-leg parent was permanently confined to its own collections, and the agents
+    spend most of their budget on mutants (see sim_loop.run_round's mutation_strength blend).
+    Measured on the six sons' real best-lists, 400 mutants each:
+
+        son   collections in best-50   reached by old operators   with this one
+         0            4                        4  (0 new)          50  (46 new)
+         2            4                        4  (0 new)          54  (50 new)
+         3            5                        5  (0 new)          42  (37 new)
+         5            7                        7  (0 new)          46  (39 new)
+
+    Sons 1 and 4 already escaped a little (18->30, 11->21) because more of their best entries
+    are single-leg; they go to 49 and 59. All 2,400 results passed validate_contract.
+
+    Deliberately a WHOLE-leg move rather than a per-unit one: a leg is the unit CS2's
+    group-based odds actually operate on (see oddsmath.group_odds), so swapping a leg's
+    collection produces a contract with a coherent, differently-shaped output distribution
+    instead of a leg whose units disagree about which collection they belong to -- which the
+    rest of the pipeline (simulate.py's per-leg pricing, sim_learning's n_legs/filler_fraction
+    features) assumes cannot happen. Tries a handful of shuffled candidate collections rather
+    than just one so a collection whose input pool is entirely invalid/unpriceable right now
+    doesn't waste the whole mutation attempt."""
+    legs = _copy_legs(candidate)
+    leg = rng.choice(legs)
+    in_use = {l.collection for l in legs}
+    eligible = [c for c in idx
+                if c not in in_use
+                and idx[c].get(candidate.from_rarity_id) and idx[c].get(candidate.to_rarity_id)]
+    if not eligible:
+        return None
+    total = sum(u["count"] for u in leg.units)
+    if total <= 0:
+        return None
+    rng.shuffle(eligible)
+    for new_collection in eligible[:_REPLACE_COLLECTION_TRIES]:
+        by_rarity = idx[new_collection]
+        inputs = by_rarity.get(candidate.from_rarity_id, [])
+        outputs = by_rarity.get(candidate.to_rarity_id, [])
+        if candidate.stattrak:
+            inputs = [s for s in inputs if s["stattrak"]]
+            outputs = [s for s in outputs if s["stattrak"]]
+        if not inputs or not outputs:
+            continue
+        # Reuses random_trade's own skin/wear mixer, so a moved leg is built exactly the way a
+        # freshly drawn one would be (several distinct skins, per-unit wears) instead of the
+        # single-skin block the other operators leave behind.
+        units = random_trade_mod._random_skin_mix(rng, inputs, total, stattrak=candidate.stattrak)
+        if units is None:  # every input skin here is unpriceable right now -- try another
+            continue
+        leg.collection = new_collection
+        leg.units = units
+        leg.outputs = outputs
+        return _rebuild(candidate, legs)
+    return None
+
+
 def _mutate_rarity_path(candidate, idx: dict, rng: random_mod.Random):
     """Retargets the whole contract to a DIFFERENT adjacent rarity pair, keeping the same
     collections where they're still eligible there -- e.g. was climbing Restricted->
@@ -272,6 +344,7 @@ _OPERATORS = [
     _mutate_replace_multiple_inputs,
     _mutate_wear_mix,
     _mutate_rarity_path,
+    _mutate_replace_collection,
 ]
 
 

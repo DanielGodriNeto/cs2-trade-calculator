@@ -780,7 +780,7 @@
   <details class="methodology">
     <summary>How this works</summary>
     <div class="methodology-body">
-  <p class="disclaimer">Scans <strong>Steam Market listings directly</strong> (the only listing source -- no third-party listings API involved) for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;). <strong>Every matched listing is shown here, profitable or not</strong> -- nothing is hidden behind a hardcoded profit bar; use the filters and "Sort by" below (expected profit, price, confidence&hellip;) to find the ones worth buying. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation is <strong>Steam-first</strong>: the base price a pattern's premium multiplies is the skin's own Steam median-sale price when it exists, and only falls back to the Steam/Skinport/Buff163 consensus (with confidence demoted) when Steam has no sale evidence. Each Steam listing's inspect link is resolved to float + paint seed via CSFloat's free inspect endpoint (a key is optional, only widens its rate budget -- not required). <strong>Honest caveat:</strong> Steam rate-limits anonymous listing requests hard, so a scan can spend real time sitting out cooldowns rather than finding listings -- the scanner status below reports this plainly rather than hiding it; a self-provided <code>STEAM_LOGIN_SECURE_COOKIE</code> (your own Steam session, set as an environment variable, never through this dashboard) removes that limit. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
+  <p class="disclaimer">Scans <strong>Steam Market listings directly</strong> (the only listing source -- no third-party listings API involved) for items whose seller priced a <strong>documented collector pattern</strong> (Blue Gems, Case Hardened tiers, Heat Treated seeds, Doppler phases, rare fades, Katowice/Crown sticker crafts&hellip;). <strong>Every matched listing is shown here, profitable or not</strong> -- nothing is hidden behind a hardcoded profit bar; use the filters and "Sort by" below (expected profit, price, confidence&hellip;) to find the ones worth buying. Detection is <strong>knowledge-driven, never ML-driven</strong>: a listing only ever becomes an opportunity by matching the versioned Pattern Knowledge Database below (public collector consensus, every entry links its source) -- no model can invent a pattern. Valuation is <strong>Steam-first</strong>: the base price a pattern's premium multiplies is the skin's own Steam median-sale price when it exists, and only falls back to the Steam/Skinport/Buff163 consensus (with confidence demoted) when Steam has no sale evidence. Each listing's float + paint seed are <strong>decoded from its inspect link locally</strong> -- no API call, no key, no rate limit (modern CS2 inspect links carry the item data themselves; this is the same trick the fast market extensions use). <strong>Honest caveat:</strong> Steam rate-limits anonymous listing requests hard -- often refusing the very first one -- so a scan can spend real time sitting out cooldowns rather than finding listings. That render call is now the scanner's <em>only</em> network cost, so saving your Steam session cookie under <a href="#connections">Connections</a> is the single biggest thing you can do for scan speed; the scanner status below reports every cooldown plainly rather than hiding it. As always: read-only, nothing is ever bought -- verify float/seed on the listing itself before spending money.</p>
     </div>
   </details>
 
@@ -794,6 +794,10 @@
   </div>
 
   <h3>Live opportunities <span class="count" id="patterns-opps-count"></span>
+    <span class="view-toggle" role="group" aria-label="Result view">
+      <button id="pat-view-cards" class="view-toggle-btn is-active" aria-pressed="true">Cards</button>
+      <button id="pat-view-table" class="view-toggle-btn" aria-pressed="false">Table</button>
+    </span>
     <button class="export-btn" id="export-patterns-btn">Export CSV</button>
   </h3>
   <div class="opportunity-filters">
@@ -829,7 +833,8 @@
       </select>
     </label>
   </div>
-  <table id="patterns-table">
+  <div id="patterns-cards" class="pattern-cards"></div>
+  <table id="patterns-table" hidden>
     <thead><tr>
       <th>Item</th><th>Pattern</th><th class="num">Float</th><th class="num">Seed / Index</th>
       <th class="num">Ask</th><th class="num">Est. collector value</th><th class="num">Est. profit</th>
@@ -837,7 +842,7 @@
     </tr></thead>
     <tbody></tbody>
   </table>
-  <div id="patterns-empty" class="empty-state" style="display:none;">No opportunities match. If the scanner has never run, start it above. Scans Steam Market listings directly, no API key required -- expect it to run slowly in bursts, since Steam rate-limits anonymous listing requests (see the status line above for details).</div>
+  <div id="patterns-empty" class="empty-state" style="display:none;">No opportunities match. If the scanner has never run, start it above. Scans Steam Market listings directly, no API key required. If the status line above shows repeated rate-limit cooldowns, save your Steam session cookie under <a href="#connections">Connections</a> -- anonymous scanning is throttled hard by Steam.</div>
 </section>
 
 <section id="pattern-db-section">
@@ -867,13 +872,51 @@
 
   <div class="learning-panel" id="csfloat-panel">
     <h3>CSFloat API key <span class="conn-badge" id="csfloat-badge">&hellip;</span></h3>
-    <p class="disclaimer">Optional, free (csfloat.com). The Rare Patterns scanner's listing source is Steam Market only, regardless of this key -- setting it just widens the rate budget of CSFloat's free inspect endpoint (resolves a Steam listing's float/paint-seed/stickers) and third-party price verification elsewhere in the app. Leaving this blank works fine; those two features just get a smaller rate budget. The Rare Patterns scanner's real throughput bottleneck is Steam's own anonymous rate limit -- see the Rare Patterns page for the optional <code>STEAM_LOGIN_SECURE_COOKIE</code> environment variable, which raises that limit and isn't set through this form for security reasons.</p>
+    <p class="disclaimer">Optional, free (csfloat.com). <strong>The Rare Patterns scanner no longer needs this at all</strong> -- float and paint seed are decoded from the inspect link locally, with no API call. It is still used for third-party price verification elsewhere in the app. Leaving it blank works fine. To speed up rare-pattern scanning, set the <strong>Steam session</strong> below instead -- that is the real bottleneck.</p>
     <form id="csfloat-config-form" class="learning-controls" autocomplete="off">
       <label>API key <input type="password" id="csfloat-key-input" placeholder="paste key, or leave blank to keep current" size="34"></label>
       <button type="submit">Save</button>
     </form>
     <div id="csfloat-config-msg" class="empty-state" style="display:none;"></div>
     <div class="learning-status" id="csfloat-status"></div>
+  </div>
+
+  <div class="learning-panel" id="steam-session-panel">
+    <h3>Steam session <span class="conn-badge" id="steam-session-badge">&hellip;</span> <span class="muted-inline">(raises the Rare Patterns scan rate limit)</span></h3>
+    <p class="disclaimer"><strong>This is the single biggest lever on scan speed.</strong> Steam rate-limits <em>anonymous</em> listing requests hard -- often refusing the very first one -- so without this the Rare Patterns scanner spends most of its time sitting out cooldowns instead of finding listings. Sending your own browser's Steam session cookie gets the same friendlier limit any logged-in browser gets.</p>
+    <p class="disclaimer warn-strong"><strong>Read this before pasting.</strong> <code>steamLoginSecure</code> is <strong>not an API key -- it is your Steam login session</strong>. Anyone who holds it can act as your Steam account on Steam's web endpoints without your password or Steam Guard. Only ever paste it into software you run yourself, like this dashboard on your own machine. It is stored in <code>connections.local.json</code> (gitignored, and deliberately kept outside <code>data/</code> so the 6-hourly GitHub backup below can never push it), is never written to logs, and is never sent back to this page in full -- only the last 4 characters. <strong>If you ever share your screen, a screenshot, or this repo, clear it first.</strong> It expires on its own when you log out of Steam in your browser; clicking "Log out of all devices" on Steam invalidates it immediately.</p>
+    <p class="disclaimer easiest-way"><strong>Easiest way &mdash; one click, no copy-paste:</strong> install the bundled helper extension in <code>extension/</code>, then click its icon while logged into Steam. It reads the cookie for you and re-syncs itself whenever Steam rotates it. <em>Why an extension?</em> <code>steamLoginSecure</code> is HttpOnly, so no page script or bookmarklet can read it &mdash; devtools or an extension are the only two options. It is <strong>not</strong> a Steam login: it never sees your password.</p>
+    <details class="methodology">
+      <summary>Install the helper extension (recommended)</summary>
+      <div class="methodology-body">
+        <ol class="howto-list">
+          <li>Open <code>chrome://extensions</code> (Edge: <code>edge://extensions</code>).</li>
+          <li>Turn on <strong>Developer mode</strong>, top right.</li>
+          <li>Click <strong>Load unpacked</strong> and pick the <code>extension/</code> folder in this project.</li>
+          <li>Pin the green gem icon, make sure you're logged into <a href="https://steamcommunity.com/market/" target="_blank" rel="noopener noreferrer">steamcommunity.com</a>, and click it.</li>
+          <li>A green <strong>OK</strong> badge means done &mdash; this panel will show the masked value. Full notes in <code>extension/README.md</code>.</li>
+        </ol>
+      </div>
+    </details>
+    <details class="methodology">
+      <summary>Or paste it manually (Chrome / Edge / Firefox)</summary>
+      <div class="methodology-body">
+        <ol class="howto-list">
+          <li>Open <a href="https://steamcommunity.com/market/" target="_blank" rel="noopener noreferrer">steamcommunity.com/market</a> and make sure you're logged in.</li>
+          <li>Press <kbd>F12</kbd> to open developer tools.</li>
+          <li>Go to <strong>Application</strong> (Chrome/Edge) or <strong>Storage</strong> (Firefox) &rarr; <strong>Cookies</strong> &rarr; <code>https://steamcommunity.com</code>.</li>
+          <li>Find the row named <code>steamLoginSecure</code> and copy its <strong>Value</strong>.</li>
+          <li>Paste it below. Pasting the whole <code>steamLoginSecure=...</code> pair works too.</li>
+        </ol>
+      </div>
+    </details>
+    <form id="steam-session-form" class="learning-controls" autocomplete="off">
+      <label>steamLoginSecure <input type="password" id="steam-session-input" placeholder="paste value, or leave blank to keep current" size="34" autocomplete="off"></label>
+      <button type="submit">Save</button>
+      <button type="button" id="steam-session-clear-btn" class="secondary" title="Remove the stored session cookie from connections.local.json">Clear</button>
+    </form>
+    <div id="steam-session-msg" class="empty-state" style="display:none;"></div>
+    <div class="learning-status" id="steam-session-status"></div>
   </div>
 
   <div class="learning-panel" id="github-backup-panel">

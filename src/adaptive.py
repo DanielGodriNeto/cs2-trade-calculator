@@ -37,10 +37,14 @@ rows are excluded from the ROI term entirely -- the same filter sim_learning.tra
 so an agent can never earn reward through prices too thin to trust.
 
 Exploration can never collapse: bounds_for() clamps every agent's exploration_rate to at least
-EXPLORATION_RATE_FLOOR and memory_weight to at most MEMORY_WEIGHT_CEIL (softmax temperature
-never fully freezes onto the model's top picks), and each param stays within BAND_RADIUS of the
+EXPLORATION_RATE_FLOOR, memory_weight to at most MEMORY_WEIGHT_CEIL (softmax temperature
+never fully freezes onto the model's top picks), and mutation_strength to at most
+MUTATION_STRENGTH_CEIL (a fixed share of every round stays fresh random draws rather than
+re-mutations of what this son already found) -- and each param stays within BAND_RADIUS of the
 agent's base personality so the four agents remain genuinely different searchers instead of all
-drifting to one point.
+drifting to one point. A tightened clamp reaches already-adopted values too, not just newly
+proposed ones -- see _clamp_to_bounds, without which the mutation ceiling would have taken
+effect only if some later coin-flip trial happened to be adopted.
 
 Separately from parameter adaptation, novelty_bonus() gives candidate SELECTION a UCB-style
 "optimism about the un-tried" bonus: each son tracks how many of its valid sims have used each
@@ -78,6 +82,34 @@ EXPLORATION_RATE_FLOOR = 0.25  # global exploration floor -- no agent may stop c
 # candidate pool entirely, no matter how well pure exploitation is paying right now
 MEMORY_WEIGHT_CEIL = 0.90      # softmax temperature never fully collapses onto the model's top
 # picks (see agents.temperature_for: 0.90 still leaves temperature ~0.35)
+MUTATION_STRENGTH_CEIL = 0.60  # a fixed share of every round must stay FRESH random draws.
+# Third of the "exploration can never collapse" clamps, and the one that was actually missing.
+#
+# mutation_strength is the fraction of a round's batch that comes from mutating this son's own
+# best-known list (see sim_loop.run_round). Left uncapped it reached 0.94-1.00 on four of the
+# six sons, i.e. essentially the WHOLE budget was re-mutations of a best-50 list that had not
+# changed in ~600 rounds (checkpoint rounds_since_improvement: 547-606). Those mutants are also
+# spliced in AFTER generate_batch has already run selection, so they bypass both the model's
+# scoring and novelty_bonus below -- which is why every novelty tweak measured as a no-op on
+# those sons: novelty only ever got to influence the 0-6% of the batch that wasn't a mutant.
+#
+# Replayed over the sons' real checkpoints/models (mutation.py's collection-move operator
+# already in place, so this measures the cap ALONE, not the trap it used to compound):
+#     share       distinct skins   collections   coverage entropy   pred ROI p90
+#     uncapped         773            72.8           2.863           -34.01
+#     <= 0.8           949            84.5           3.297           -34.13
+#     <= 0.6          1145            86.7           3.638           -34.34
+# ~48% more distinct skins and a materially flatter collection spread, for 0.3pp of p90
+# predicted ROI -- which is noise at this model's MAE (~4.6pp). Mean predicted ROI does drop
+# slightly, as it must: a batch that explores more has a worse AVERAGE by construction. The
+# tail is what this search is actually mining, and the tail is flat.
+#
+# Not lower than 0.6: mutation is the "improve an existing good find" half of the search and
+# still has to have real budget. Sons whose base personality sits above this (the Discovery
+# Agent at 1.00, Collection Mixer at 0.80) end up clamped into a narrow band just under the
+# ceiling by bounds_for's own min/max normalisation -- deliberate; their exploratory identity
+# is carried by exploration_rate and collection_mixing_bias, not by refusing to draw anything
+# fresh.
 
 NOVELTY_UCB_PP = 8.0      # scale (in ROI percentage points) of the UCB selection bonus for an
 # unexplored collection -- comparable to a genuinely-good ROI edge, so novelty really competes
@@ -100,6 +132,8 @@ def bounds_for(profile: "agents_mod.AgentProfile") -> dict:
             lo = max(lo, EXPLORATION_RATE_FLOOR)
         if param == "memory_weight":
             hi = min(hi, MEMORY_WEIGHT_CEIL)
+        if param == "mutation_strength":
+            hi = min(hi, MUTATION_STRENGTH_CEIL)
         out[param] = (min(lo, hi), max(lo, hi))
     return out
 
@@ -136,7 +170,30 @@ def ensure_state(cp: dict, profile: "agents_mod.AgentProfile") -> dict:
     else:
         for k, v in initial_state(profile).items():
             cp["adaptive"].setdefault(k, v)
+        _clamp_to_bounds(cp["adaptive"], profile)
     return cp["adaptive"]
+
+
+def _clamp_to_bounds(adaptive: dict, profile: "agents_mod.AgentProfile") -> None:
+    """Re-clamps the ADOPTED (and any in-flight trial) params into the current bounds.
+
+    perturb() clamps the values it generates, so bounds_for() governs everything a son
+    proposes -- but an already-adopted value is never re-examined, so tightening a bound would
+    otherwise leave every existing checkpoint running outside it indefinitely: the son keeps
+    searching at the old value and only comes down if some later trial happens to be adopted,
+    which is a coin flip that may never land. Doing it here means a new clamp takes effect on
+    the very next round for every son, including ones mid-trial.
+
+    This is what made MUTATION_STRENGTH_CEIL actually bite: the six live checkpoints carried
+    adopted mutation_strength of 0.35-1.00, four of them above the new ceiling."""
+    bounds = bounds_for(profile)
+    for key in ("params", "trial_params"):
+        params = adaptive.get(key)
+        if not params:
+            continue
+        for param, (lo, hi) in bounds.items():
+            if param in params:
+                params[param] = min(max(params[param], lo), hi)
 
 
 def live_params(adaptive: dict) -> dict:
