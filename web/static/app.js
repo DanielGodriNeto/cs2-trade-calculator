@@ -446,6 +446,95 @@ function fmtTrainCost(ms) {
   return ` — trained in ${ms.train_seconds.toFixed(1)}s${avg}${worst}`;
 }
 
+// ---- In-page dialogs (replacing native alert/confirm/prompt) ----------------------------
+// The browser this dashboard runs in does NOT support native modal dialogs: prompt() throws
+// outright ("prompt() is not supported"), confirm() returns false without ever showing
+// anything, and alert() is a no-op. That silently broke every dialog-gated action here -- a
+// confirm() that always returns false means the guarded code never runs, so buttons looked
+// dead. These three build a real modal in the page instead, so the behaviour no longer depends
+// on the embedder's dialog support.
+//
+// All three are async: `if (!confirm(x)) return;` becomes `if (!await uiConfirm(x)) return;`,
+// which is why their callers are async functions.
+
+function _closeModal(root, resolve, value) {
+  root.remove();
+  document.removeEventListener("keydown", root._onKey, true);
+  resolve(value);
+}
+
+// fields: [{name, label, type: "text"|"number"|"select", value, options:[{value,label}], hint}]
+// "number" renders a TEXT input with inputmode="decimal", not <input type="number">: a real
+// number input silently blanks any value it considers invalid, which throws away "1234,50" --
+// the comma decimal a pt-BR keyboard produces -- before the caller can normalise it. Callers
+// parse and validate the string themselves.
+// Resolves to a {name: value} object on confirm, or null on cancel/Escape/backdrop click.
+function uiModal({ title, message = "", fields = [], confirmLabel = "OK", cancelLabel = "Cancel",
+                   danger = false, showCancel = true }) {
+  return new Promise(resolve => {
+    const root = document.createElement("div");
+    root.className = "modal-backdrop";
+    root.innerHTML = `
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-label="${_esc(title)}">
+        <h4 class="modal-title">${_esc(title)}</h4>
+        ${message ? `<div class="modal-message">${message}</div>` : ""}
+        ${fields.map(f => `
+          <label class="modal-field">
+            <span>${_esc(f.label)}</span>
+            ${f.type === "select"
+              ? `<select data-name="${_esc(f.name)}">${(f.options || []).map(o =>
+                  `<option value="${_esc(String(o.value))}"${String(o.value) === String(f.value ?? "") ? " selected" : ""}>${_esc(o.label)}</option>`).join("")}</select>`
+              : `<input type="text" data-name="${_esc(f.name)}"
+                   ${f.type === "number" ? ` inputmode="decimal"` : ""}
+                   value="${_esc(String(f.value ?? ""))}"
+                   ${f.placeholder ? `placeholder="${_esc(f.placeholder)}"` : ""}>`}
+            ${f.hint ? `<small class="modal-hint">${f.hint}</small>` : ""}
+          </label>`).join("")}
+        <div class="modal-error" hidden></div>
+        <div class="modal-actions">
+          ${showCancel ? `<button class="secondary modal-cancel">${_esc(cancelLabel)}</button>` : ""}
+          <button class="modal-confirm${danger ? " modal-danger" : ""}">${_esc(confirmLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(root);
+
+    const collect = () => {
+      const out = {};
+      root.querySelectorAll("[data-name]").forEach(el => { out[el.dataset.name] = el.value; });
+      return out;
+    };
+    root.querySelector(".modal-confirm").addEventListener("click", () => _closeModal(root, resolve, collect()));
+    const cancelBtn = root.querySelector(".modal-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", () => _closeModal(root, resolve, null));
+    root.addEventListener("mousedown", e => { if (e.target === root) _closeModal(root, resolve, null); });
+    // Capture phase: this dialog is modal, so Escape/Enter belong to it and must not also reach
+    // the table/row keyboard handlers underneath.
+    root._onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); _closeModal(root, resolve, null); }
+      else if (e.key === "Enter" && e.target.tagName !== "BUTTON") { e.stopPropagation(); _closeModal(root, resolve, collect()); }
+    };
+    document.addEventListener("keydown", root._onKey, true);
+
+    const first = root.querySelector("input, select");
+    if (first) { first.focus(); if (first.select) first.select(); }
+    else root.querySelector(".modal-confirm").focus();
+  });
+}
+
+async function uiConfirm(message, { title = "Are you sure?", confirmLabel = "Confirm", danger = true } = {}) {
+  return (await uiModal({ title, message: _esc(message).replace(/\n/g, "<br>"), confirmLabel, danger })) !== null;
+}
+
+async function uiAlert(message, { title = "Heads up" } = {}) {
+  await uiModal({ title, message: _esc(message).replace(/\n/g, "<br>"), confirmLabel: "OK",
+                  danger: false, showCancel: false });
+}
+
+function _esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 // A skin name with a small button that copies just the name (no price/wear noise)
 // to the clipboard, so it can be pasted straight into the Steam Market search box.
 // imageUrl (optional) prefixes a small thumbnail hotlinked straight from Steam's own CDN --
@@ -707,7 +796,7 @@ async function loadInvalidSkins() {
 }
 
 async function clearInvalidSkins() {
-  if (!confirm("Erase all invalid-skins data? This is safe -- any skin still without a price will be re-flagged automatically next time it's simulated.")) return;
+  if (!await uiConfirm("Erase all invalid-skins data? This is safe -- any skin still without a price will be re-flagged automatically next time it's simulated.", {title: "Erase invalid skins", confirmLabel: "Erase"})) return;
   await fetch("/api/invalid-skins/clear", { method: "POST" });
   await loadInvalidSkins();
 }
@@ -740,7 +829,7 @@ async function loadMispricedSkins() {
 }
 
 async function clearMispricedSkins() {
-  if (!confirm("Erase all mispriced-skin marks? Safe -- any skin still mispriced will be re-flagged by the next verification that sees it.")) return;
+  if (!await uiConfirm("Erase all mispriced-skin marks? Safe -- any skin still mispriced will be re-flagged by the next verification that sees it.", {title: "Erase mispriced marks", confirmLabel: "Erase"})) return;
   await fetch("/api/mispriced-skins/clear", { method: "POST" });
   await loadMispricedSkins();
 }
@@ -859,25 +948,28 @@ document.addEventListener("click", async (e) => {
   const btn = e.target.closest(".blacklist-skin-btn");
   if (!btn) return;
   const skin = decodeURIComponent(btn.dataset.skin);
-  // One dialog asks the duration AND doubles as the confirm: Cancel aborts, empty = forever
-  // (the default this feature has always had), a number = that many days.
-  const answer = prompt(
-    `Blacklist "${skin}"?\n\n` +
-    `It gets banned everywhere -- as a trade-up input AND as a possible output -- and every ` +
-    `existing opportunity containing it disappears from the leaderboard immediately.\n\n` +
-    `For how many days? Leave EMPTY to blacklist it forever (until you remove it yourself ` +
-    `in Simulation Lab -> Market intelligence -> Skin blacklist).`, "");
+  // One dialog asks the duration AND doubles as the confirm. "Forever" is the default, matching
+  // the panel form and the CLI's no---days behaviour.
+  const answer = await uiModal({
+    title: `Blacklist ${skin}?`,
+    message: `Bans it <strong>everywhere</strong> &mdash; as a trade-up input <em>and</em> as a possible output &mdash; and every existing opportunity containing it disappears from the leaderboard, archive and collector list immediately.`,
+    fields: [
+      { name: "days", label: "For how long", type: "select", value: "",
+        options: [{ value: "", label: "Forever (until I remove it)" }, { value: "1", label: "1 day" },
+                  { value: "7", label: "7 days" }, { value: "30", label: "30 days" },
+                  { value: "90", label: "90 days" }],
+        hint: "A timed entry stops applying and drops off the list on its own. Nothing re-checks the skin either way." },
+      { name: "note", label: "Note (optional)", type: "text", value: "",
+        placeholder: "why, e.g. bogus mirror price" },
+    ],
+    confirmLabel: "Blacklist skin", danger: true,
+  });
   if (answer === null) return;
-  const days = answer.trim();
-  if (days !== "" && !(parseFloat(days) > 0)) {
-    alert(`"${days}" is not a number of days. Nothing was blacklisted.`);
-    return;
-  }
   btn.disabled = true;
-  const data = await blacklistSkin(skin, { days, note: "blacklisted from a result row" });
+  const data = await blacklistSkin(skin, { days: answer.days, note: answer.note || "blacklisted from a result row" });
   if (!data.ok) {
     btn.disabled = false;
-    alert(`Could not blacklist "${skin}": ${data.error || "failed"}`);
+    await uiAlert(`Could not blacklist "${skin}": ${data.error || "failed"}`, { title: "Blacklist failed" });
     return;
   }
   // No manual re-render: blacklistSkin() already refreshed every opportunity list, and this row
@@ -891,24 +983,29 @@ document.addEventListener("click", async (e) => {
   const wear = decodeURIComponent(btn.dataset.wear);
   const stattrak = btn.dataset.stattrak === "1";
   const label = `${stattrak ? "StatTrak™ " : ""}${skin} (${wear})`;
-  const answer = prompt(
-    `Your real price for "${label}"?\n\n` +
-    `It beats every price source (cache, bulk mirror, live fetch) from now on, and every ` +
-    `existing opportunity containing this skin+wear has its cost, profit and ROI recomputed ` +
-    `with your number -- so a bugged trade-up drops to its true ROI instead of vanishing.\n\n` +
-    `Enter the price in USD. Remove it later in Simulation Lab -> Market intelligence -> ` +
-    `Manual price overrides.`, "");
+  const answer = await uiModal({
+    title: "Set your own price",
+    message: `<strong>${_esc(label)}</strong><br>Your price beats every source (cache, bulk mirror, live fetch), and every existing opportunity containing this skin+wear has its cost, profit and ROI recomputed with it &mdash; so a bugged trade-up drops to its true ROI instead of disappearing.`,
+    fields: [
+      { name: "price", label: "Real price", type: "number", value: "", step: "0.01", min: "0",
+        placeholder: "e.g. 12.50",
+        hint: "Remove it later in Simulation Lab &rarr; Market intelligence &rarr; Manual price overrides." },
+    ],
+    confirmLabel: "Set price",
+  });
   if (answer === null) return;
-  const price = parseFloat((answer || "").trim().replace(",", "."));
+  // A number input still hands back a string, and a comma decimal is what a pt-BR keyboard
+  // produces -- normalise before validating rather than rejecting a perfectly clear "12,50".
+  const price = parseFloat(String(answer.price || "").trim().replace(",", "."));
   if (!(price > 0)) {
-    alert(`"${answer}" is not a valid price. Nothing was changed.`);
+    await uiAlert(`"${answer.price}" is not a valid price. Nothing was changed.`, { title: "Invalid price" });
     return;
   }
   btn.disabled = true;
   const data = await overrideSkinPrice(skin, wear, stattrak, price);
   btn.disabled = false;
   if (!data.ok) {
-    alert(`Could not set a price for "${label}": ${data.error || "failed"}`);
+    await uiAlert(`Could not set a price for "${label}": ${data.error || "failed"}`, { title: "Override failed" });
     return;
   }
   // Unlike a blacklist, the row SURVIVES -- it re-renders with corrected numbers and a
@@ -1008,7 +1105,7 @@ async function loadWearAnomalies() {
 }
 
 async function clearWearAnomalies() {
-  if (!confirm("Erase all wear-anomaly marks? Safe -- any price still inverted against its own better wears will be re-flagged by the next positive-ROI scan that touches it.")) return;
+  if (!await uiConfirm("Erase all wear-anomaly marks? Safe -- any price still inverted against its own better wears will be re-flagged by the next positive-ROI scan that touches it.", {title: "Erase wear-anomaly marks", confirmLabel: "Erase"})) return;
   await fetch("/api/wear-anomalies/clear", { method: "POST" });
   await loadWearAnomalies();
 }
@@ -1071,9 +1168,24 @@ function renderMarketReliability(rows) {
   table.querySelectorAll(".mr-override-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
       const name = decodeURIComponent(btn.dataset.name);
-      const chosen = prompt(`Override state for ${name} -- type healthy, suspicious, or excluded:`, "excluded");
-      if (!chosen || !["healthy", "suspicious", "excluded"].includes(chosen.trim().toLowerCase())) return;
-      const note = prompt("Optional note for this override:", "") || "";
+      // Was two sequential native prompts (which this browser doesn't support at all, so the
+      // button did nothing) -- now one modal, with the three valid states as a dropdown rather
+      // than free text the user could typo.
+      const answer = await uiModal({
+        title: "Manual reliability override",
+        message: `<strong>${_esc(name)}</strong><br>Your choice wins over the computed state until you clear it.`,
+        fields: [
+          { name: "state", label: "State", type: "select", value: "excluded",
+            options: [{ value: "excluded", label: "Excluded (drop from training/ranking)" },
+                      { value: "suspicious", label: "Suspicious" },
+                      { value: "healthy", label: "Healthy" }] },
+          { name: "note", label: "Note (optional)", type: "text", value: "" },
+        ],
+        confirmLabel: "Set override",
+      });
+      if (answer === null) return;
+      const chosen = answer.state;
+      const note = answer.note || "";
       btn.disabled = true;
       try {
         await fetch("/api/market-reliability/override", {
@@ -1549,7 +1661,7 @@ document.getElementById("steam-session-form").addEventListener("submit", async (
 });
 
 document.getElementById("steam-session-clear-btn").addEventListener("click", async () => {
-  if (!confirm("Remove the stored Steam session cookie?\n\nThe Rare Patterns scanner will fall back to anonymous scanning, which Steam rate-limits aggressively.")) return;
+  if (!await uiConfirm("Remove the stored Steam session cookie?\n\nThe Rare Patterns scanner will fall back to anonymous scanning, which Steam rate-limits aggressively.", {title: "Remove Steam cookie", confirmLabel: "Remove"})) return;
   const res = await fetch("/api/connections/config", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ steam_login_secure: null }),
@@ -2173,7 +2285,7 @@ function _ensureSonCards(sons) {
     const card = btn.closest(".son-card");
     const sonId = card.dataset.son;
     const action = btn.dataset.action;
-    if (action === "reset" && !confirm(`Fully reset son ${sonId}? This wipes its logged simulations and trained model -- cannot be undone.`)) return;
+    if (action === "reset" && !await uiConfirm(`Fully reset son ${sonId}? This wipes its logged simulations and trained model -- cannot be undone.`, {title: "Reset agent", confirmLabel: "Reset agent"})) return;
     btn.disabled = true;
     try {
       await fetch(`/api/sim-population/${sonId}/${action}`, { method: "POST" });
@@ -3798,7 +3910,7 @@ document.getElementById("round-robin-stop-btn").addEventListener("click", async 
   await loadSimPopulationStatus();
 });
 document.getElementById("reset-all-btn").addEventListener("click", async (e) => {
-  if (!confirm("Restart ALL agents? This wipes every agent's logged simulations, trained models and progress and starts the whole population over from scratch -- cannot be undone.")) return;
+  if (!await uiConfirm("Restart ALL agents? This wipes every agent's logged simulations, trained models and progress and starts the whole population over from scratch -- cannot be undone.", {title: "Restart ALL agents", confirmLabel: "Wipe everything"})) return;
   e.target.disabled = true;
   try {
     await fetch("/api/sim-population/reset-all", { method: "POST" });
@@ -3809,13 +3921,21 @@ document.getElementById("reset-all-btn").addEventListener("click", async (e) => 
   }
 });
 document.getElementById("reset-all-data-btn").addEventListener("click", async (e) => {
-  const typed = prompt("This wipes EVERY regenerable cache/registry app-wide: the ML sim population (all agents' simulations, models and progress), rare-pattern scan results, the Steam price cache, and the invalid-skin/mispriced-skin/wear-anomaly/dead-skin registries.\n\nYour real logged trade history, the real ROI model, and your permanent skin blacklist/price overrides are NOT touched.\n\nCannot be undone. Type RESET to confirm:");
-  if (typed !== "RESET") return;
+  const answer = await uiModal({
+    title: "Reset ALL regenerable data",
+    message: "Wipes every regenerable cache/registry app-wide: the ML sim population (all agents' simulations, models and progress), rare-pattern scan results, the Steam price cache, and the invalid-skin / mispriced-skin / wear-anomaly / dead-skin registries." +
+             "<br><br>Your real logged trade history, the real ROI model, and your skin blacklist / price overrides are <strong>NOT</strong> touched." +
+             "<br><br><strong>Cannot be undone.</strong>",
+    fields: [{ name: "typed", label: "Type RESET to confirm", type: "text", value: "",
+               placeholder: "RESET" }],
+    confirmLabel: "Reset everything", danger: true,
+  });
+  if (answer === null || answer.typed.trim() !== "RESET") return;
   e.target.disabled = true;
   try {
     const res = await fetch("/api/reset-all-data", { method: "POST" });
     const data = await res.json();
-    alert("Reset complete. Removed: " + Object.entries(data.removed || {})
+    await uiAlert("Reset complete. Removed: " + Object.entries(data.removed || {})
       .map(([k, v]) => `${k}=${v}`).join(", "));
     location.reload();
   } finally {
@@ -3830,13 +3950,13 @@ document.getElementById("train-now-btn").addEventListener("click", async () => {
     const result = await res.json();
     await loadModelStatus();
     await loadRetrainLoopStatus();
-    if (!result.trained) alert(`Not trained: ${result.reason}`);
+    if (!result.trained) await uiAlert(`Not trained: ${result.reason}`);
   } finally {
     btn.disabled = false;
   }
 });
 document.getElementById("reset-model-btn").addEventListener("click", async () => {
-  if (!confirm("Reset the trained ML ROI model? Your logged outcomes are kept -- you can retrain from them with \"Train now\" afterward.")) return;
+  if (!await uiConfirm("Reset the trained ML ROI model? Your logged outcomes are kept -- you can retrain from them with \"Train now\" afterward.", {title: "Reset ML model", confirmLabel: "Reset model"})) return;
   const btn = document.getElementById("reset-model-btn");
   btn.disabled = true;
   try {
@@ -3918,7 +4038,7 @@ document.getElementById("skin-blacklist-form").addEventListener("submit", async 
   if (!skin) return;
   const days = document.getElementById("bl-duration").value;  // "" = forever (the default)
   const forHowLong = days ? `for ${days} day(s)` : "permanently";
-  if (!confirm(`Blacklist "${skin}" ${forHowLong}?\n\nEvery existing trade-up opportunity containing it (as input OR output) disappears, and the agents/scans/manual builder refuse it ${days ? `until the ${days} day(s) run out, or until you remove it sooner.` : "until you remove it from the list."}`)) return;
+  if (!await uiConfirm(`Blacklist "${skin}" ${forHowLong}?\n\nEvery existing trade-up opportunity containing it (as input OR output) disappears, and the agents/scans/manual builder refuse it ${days ? `until the ${days} day(s) run out, or until you remove it sooner.` : "until you remove it from the list."}`, {title: "Blacklist skin", confirmLabel: "Blacklist skin"})) return;
   const data = await blacklistSkin(skin, { days, note: document.getElementById("bl-note").value.trim() });
   if (!data.ok) {
     _flashPanelMsg("skin-blacklist-msg", data.error || "failed", true);
