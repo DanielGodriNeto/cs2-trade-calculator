@@ -351,13 +351,14 @@
     <summary><h2>Market intelligence &amp; risk registries <span class="count" id="market-intel-badge"></span></h2></summary>
     <div class="methodology-body">
   <p class="disclaimer">Diagnostic registries -- dead/invalid/mispriced skins, wear anomalies, reliability overrides, your permanent blacklist and price overrides. Collapsed by default since these are reference tables you check occasionally, not every session; nothing here was removed, just tucked away. Skins flagged below are temporary scores (reviewed weekly -- never a permanent blacklist, see <code>src/dead_skin.py</code>) and drop off on their own once market activity looks healthy again.</p>
+  <h3>Dead skins (thin/unreliable market data) <button class="export-btn collapse-btn" id="collapse-dead-skins-btn" data-target="dead-skins-table,dead-skins-empty">Hide</button></h3>
   <table id="dead-skins-table">
     <thead><tr><th>Skin</th><th>Score</th><th>Reasons</th><th>Last seen</th></tr></thead>
     <tbody></tbody>
   </table>
   <div id="dead-skins-empty" class="empty-state"></div>
 
-  <h3>Mispriced skins (verified over/undervalued)</h3>
+  <h3>Mispriced skins (verified over/undervalued) <button class="export-btn collapse-btn" id="collapse-mispriced-skins-btn" data-target="mispriced-skins-table,mispriced-skins-empty">Hide</button></h3>
   <p class="disclaimer">Skins whose Steam price a <em>live</em> Stage-2 verification (the automatic queue, a "Verify prices" button, or "Verify top 50" on the Results page) showed to sit 20%+ away from the cheapest independent market price (Skinport/Buff163/CSFloat). An <strong>overvalued</strong> Steam price inflates a trade-up's expected revenue (fake ROI). While a mark is active, the agents' new simulations of that skin score as unreliable &mdash; excluded from ML training and strict agents' best lists &mdash; so the bots learn to route around it. Marks expire on their own after 24h and clear immediately if a later verification shows the price back in line.</p>
   <button id="mispriced-skins-clear-btn" type="button">Erase mispriced marks</button>
   <table id="mispriced-skins-table">
@@ -366,7 +367,7 @@
   </table>
   <div id="mispriced-skins-empty" class="empty-state"></div>
 
-  <h3>Wear-order anomalies (better condition priced cheaper)</h3>
+  <h3>Wear-order anomalies (better condition priced cheaper) <button class="export-btn collapse-btn" id="collapse-wear-anomalies-btn" data-target="wear-anomalies-table,wear-anomalies-empty">Hide</button></h3>
   <p class="disclaimer">A skin's price should never <em>rise</em> as its condition gets worse &mdash; a Field-Tested copy "worth" more than its own Factory New means the higher price is a bad data point (a lone troll listing, or a souvenir-only wear conflated under the plain name), not real revenue. Every positive-ROI scan result now verifies its output prices against their own better wears for free (same bulk price dump, no extra requests); a failed check drops that price from the trade-up's expected revenue and excludes the skin+wear from all scans and strategy searches while the mark is active. Marks expire after 24h and clear immediately when a re-check finds the wear ladder back in order (see <code>src/wear_anomaly.py</code>).</p>
   <button id="wear-anomalies-clear-btn" type="button">Erase wear-anomaly marks</button>
   <table id="wear-anomalies-table">
@@ -375,7 +376,7 @@
   </table>
   <div id="wear-anomalies-empty" class="empty-state"></div>
 
-  <h3>Market Reliability Engine</h3>
+  <h3>Market Reliability Engine <button class="export-btn collapse-btn" id="collapse-market-reliability-btn" data-target="market-reliability-table,market-reliability-empty">Hide</button></h3>
   <p class="disclaimer">Unifies the dead-skin score, verified mispriced-skin gap, and a rolling price-history Z-score into one Healthy/Suspicious/Excluded state per skin (see <code>src/market_reliability.py</code>). <strong>Excluded</strong> skins are removed from ML training, ranking's reward score, and a son's best-known list -- never a permanent ban: every skin is re-evaluated from current signals on each recheck, and a manual override always wins over the computed state.</p>
   <table id="market-reliability-table">
     <thead><tr><th>Skin</th><th>State</th><th>Score</th><th>Reasons</th><th>Rolling Z</th><th>Last checked</th><th></th></tr></thead>
@@ -383,7 +384,7 @@
   </table>
   <div id="market-reliability-empty" class="empty-state"></div>
 
-  <h3>Invalid skins (no price on any source)</h3>
+  <h3>Invalid skins (no price on any source) <button class="export-btn collapse-btn" id="collapse-invalid-skins-btn" data-target="invalid-skins-table,invalid-skins-empty">Hide</button></h3>
   <p class="disclaimer">Skins where no price could be obtained from Steam <em>or</em> any third-party site (Skinport/CSFloat). These are excluded from trade-up candidate generation entirely, so the agents never propose -- or waste a simulation on -- a trade-up built out of one. Temporary and self-healing: each becomes re-checkable on its own and drops off once it prices again (see <code>src/invalid_skins.py</code>).</p>
   <button id="invalid-skins-clear-btn" type="button">Erase invalid skins</button>
   <table id="invalid-skins-table">
@@ -392,12 +393,22 @@
   </table>
   <div id="invalid-skins-empty" class="empty-state"></div>
 
-  <h3>Skin blacklist (permanent)</h3>
-  <p class="disclaimer">Unlike every self-healing registry above, this list <strong>never expires or re-checks</strong> -- it changes only when you add or remove entries (see <code>src/user_overrides.py</code>). A blacklisted skin is banned everywhere, as an input <em>and</em> as a possible output: agents stop proposing trade-ups with it, the scans skip it, the manual builder rejects it, and every existing trade-up opportunity containing it is removed immediately. Use it for skins whose price data you've personally confirmed is garbage.</p>
+  <h3>Skin blacklist <button class="export-btn collapse-btn" id="collapse-skin-blacklist-btn" data-target="skin-blacklist-table,skin-blacklist-empty">Hide</button></h3>
+  <p class="disclaimer">Unlike every self-healing registry above, this list <strong>never re-checks a skin and never revives an entry on its own</strong> -- it changes only when you add or remove entries (see <code>src/user_overrides.py</code>). A blacklisted skin is banned everywhere, as an input <em>and</em> as a possible output: agents stop proposing trade-ups with it, the scans skip it, the manual builder rejects it, and every existing trade-up opportunity containing it is removed immediately. Use it for skins whose price data you've personally confirmed is garbage -- e.g. the one behind an absurd ROI figure.</p>
+  <p class="disclaimer"><strong>Duration</strong> defaults to <em>Forever</em>: the entry stands until you delete it. Pick a number of days instead when you only want the skin gone while a bad price works itself out -- the entry then stops applying and drops off this list by itself, and nothing re-checks the skin in the meantime. Blacklisting a skin that is already listed replaces its duration, so you can extend one or make it permanent by adding it again.</p>
   <form id="skin-blacklist-form" autocomplete="off">
     <label class="wide" style="position:relative;">Skin name
       <input type="text" id="bl-skin" placeholder="Start typing a skin name...">
       <div id="bl-suggestions" class="suggestions" style="display:none;"></div>
+    </label>
+    <label>Duration
+      <select id="bl-duration" title="Forever = the entry stands until you remove it (the default). Any other choice makes it stop applying, and drop off the list, on its own after that long.">
+        <option value="" selected>Forever</option>
+        <option value="1">1 day</option>
+        <option value="7">7 days</option>
+        <option value="30">30 days</option>
+        <option value="90">90 days</option>
+      </select>
     </label>
     <label class="wide">Note (optional)
       <input type="text" id="bl-note" placeholder="why, e.g. bogus mirror price">
@@ -406,12 +417,12 @@
   </form>
   <div id="skin-blacklist-msg" class="empty-state" style="display:none;"></div>
   <table id="skin-blacklist-table">
-    <thead><tr><th>Skin</th><th>Note</th><th>Added</th><th></th></tr></thead>
+    <thead><tr><th>Skin</th><th>Note</th><th>Added</th><th>Expires</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
   <div id="skin-blacklist-empty" class="empty-state"></div>
 
-  <h3>Manual price overrides</h3>
+  <h3>Manual price overrides <button class="export-btn collapse-btn" id="collapse-price-overrides-btn" data-target="price-overrides-table,price-overrides-empty">Hide</button></h3>
   <p class="disclaimer">Set your own price for a specific skin+wear -- it <strong>wins over every other source</strong> (price cache, bulk mirror, live fetches) until you remove it, and every existing trade-up opportunity containing the skin has its cost/revenue/profit/<strong>ROI recomputed</strong> with your number, so a Min-ROI filter catches bugged trade-ups immediately. Rows repriced this way carry a "repriced" badge in the opportunities table. Permanent like the blacklist: only you change it (see <code>src/user_overrides.py</code>).</p>
   <form id="price-override-form" autocomplete="off">
     <label class="wide" style="position:relative;">Skin name

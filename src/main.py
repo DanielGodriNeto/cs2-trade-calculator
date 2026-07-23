@@ -673,8 +673,12 @@ def cmd_skin_blacklist(args):
             print(f'Unknown skin "{args.add}" -- use the exact database name '
                   f'(e.g. "AWP | Gungnir").')
             return
-        user_overrides_mod.add_blacklist(name, note=args.note or "")
-        print(f"Blacklisted permanently: {name}. It is now excluded from candidate generation, "
+        entry = user_overrides_mod.add_blacklist(name, note=args.note or "",
+                                                 duration_days=args.days)
+        how_long = ("permanently" if entry["expires_at"] is None
+                    else f"until {time.strftime('%Y-%m-%d %H:%M', time.localtime(entry['expires_at']))} "
+                         f"({args.days:g}d)")
+        print(f"Blacklisted {how_long}: {name}. It is now excluded from candidate generation, "
               f"scans, and the manual builder, and every existing trade-up containing it is "
               f"hidden. Remove with: python -m src.main skin-blacklist --remove \"{name}\"")
         return
@@ -685,17 +689,22 @@ def cmd_skin_blacklist(args):
     rows_in = user_overrides_mod.list_blacklist()
     if not rows_in:
         print("No skins blacklisted. Unlike every self-healing registry here, entries on this "
-              "list NEVER expire -- they change only when you add/remove them "
-              "(--add/--remove, or the dashboard's Skin blacklist panel).")
+              "list never expire on their own -- they change only when you add/remove them "
+              "(--add/--remove, or the dashboard's Skin blacklist panel), or reach a duration "
+              "you chose yourself with --days.")
         return
     rows = [{
         "skin": d["skin"],
         "note": d.get("note", ""),
         "added": time.strftime("%Y-%m-%d %H:%M", time.localtime(d["added_at"])) if d.get("added_at") else "-",
+        "expires": (time.strftime("%Y-%m-%d %H:%M", time.localtime(d["expires_at"]))
+                    if d.get("expires_at") else "never"),
     } for d in rows_in]
-    _print_table(rows, ["skin", "note", "added"])
-    print(f"\n{len(rows_in)} skin(s) permanently blacklisted -- excluded everywhere (inputs AND "
-          f"outputs) until removed. See src/user_overrides.py.")
+    _print_table(rows, ["skin", "note", "added", "expires"])
+    n_perm = sum(1 for d in rows_in if not d.get("expires_at"))
+    print(f"\n{len(rows_in)} skin(s) blacklisted ({n_perm} permanent) -- excluded everywhere "
+          f"(inputs AND outputs) until removed, or until the duration you set runs out. "
+          f"See src/user_overrides.py.")
 
 
 def cmd_price_override(args):
@@ -1107,12 +1116,17 @@ def build_parser():
 
     p_skin_bl = sub.add_parser(
         "skin-blacklist",
-        help="List/manage the PERMANENT per-skin blacklist (src/user_overrides.py) -- a "
-             "blacklisted skin is excluded everywhere (inputs AND outputs) and every existing "
-             "trade-up containing it is hidden, until you remove it yourself")
+        help="List/manage the user per-skin blacklist (src/user_overrides.py) -- a blacklisted "
+             "skin is excluded everywhere (inputs AND outputs) and every existing trade-up "
+             "containing it is hidden, until you remove it yourself (or, with --days, until "
+             "the duration you chose runs out)")
     p_skin_bl.add_argument("--add", help='Exact skin name to blacklist, e.g. "AWP | Gungnir"')
     p_skin_bl.add_argument("--remove", help="Skin name to un-blacklist")
     p_skin_bl.add_argument("--note", help="Optional note stored with --add")
+    p_skin_bl.add_argument("--days", type=float, help="Blacklist for this many days instead of "
+                           "permanently; the entry stops applying and drops off the list by "
+                           "itself when it runs out. Omit for the permanent default. Re-adding "
+                           "a skin replaces whatever duration it currently has.")
     p_skin_bl.set_defaults(func=cmd_skin_blacklist)
 
     p_override = sub.add_parser(

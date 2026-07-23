@@ -137,12 +137,15 @@ a separate integration requiring API keys from that marketplace, and is a good
     a price it can never fetch on Steam, producing absurd fake ROI. Existing best-list entries
     contaminated this way are hidden retroactively. See
     [Steam-sellable outputs](#steam-sellable-outputs-the-gungnir-fix) below.
-29. **Permanent skin blacklist & manual price overrides** (2026-07, "Market intelligence"
-    panels / `skin-blacklist` & `price-override` CLI commands) -- user-managed and PERMANENT
-    (unlike every self-healing registry here): blacklist a skin to ban it everywhere (inputs
-    AND outputs, existing trade-ups removed), or set your own price for a skin+wear to
-    override every source and have existing trade-ups' ROI recomputed. See
-    [Permanent skin blacklist & manual price overrides](#permanent-skin-blacklist--manual-price-overrides)
+29. **Skin blacklist & manual price overrides** (2026-07, "Market intelligence"
+    panels / `skin-blacklist` & `price-override` CLI commands) -- user-managed and permanent by
+    default (unlike every self-healing registry here): blacklist a skin to ban it everywhere
+    (inputs AND outputs, existing trade-ups removed) -- forever, or for a number of days you
+    choose -- or set your own price for a skin+wear to override every source and have existing
+    trade-ups' ROI recomputed. A one-click blacklist button sits on every skin in a result
+    row's input/output tables, so the skin behind an absurd ROI can be banned where you spot
+    it. See
+    [Skin blacklist & manual price overrides](#skin-blacklist--manual-price-overrides)
     below.
 30. **Premium spreadsheet workstation** (`/api/export/xlsx`, "Export full spreadsheet" button) --
     the one-click Excel workbook now opens with three polished, chart-driven sheets (📊 Executive
@@ -252,7 +255,7 @@ The fix (`simulate._price(allow_thirdparty=False)`, applied to every output):
   no Steam sale evidence (`bulk_prices.has_market_listing` is False for that exact
   market_hash_name) are hidden from the opportunity lists immediately and evicted from
   checkpoints by the same self-clean `_consider_best` already runs -- no re-simulation
-  needed. A user [price override](#permanent-skin-blacklist--manual-price-overrides) on the
+  needed. A user [price override](#skin-blacklist--manual-price-overrides) on the
   output is exempt (your own number is authoritative). Feed outage degrades to no filtering,
   never to "everything is unsellable".
 
@@ -260,15 +263,15 @@ The classic `tradeups` scan was never affected (it prices outputs via the Steam 
 this closes the gap in the simulation population, the manual builder, and everything else
 that goes through `simulate.py`.
 
-## Permanent skin blacklist & manual price overrides
+## Skin blacklist & manual price overrides
 
 Every protective registry above (dead skins, invalid skins, mispriced marks, wear anomalies,
 market reliability) is deliberately temporary and self-healing -- right for transient market
-weirdness, useless when you've personally confirmed a skin's data is garbage and want it gone
-for good. `src/user_overrides.py` adds the user-managed, **PERMANENT** counterpart: nothing
-here expires, decays, or re-checks -- entries change only when you add or remove them
-(dashboard "Market intelligence" panels, `/api/skin-blacklist` + `/api/price-overrides`
-endpoints, or the `skin-blacklist` / `price-override` CLI commands).
+weirdness, useless when you've personally confirmed a skin's data is garbage and want it gone.
+`src/user_overrides.py` adds the user-managed counterpart: nothing here decays or re-checks,
+and entries change only when you say so (dashboard "Market intelligence" panels,
+`/api/skin-blacklist` + `/api/price-overrides` endpoints, or the `skin-blacklist` /
+`price-override` CLI commands).
 
 **Skin blacklist** (`data/user_skin_blacklist.json`, keyed by bare skin name, all wears and
 StatTrak variants at once). A blacklisted skin is banned as an input **and** as a possible
@@ -280,12 +283,38 @@ goes, not just the one price:
 - the `tradeups`/Covert scans skip it as an input and skip any rarity step / case whose
   output pool contains it (mixed/filler searches apply the same rule to filler collections);
 - the manual builder rejects it with a per-skin reason;
-- every EXISTING opportunity containing it disappears from the leaderboard/archive at once,
-  and sons self-clean their checkpoints on their next round -- same mechanism as the
+- every EXISTING opportunity containing it disappears from the leaderboard/archive at once
+  -- and from the Collector Arbitrage list on the same page. One bad price routinely poisons
+  dozens of rows (a single skin can be a possible output of 50 different contracts), so this is
+  deliberately all-or-nothing rather than a per-row dismissal. Sons self-clean their
+  checkpoints on their next round -- same mechanism as the
   [trade-up blacklist](#blacklisting-a-trade-up-youve-already-done), which stays separate:
   that one hides a single composition you already executed; this one bans a skin outright.
 
-CLI: `python -m src.main skin-blacklist [--add "AWP | Gungnir" [--note why]] [--remove NAME]`.
+**How long** is yours to pick, per entry. The default everywhere -- panel dropdown on
+*Forever*, empty answer in the row-button prompt, no `--days` on the CLI -- is **permanent**:
+the entry stands until you delete it, and nothing ever re-checks the skin or revives it. Give
+it a duration instead (1/7/30/90 days in the panel, any number of days from the CLI or the row
+prompt) and it stops applying, and drops off the list, by itself when that runs out. This is
+still your intent, not self-healing: the tool never shortens, extends, or second-guesses a
+duration you set. Re-blacklisting a skin already on the list **replaces** its duration, so
+adding it again is how you extend one or promote it to permanent.
+
+**Where to click**: every skin name in a result row's Inputs and Possible-outputs tables
+carries two small buttons -- **⛔** blacklists that skin (bare name: all wears and StatTrak
+variants), asking the duration in one prompt, and **💲** sets a price override for that exact
+skin **+ wear** instead. That's the fast path when a wrong price
+has produced an absurd ROI: ban it on the row where you found it, and the leaderboard drops
+that opportunity along with every other one touching the skin. The full panel (Simulation Lab
+-> "Market intelligence & risk registries" -> "Skin blacklist") is where you review, remove,
+and see each entry's expiry.
+
+Reach for **💲** rather than **⛔** when the skin is fine and only its *number* is wrong:
+blacklisting discards a possibly-real trade-up, overriding repairs it -- the row survives with
+its ROI recomputed and a "repriced" badge. Both act on every affected list at once.
+
+CLI: `python -m src.main skin-blacklist [--add "AWP | Gungnir" [--note why] [--days N]]
+[--remove NAME]`.
 
 **Price overrides** (`data/price_overrides.json`, keyed by full market_hash_name -- skin +
 wear + StatTrak). Your price **wins over every other source**: `steam_prices.get_price()` and

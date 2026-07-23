@@ -1300,11 +1300,12 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 return self._send_json({"ok": True, "removed": removed})
 
             if path == "/api/skin-blacklist":
-                # PERMANENT per-skin blacklist (user_overrides.py -- unlike every self-healing
-                # registry, this only ever changes when the user says so). Existing best-list/
-                # archive entries touching the skin disappear at once (list-time filtering) and
-                # sons self-clean their checkpoints on their next round; scans/agents/manual
-                # builder all refuse the skin from now on.
+                # User per-skin blacklist (user_overrides.py -- unlike every self-healing
+                # registry, this only ever changes when the user says so; permanent unless the
+                # request carries an explicit duration_days). Existing best-list/archive
+                # entries touching the skin disappear at once (list-time filtering) and sons
+                # self-clean their checkpoints on their next round; scans/agents/manual builder
+                # all refuse the skin from now on.
                 try:
                     body = self._read_json_body()
                 except json.JSONDecodeError:
@@ -1322,7 +1323,22 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                                                  "error": f'unknown skin "{skin}" -- use the exact '
                                                           f'database name (try the autocomplete)'}, 400)
                     skin = resolved
-                entry = user_overrides_mod.add_blacklist(skin, note=body.get("note", ""))
+                # Absent/null/"" duration all mean the permanent default -- only a real number
+                # opts into an expiry, so an empty form field can never silently time-limit a
+                # ban the user meant to be forever.
+                raw_days = body.get("duration_days")
+                duration_days = None
+                if raw_days not in (None, ""):
+                    try:
+                        duration_days = float(raw_days)
+                    except (TypeError, ValueError):
+                        return self._send_json({"ok": False,
+                                                "error": "duration_days must be a number"}, 400)
+                try:
+                    entry = user_overrides_mod.add_blacklist(skin, note=body.get("note", ""),
+                                                             duration_days=duration_days)
+                except ValueError as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
                 return self._send_json({"ok": True, "entry": entry})
             if path == "/api/skin-blacklist/remove":
                 try:

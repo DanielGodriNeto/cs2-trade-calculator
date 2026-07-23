@@ -510,6 +510,53 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 .copy-btn.copied { color: var(--profit); border-color: var(--profit); }
+
+/* Per-skin blacklist shortcut sitting next to a skin name in a result row's input/output
+   tables (app.js blacklistSkinBtn). Same quiet chrome as .copy-btn -- it's a destructive
+   action, so it only takes on the loss colour on hover, never at rest: these tables are dense
+   and a row of always-red icons would read as an alert about the data itself. */
+.blacklist-skin-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0 5px;
+  margin-left: 4px;
+  font-size: 0.8em;
+  font-weight: normal;
+  line-height: 1.4;
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0.55;
+}
+.blacklist-skin-btn:hover { color: var(--loss); border-color: var(--loss); opacity: 1; }
+.blacklist-skin-btn:disabled { cursor: default; opacity: 0.3; }
+
+/* Panels collapsed with a "Hide" button (app.js _applyCollapse). !important on purpose: the
+   registry render functions write element.style.display on every refresh, and a user's explicit
+   collapse must outrank that -- otherwise the panel re-opens itself the next time its data
+   changes. The choice is remembered in localStorage across reloads. */
+.collapse-hidden { display: none !important; }
+
+/* Its non-destructive sibling: set your own price for this skin+wear (app.js
+   overridePriceBtn). Same quiet chrome; picks up the accent rather than the loss colour on
+   hover, because this one REPAIRS a row's numbers instead of removing the row. */
+.override-price-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0 5px;
+  margin-left: 4px;
+  font-size: 0.8em;
+  font-weight: normal;
+  line-height: 1.4;
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0.55;
+}
+.override-price-btn:hover { color: var(--accent); border-color: var(--accent); opacity: 1; }
+.override-price-btn:disabled { cursor: default; opacity: 0.3; }
 /* Text prefix alongside color, not color alone -- readable without relying on green-vs-red
    discrimination. Applies to both <td class="profit-positive"> and the many
    <span class="profit-positive"> usages elsewhere in app.js, so the selector isn't tag-scoped. */

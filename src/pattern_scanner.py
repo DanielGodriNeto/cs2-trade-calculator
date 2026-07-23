@@ -91,6 +91,7 @@ from . import market_reliability as market_reliability_mod
 from . import net
 from . import oddsmath
 from . import pattern_db as pattern_db_mod
+from . import user_overrides as user_overrides_mod
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OPPORTUNITIES_FILE = DATA_DIR / "pattern_opportunities.json"
@@ -903,6 +904,16 @@ def list_opportunities(*, weapon: str | None = None, pattern_type: str | None = 
     """Filter + sort per the spec's dedicated-page requirements. sort: score (default,
     'best opportunity') | profit | premium | price | confidence | newest."""
     out = list(_load_store()["opportunities"].values())
+    # The user's skin blacklist bans a skin EVERYWHERE, and this list sits on the same
+    # Opportunities page as the trade-up leaderboard -- blacklisting the skin behind a bogus
+    # price has to clear it from here too, not just from the trade-up tables. Filtered at list
+    # time (not at scan time) for the same reason sim_loop._entry_hidden is: opportunities
+    # banked before the blacklist entry existed disappear immediately, with no re-scan, and
+    # come back by themselves if the entry is removed or its duration runs out.
+    blacklisted = user_overrides_mod.blacklisted_skins()
+    if blacklisted:
+        out = [o for o in out
+               if user_overrides_mod.bare_skin_name(o.get("market_hash_name") or "") not in blacklisted]
     if weapon:
         out = [o for o in out if weapon.lower() in (o.get("weapon") or "").lower()]
     if pattern_type:

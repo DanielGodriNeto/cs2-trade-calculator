@@ -1,18 +1,24 @@
-"""User-managed, PERMANENT market corrections: a per-skin blacklist and manual price overrides.
+"""User-managed market corrections: a per-skin blacklist and manual price overrides.
 
 Every other protective registry in this project (dead_skin.py, invalid_skins.py,
 mispriced_skins.py, wear_anomaly.py, market_reliability.py) is deliberately temporary and
 self-healing -- great for transient market weirdness, useless when the user has personally
 confirmed a skin's data is garbage and wants it gone for good. This module is the opposite by
-design: nothing here ever expires, decays, or gets re-checked. Entries change ONLY when the
-user adds or removes them (dashboard "Skin blacklist" / "Price overrides" panels, the
-/api/skin-blacklist and /api/price-overrides endpoints, or the CLI commands).
+design: nothing here decays or gets re-checked, and the DEFAULT for both registries is
+permanent. Entries change ONLY when the user says so (dashboard "Skin blacklist" / "Price
+overrides" panels, the /api/skin-blacklist and /api/price-overrides endpoints, or the CLI
+commands) -- with exactly one exception, opted into per entry: a blacklist entry may carry a
+user-chosen `expires_at`, after which it stops applying and is pruned (see _active_locked).
+That is still user intent, not self-healing: the tool never re-checks the skin, never revives
+an entry, and never shortens or extends a duration the user picked. Omit the duration (the
+default everywhere) and the entry is permanent exactly as before.
 
 Two registries, one file each (both under data/ -- user preferences, never wiped by anything
 that clears cache/):
 
 1. SKIN BLACKLIST (data/user_skin_blacklist.json) -- keyed by BARE skin name (e.g.
-   "AWP | Gungnir"), applying to every wear and StatTrak variant at once. A blacklisted skin:
+   "AWP | Gungnir"), applying to every wear and StatTrak variant at once, permanently unless
+   the entry was given a duration. A blacklisted skin:
      - is excluded from random-candidate generation (sim_loop.run_round unions
        blacklisted_market_names() into the same exclusion set invalid_skins already feeds);
      - hard-fails simulate.simulate() as input OR output (an InvalidSimulation, so no agent
@@ -21,6 +27,9 @@ that clears cache/):
        OUTPUT pool contains a blacklisted skin is skipped entirely -- you can't do the
        trade-up without a chance of landing on it, so no honest row can be built around it);
      - is rejected by the manual builder with a per-skin reason;
+     - is filtered out of the Collector Arbitrage list too
+       (pattern_scanner.list_opportunities), so a banned skin can't linger there as a "buy
+       this" row after being cleared from every trade-up table on the same page;
      - and every EXISTING best-list/archive entry containing it (either side) is hidden
        immediately at list time and evicted from checkpoints by _consider_best's self-clean,
        exactly the sim_blacklist.py pattern.
@@ -55,7 +64,8 @@ BLACKLIST_FILE = DATA_DIR / "user_skin_blacklist.json"
 OVERRIDES_FILE = DATA_DIR / "price_overrides.json"
 
 _lock = threading.Lock()
-_blacklist: dict | None = None   # {bare skin name: {"added_at", "note"}}
+_blacklist: dict | None = None   # {bare skin name: {"added_at", "note", "expires_at"}}
+# expires_at is None (or absent, on entries written before durations existed) = permanent.
 _overrides: dict | None = None   # {market_hash_name: {"price", "currency", "skin", "wear",
 #                                   "stattrak", "added_at"}}
 _version = 0  # bumped on every blacklist mutation -- change-detection key for the cached
@@ -103,30 +113,67 @@ def _save_overrides_locked() -> None:
 # --- Skin blacklist ------------------------------------------------------------------------
 
 
-def add_blacklist(skin_name: str, note: str = "") -> dict:
-    """Permanently blacklist a bare skin name (idempotent). The name should match the skin
-    database exactly (e.g. "AWP | Gungnir") -- callers that take user input should resolve it
-    against data.load_skins() first for a friendly error, but an unknown name is still stored
-    (it simply never matches anything) rather than rejected here."""
+def _active_locked() -> dict:
+    """The live blacklist, with any user-chosen durations that have run out dropped first.
+
+    Call this instead of _load_locked() from every blacklist READ path. Expiry is checked
+    lazily here rather than by a timer because there is nothing to do between reads, and
+    because the prune has to bump _version: blacklisted_market_names() caches its expansion
+    against that counter, so an entry falling off on the clock has to invalidate the cache
+    exactly the way an explicit add/remove does. Pruning WRITES the file (so the expiry is
+    durable and the dashboard list stops showing dead rows), but only on the one call that
+    actually observes something expiring -- the common path is a scan of a handful of entries
+    that are all still live. Must be called with _lock held."""
+    global _version
+    _load_locked()
+    if not _blacklist:
+        return _blacklist
+    now = time.time()
+    expired = [name for name, e in _blacklist.items()
+               if e.get("expires_at") is not None and e["expires_at"] <= now]
+    if expired:
+        for name in expired:
+            del _blacklist[name]
+        _version += 1
+        _save_blacklist_locked()
+    return _blacklist
+
+
+def add_blacklist(skin_name: str, note: str = "", duration_days: float | None = None) -> dict:
+    """Blacklist a bare skin name. Permanent by default; pass duration_days to have the entry
+    stop applying (and prune itself) that many days from now instead -- the user's own choice
+    of "for a while", never the tool's.
+
+    Re-adding a skin already on the list REPLACES its duration and note rather than being a
+    no-op, so "blacklist this for 7 days" after a permanent entry (or vice versa) does what it
+    says; the original added_at is kept so the list still shows when you first banned it.
+
+    The name should match the skin database exactly (e.g. "AWP | Gungnir") -- callers that take
+    user input should resolve it against data.load_skins() first for a friendly error, but an
+    unknown name is still stored (it simply never matches anything) rather than rejected here."""
     global _version
     skin_name = (skin_name or "").strip()
     if not skin_name:
         raise ValueError("skin name is required")
+    if duration_days is not None:
+        duration_days = float(duration_days)
+        if duration_days <= 0:
+            raise ValueError("duration_days must be > 0 (omit it entirely for a permanent ban)")
     with _lock:
-        _load_locked()
-        entry = _blacklist.get(skin_name)
-        if entry is None:
-            entry = {"added_at": time.time(), "note": note or ""}
-            _blacklist[skin_name] = entry
-            _version += 1
-            _save_blacklist_locked()
+        previous = _active_locked().get(skin_name)
+        entry = {"added_at": (previous or {}).get("added_at", time.time()),
+                 "note": note or (previous or {}).get("note", ""),
+                 "expires_at": None if duration_days is None else time.time() + duration_days * 86400}
+        _blacklist[skin_name] = entry
+        _version += 1
+        _save_blacklist_locked()
         return {"skin": skin_name, **entry}
 
 
 def remove_blacklist(skin_name: str) -> bool:
     global _version
     with _lock:
-        _load_locked()
+        _active_locked()  # an entry that already expired on its own reports "not blacklisted"
         if skin_name in _blacklist:
             del _blacklist[skin_name]
             _version += 1
@@ -137,22 +184,20 @@ def remove_blacklist(skin_name: str) -> bool:
 
 def is_blacklisted_skin(skin_name: str) -> bool:
     with _lock:
-        _load_locked()
-        return skin_name in _blacklist
+        return skin_name in _active_locked()
 
 
 def blacklisted_skins() -> set:
-    """The current set of blacklisted bare skin names -- grab once per batch/scan and do plain
-    set lookups on the hot path instead of calling is_blacklisted_skin() per unit."""
+    """The currently-ACTIVE set of blacklisted bare skin names (entries whose user-chosen
+    duration has run out are already gone) -- grab once per batch/scan and do plain set lookups
+    on the hot path instead of calling is_blacklisted_skin() per unit."""
     with _lock:
-        _load_locked()
-        return set(_blacklist)
+        return set(_active_locked())
 
 
 def list_blacklist() -> list:
     with _lock:
-        _load_locked()
-        rows = [{"skin": name, **entry} for name, entry in _blacklist.items()]
+        rows = [{"skin": name, **entry} for name, entry in _active_locked().items()]
     rows.sort(key=lambda e: e.get("added_at", 0), reverse=True)
     return rows
 
@@ -162,13 +207,14 @@ def blacklisted_market_names() -> set:
     shaped to union straight into sim_loop.run_round's exclusion set alongside
     invalid_skins.active_invalid_names() / tradability.untradeable_market_names(). Cached and
     rebuilt only when the blacklist actually changes (the skin database is static for the
-    process lifetime). Names not found in the skin database expand to nothing -- harmless."""
+    process lifetime). Names not found in the skin database expand to nothing -- harmless.
+    _active_locked()'s prune bumps _version too, so an entry reaching its user-chosen expiry
+    invalidates this cache exactly the way an explicit removal does."""
     with _lock:
-        _load_locked()
+        wanted = set(_active_locked())
         version = _version
         if _market_names_cache["version"] == version:
             return _market_names_cache["names"]
-        wanted = set(_blacklist)
     names: set = set()
     if wanted:
         from . import data as data_mod  # lazy: keep this module import-light (see docstring)
@@ -183,6 +229,49 @@ def blacklisted_market_names() -> set:
         _market_names_cache["version"] = version
         _market_names_cache["names"] = names
     return names
+
+
+WEAR_NAMES = ("Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred")
+
+
+def bare_skin_name(market_hash_name: str) -> str:
+    """Inverse of _market_hash_name: "StatTrak(tm) AK-47 | Redline (Field-Tested)" ->
+    "AK-47 | Redline", which is what this blacklist is keyed by.
+
+    Needed by callers that only ever hold a full market name (the pattern scanner's listings),
+    never a skin/wear pair. Deliberately conservative in both directions: the leading star that
+    marks a knife/glove is part of the database name and is KEPT, and a trailing parenthetical
+    is only dropped when it is literally one of the five wear brackets -- so a skin whose own
+    name contains brackets survives intact instead of being silently truncated. Steam writes
+    the star before the StatTrak marker while _market_hash_name writes it after, so both orders
+    are stripped rather than assuming either."""
+    name = (market_hash_name or "").strip()
+    if name.startswith("Souvenir "):
+        name = name[len("Souvenir "):]
+    # The star is part of the knife/glove's DATABASE name (data.load_knives_gloves returns
+    # "★ Karambit | Doppler"), so it has to survive; only the StatTrak marker comes off. Steam
+    # writes "★ StatTrak™ X" while _market_hash_name writes "StatTrak™ ★ X" -- both orders
+    # reduce to the same bare name here.
+    star = ""
+    if name.startswith("★ "):
+        star, name = "★ ", name[len("★ "):]
+    if name.startswith("StatTrak™ "):
+        name = name[len("StatTrak™ "):]
+    if not star and name.startswith("★ "):
+        star, name = "★ ", name[len("★ "):]
+    name = star + name
+    if name.endswith(")"):
+        head, sep, tail = name.rpartition(" (")
+        if sep and tail[:-1] in WEAR_NAMES:
+            name = head
+    return name.strip()
+
+
+def is_blacklisted_market_name(market_hash_name: str) -> bool:
+    """Blacklist check for callers holding a full market_hash_name rather than a bare skin
+    name -- every wear and StatTrak variant of a blacklisted skin is banned, so this resolves
+    to the bare name first."""
+    return is_blacklisted_skin(bare_skin_name(market_hash_name))
 
 
 def entry_contains_blacklisted_skin(entry) -> bool:

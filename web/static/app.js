@@ -780,6 +780,144 @@ async function loadSkinBlacklist() {
   renderSkinBlacklist(state.lastSkinBlacklist);
 }
 
+// "forever" or "until <date>" -- expires_at is null on a permanent entry, which is the default
+// for every path that creates one (panel form, row button, CLI).
+function _expiryPhrase(expiresAt) {
+  return expiresAt ? `until ${fmtTime(expiresAt)}` : "forever";
+}
+
+// Every list on the Opportunities page that a banned/repriced skin can appear in. One bad
+// price routinely poisons dozens of rows at once (a single skin can be an output of 50
+// different contracts), and they are spread across four independently-loaded tables -- so
+// acting on one skin has to refresh ALL of them, or the user fixes the leaderboard and the
+// same bogus trade-up is still sitting in the archive and the "most profitable skins" summary.
+// The server does the actual filtering/repricing at list time (sim_loop._entry_hidden,
+// pattern_scanner.list_opportunities, user_overrides.repriced_entry_copy); this just makes
+// sure nothing on screen is left showing a pre-change answer until the next poll.
+async function refreshOpportunityViews() {
+  loadBestSimulations();       // "Trade-up opportunities" leaderboard
+  loadSimLeaderboards();       // "Most profitable collections" / "Most profitable skins"
+  loadPatternOpportunities();  // "Collector Arbitrage Opportunities"
+  // The archive is deliberately not on the 3s poll (it can be thousands of rows), so nothing
+  // else would ever refresh it -- but only reload it if the user actually has it open.
+  if (state.archiveLoaded) loadOpportunityArchive((state.archive && state.archive.page) || 1);
+}
+
+// The single POST every entry point shares (the Market-intelligence panel form and the per-skin
+// button on a result row), so the refresh-what-the-user-is-looking-at part can't drift between
+// them.
+async function blacklistSkin(skin, { days = "", note = "" } = {}) {
+  const res = await fetch("/api/skin-blacklist", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skin, note, duration_days: days }),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    await loadSkinBlacklist();
+    refreshOpportunityViews();
+  }
+  return data;
+}
+
+// Item 3's counterpart to blacklistSkin: set the user's own price for one skin+wear(+StatTrak).
+// Same refresh contract -- an override reprices existing opportunities at list time
+// (user_overrides.repriced_entry_copy), so every list has to be pulled again to show the
+// corrected ROI rather than the as-simulated one.
+async function overrideSkinPrice(skin, wear, stattrak, price) {
+  const res = await fetch("/api/price-overrides", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skin, wear, stattrak: !!stattrak, price, currency: 1 }),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    await loadPriceOverrides();
+    refreshOpportunityViews();
+  }
+  return data;
+}
+
+// A small ⛔ button rendered next to a skin name inside a result row's input/output tables --
+// the "I'm looking at the bad skin right now" shortcut, so a bogus price doesn't have to be
+// retyped into the Market-intelligence panel on another page. Wired by ONE delegated listener
+// (see below) rather than per-render, because these tables are rebuilt on every 3s poll.
+// `skin` must be the BARE skin name (no wear/StatTrak) -- that is what the blacklist is keyed
+// by, and it is what both call sites already carry (input_mix[].skin / PossibleDrop.name).
+function blacklistSkinBtn(skin) {
+  return `<button class="blacklist-skin-btn" data-skin="${encodeURIComponent(skin)}" title="Blacklist this skin -- ban it everywhere (as input AND output) and drop every existing opportunity containing it. You choose how long.">⛔</button>`;
+}
+
+// The other half of the pair: when the skin is fine and only its PRICE is wrong, overriding
+// repairs the trade-up instead of discarding it. Needs the exact wear (and StatTrak) because
+// overrides are keyed by full market_hash_name, unlike the blacklist's bare skin name -- so
+// this button only appears on rows that actually carry a wear.
+function overridePriceBtn(skin, wear, stattrak) {
+  if (!wear) return "";
+  return `<button class="override-price-btn" data-skin="${encodeURIComponent(skin)}" data-wear="${encodeURIComponent(wear)}" data-stattrak="${stattrak ? 1 : 0}" title="Set your own price for this exact skin + wear. It beats every price source, and existing opportunities are re-priced (cost/profit/ROI recomputed) instead of being thrown away.">💲</button>`;
+}
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".blacklist-skin-btn");
+  if (!btn) return;
+  const skin = decodeURIComponent(btn.dataset.skin);
+  // One dialog asks the duration AND doubles as the confirm: Cancel aborts, empty = forever
+  // (the default this feature has always had), a number = that many days.
+  const answer = prompt(
+    `Blacklist "${skin}"?\n\n` +
+    `It gets banned everywhere -- as a trade-up input AND as a possible output -- and every ` +
+    `existing opportunity containing it disappears from the leaderboard immediately.\n\n` +
+    `For how many days? Leave EMPTY to blacklist it forever (until you remove it yourself ` +
+    `in Simulation Lab -> Market intelligence -> Skin blacklist).`, "");
+  if (answer === null) return;
+  const days = answer.trim();
+  if (days !== "" && !(parseFloat(days) > 0)) {
+    alert(`"${days}" is not a number of days. Nothing was blacklisted.`);
+    return;
+  }
+  btn.disabled = true;
+  const data = await blacklistSkin(skin, { days, note: "blacklisted from a result row" });
+  if (!data.ok) {
+    btn.disabled = false;
+    alert(`Could not blacklist "${skin}": ${data.error || "failed"}`);
+    return;
+  }
+  // No manual re-render: blacklistSkin() already refreshed every opportunity list, and this row
+  // is about to disappear from them along with every other one touching the skin.
+});
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".override-price-btn");
+  if (!btn) return;
+  const skin = decodeURIComponent(btn.dataset.skin);
+  const wear = decodeURIComponent(btn.dataset.wear);
+  const stattrak = btn.dataset.stattrak === "1";
+  const label = `${stattrak ? "StatTrak™ " : ""}${skin} (${wear})`;
+  const answer = prompt(
+    `Your real price for "${label}"?\n\n` +
+    `It beats every price source (cache, bulk mirror, live fetch) from now on, and every ` +
+    `existing opportunity containing this skin+wear has its cost, profit and ROI recomputed ` +
+    `with your number -- so a bugged trade-up drops to its true ROI instead of vanishing.\n\n` +
+    `Enter the price in USD. Remove it later in Simulation Lab -> Market intelligence -> ` +
+    `Manual price overrides.`, "");
+  if (answer === null) return;
+  const price = parseFloat((answer || "").trim().replace(",", "."));
+  if (!(price > 0)) {
+    alert(`"${answer}" is not a valid price. Nothing was changed.`);
+    return;
+  }
+  btn.disabled = true;
+  const data = await overrideSkinPrice(skin, wear, stattrak, price);
+  btn.disabled = false;
+  if (!data.ok) {
+    alert(`Could not set a price for "${label}": ${data.error || "failed"}`);
+    return;
+  }
+  // Unlike a blacklist, the row SURVIVES -- it re-renders with corrected numbers and a
+  // "repriced" badge. Confirm on the button itself rather than in a panel message: this click
+  // happens on the Opportunities page, and the override panel lives on another one.
+  btn.textContent = "✓";
+  btn.title = `Your price: ${fmtCurrency(data.entry.price)} -- this row's ROI is recomputed with it.`;
+});
+
 function renderSkinBlacklist(rows) {
   const table = document.getElementById("skin-blacklist-table");
   const emptyEl = document.getElementById("skin-blacklist-empty");
@@ -787,7 +925,7 @@ function renderSkinBlacklist(rows) {
   if (!rows.length) {
     table.style.display = "none";
     emptyEl.style.display = "block";
-    emptyEl.textContent = "No skins blacklisted. Entries here NEVER expire on their own -- add one above when you've personally confirmed a skin's price data is garbage (e.g. it only really trades above Steam's price cap).";
+    emptyEl.textContent = "No skins blacklisted. Nothing here ever expires unless you give it a duration yourself -- add one above when you've personally confirmed a skin's price data is garbage (e.g. it only really trades above Steam's price cap).";
     return;
   }
   table.style.display = "";
@@ -797,6 +935,9 @@ function renderSkinBlacklist(rows) {
       <td>${d.skin}</td>
       <td>${d.note || "-"}</td>
       <td>${d.added_at ? fmtTime(d.added_at) : "-"}</td>
+      <td>${d.expires_at
+        ? `${fmtTime(d.expires_at)} <span class="tag-lowvol" title="You gave this entry a duration -- it stops applying and drops off this list on its own then. Nothing re-checks the skin before that.">timed</span>`
+        : `<span class="tag-same" title="Stands until you remove it.">never</span>`}</td>
       <td><button class="secondary bl-remove-btn" data-skin="${encodeURIComponent(d.skin)}">Remove</button></td>
     </tr>`).join("");
   table.querySelectorAll(".bl-remove-btn").forEach(btn => {
@@ -2187,7 +2328,10 @@ function _applyOpportunityFilters(sims) {
   });
 }
 
-function renderSimInputs(inputMix) {
+// stattrak comes from the OWNING entry (a contract is all-StatTrak or all-not), not from the
+// individual unit rows -- it's needed to build the market_hash_name a price override is keyed
+// by. Defaults false so any caller that doesn't pass it still renders correctly.
+function renderSimInputs(inputMix, stattrak = false) {
   const totalCount = inputMix.reduce((sum, m) => sum + m.count, 0);
   const sorted = [...inputMix].sort((a, b) => b.count - a.count);
   return `
@@ -2197,7 +2341,7 @@ function renderSimInputs(inputMix) {
       <tbody>
         ${sorted.map(m => `
           <tr>
-            <td>${copyableName(m.skin, m.image)}</td>
+            <td>${copyableName(m.skin, m.image)}${overridePriceBtn(m.skin, m.wear, stattrak)}${blacklistSkinBtn(m.skin)}</td>
             <td>${m.wear}</td>
             <td class="num">×${m.count}</td>
             <td class="num">${fmtCurrency(m.unit_price)}</td>
@@ -2286,7 +2430,7 @@ function renderSimulationDetail(s) {
     name: o.skin, image: o.image, wear: o.wear, probability_pct: o.prob_pct,
     price: o.price, volume: o.volume, profit_after_fee: o.net_profit, max_input_price: null,
     wear_probs: o.wear_probs,
-  })));
+  })), s.stattrak);
   const idAttr = encodeURIComponent(s.id);
   // Replay a cached verify result if one exists -- renderBestSimulations() rebuilds this whole
   // block on every 3s poll, so without this a result would flash and disappear before the user
@@ -2297,7 +2441,7 @@ function renderSimulationDetail(s) {
     <div class="sim-detail">
       ${renderDecisionHero(s)}
       ${renderSimulationSummary(s)}
-      ${renderSimInputs(s.input_mix)}
+      ${renderSimInputs(s.input_mix, s.stattrak)}
       <strong>Possible outputs</strong>
       ${outputsHtml}
       <div class="sim-verify">
@@ -3115,7 +3259,7 @@ function wearProbsBadge(wearProbs) {
   ).join(" ");
 }
 
-function renderDrops(drops) {
+function renderDrops(drops, stattrak = false) {
   if (!drops || !drops.length) return "<em>No drop data available.</em>";
   const sorted = [...drops].sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
   const hasWearProbs = sorted.some(d => d.wear_probs && Object.keys(d.wear_probs).length);
@@ -3129,7 +3273,7 @@ function renderDrops(drops) {
           const profitClass = hasProfit ? (d.profit_after_fee >= 0 ? "profit-positive" : "profit-negative") : "";
           return `
           <tr class="${rowClass}">
-            <td>${copyableName(d.name, d.image)}</td>
+            <td>${copyableName(d.name, d.image)}${overridePriceBtn(d.name, d.wear, stattrak)}${blacklistSkinBtn(d.name)}</td>
             <td class="num">${d.probability_pct.toFixed(2)}%</td>
             ${hasWearProbs ? `<td class="num">${wearProbsBadge(d.wear_probs)}</td>` : ""}
             <td class="num">${d.price != null ? fmtCurrency(d.price) : "no price data"} ${lowVolumeBadge(d.volume)}</td>
@@ -3288,7 +3432,7 @@ function renderTradeups() {
       <td onclick="event.stopPropagation()">${renderBuyLinks(r.buy_links)}<button class="log-outcome-btn" data-row="${encodeURIComponent(JSON.stringify(r))}" title="Pre-fill the outcome-logging form below with this trade-up's details -- you still confirm the real prices/results yourself">Log outcome</button></td>
     </tr>
     <tr class="drop-row" style="${expanded ? "" : "display:none;"}">
-      <td colspan="11">${expanded ? (r.mixed_float_strategy ? renderMixedFloatStrategy(r) : renderMixedStrategy(r) + renderFloatStrategy(r)) + renderDrops(r.possible_drops) : ""}</td>
+      <td colspan="11">${expanded ? (r.mixed_float_strategy ? renderMixedFloatStrategy(r) : renderMixedStrategy(r) + renderFloatStrategy(r)) + renderDrops(r.possible_drops, r.stattrak) : ""}</td>
     </tr>
   `;
   }).join("");
@@ -3349,7 +3493,7 @@ function renderCovert() {
       <td onclick="event.stopPropagation()">${renderBuyLinks(r.buy_links)}<button class="log-outcome-btn" data-row="${encodeURIComponent(JSON.stringify(r))}" title="Pre-fill the outcome-logging form below with this trade-up's details -- you still confirm the real prices/results yourself">Log outcome</button></td>
     </tr>
     <tr class="drop-row" style="${expanded ? "" : "display:none;"}">
-      <td colspan="9">${expanded ? (r.mixed_float_strategy ? renderMixedFloatStrategy(r) : renderMixedStrategy(r) + renderFloatStrategy(r)) + renderDrops(r.possible_drops) : ""}</td>
+      <td colspan="9">${expanded ? (r.mixed_float_strategy ? renderMixedFloatStrategy(r) : renderMixedStrategy(r) + renderFloatStrategy(r)) + renderDrops(r.possible_drops, r.stattrak) : ""}</td>
     </tr>
   `;
   }).join("");
@@ -3502,16 +3646,61 @@ wireSortableHeaders("tradeup-table", "tradeups", renderTradeups);
 wireSortableHeaders("anomaly-table", "anomalies", renderAnomalies);
 wireSortableHeaders("covert-table", "covert", renderCovert);
 
-// Hide/show toggles for the multi-agent simulation panel's three sub-tables -- purely a
-// display collapse, nothing is unloaded, so the next 3s poll doesn't need any special handling.
+// Hide/show toggles for collapsible panels -- purely a display collapse, nothing is unloaded,
+// so the next 3s poll doesn't need any special handling.
+//
+// data-target takes one id or a comma-separated list, because several of these panels are a
+// table PLUS its own separate empty-state div: hiding only the table would leave the
+// "no skins flagged" line orphaned under a heading that claims to be collapsed.
+//
+// The choice is PERSISTED (localStorage, keyed by the button's id). These registry tables run
+// to hundreds of rows, and without this every reload re-expanded them all -- so "Hide" was
+// only ever good for the current page view, which is not what hiding something means.
+// Stored as {buttonId: isCollapsed}, not a set of collapsed ids: some panels (the archive,
+// lifetime ROI) start COLLAPSED in the markup, so "absent from the set" and "user chose
+// expanded" have to stay distinguishable. A missing key means "no preference -- use whatever
+// the HTML says", which is also what keeps a newly-added panel behaving as its author intended.
+const COLLAPSE_STORE_KEY = "cs2tc.collapsed";
+
+function _collapsePrefs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COLLAPSE_STORE_KEY) || "{}");
+    return (raw && typeof raw === "object" && !Array.isArray(raw)) ? raw : {};
+  } catch (e) {
+    return {};  // corrupt/unavailable storage must never break the dashboard
+  }
+}
+
+// Collapsing via a CLASS, not inline style.display, is load-bearing: the render functions for
+// these registry tables set table/empty-state display themselves on every refresh (to switch
+// between the table and its "nothing flagged" line). An inline collapse would therefore be
+// silently undone the next time the underlying data actually changed -- the panel would pop
+// back open on its own. .collapse-hidden carries !important, so a stylesheet rule beats the
+// renderers' inline writes and the panel stays hidden until the user says otherwise.
+function _applyCollapse(btn, collapsed) {
+  (btn.dataset.target || "").split(",").forEach(id => {
+    const target = document.getElementById(id.trim());
+    if (target) target.classList.toggle("collapse-hidden", collapsed);
+  });
+  btn.textContent = collapsed ? "Show" : "Hide";
+}
+
 document.querySelectorAll(".collapse-btn").forEach(btn => {
+  const prefs = _collapsePrefs();
+  // The markup's own label is the default: "Show" means the panel ships collapsed.
+  const defaultCollapsed = btn.textContent.trim() === "Show";
+  _applyCollapse(btn, btn.id && btn.id in prefs ? prefs[btn.id] : defaultCollapsed);
   btn.addEventListener("click", () => {
-    const target = document.getElementById(btn.dataset.target);
-    if (!target) return;
-    const hidden = target.style.display === "none";
-    target.style.display = hidden ? "" : "none";
-    btn.textContent = hidden ? "Hide" : "Show";
-    if (hidden) resizeAllCharts();  // just revealed -- any chart inside was possibly born at 0x0
+    const collapsed = btn.textContent.trim() === "Hide";  // currently expanded -> collapse it
+    _applyCollapse(btn, collapsed);
+    if (btn.id) {
+      const next = _collapsePrefs();
+      next[btn.id] = collapsed;
+      try {
+        localStorage.setItem(COLLAPSE_STORE_KEY, JSON.stringify(next));
+      } catch (e) { /* private mode / quota -- collapsing still works for this page view */ }
+    }
+    if (!collapsed) resizeAllCharts();  // just revealed -- any chart inside was possibly born at 0x0
   });
 });
 
@@ -3727,21 +3916,17 @@ document.getElementById("skin-blacklist-form").addEventListener("submit", async 
   e.preventDefault();
   const skin = document.getElementById("bl-skin").value.trim();
   if (!skin) return;
-  if (!confirm(`Permanently blacklist "${skin}"?\n\nEvery existing trade-up opportunity containing it (as input OR output) disappears, and the agents/scans/manual builder refuse it until you remove it from the list.`)) return;
-  const res = await fetch("/api/skin-blacklist", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ skin, note: document.getElementById("bl-note").value.trim() }),
-  });
-  const data = await res.json();
+  const days = document.getElementById("bl-duration").value;  // "" = forever (the default)
+  const forHowLong = days ? `for ${days} day(s)` : "permanently";
+  if (!confirm(`Blacklist "${skin}" ${forHowLong}?\n\nEvery existing trade-up opportunity containing it (as input OR output) disappears, and the agents/scans/manual builder refuse it ${days ? `until the ${days} day(s) run out, or until you remove it sooner.` : "until you remove it from the list."}`)) return;
+  const data = await blacklistSkin(skin, { days, note: document.getElementById("bl-note").value.trim() });
   if (!data.ok) {
     _flashPanelMsg("skin-blacklist-msg", data.error || "failed", true);
     return;
   }
   document.getElementById("bl-skin").value = "";
   document.getElementById("bl-note").value = "";
-  _flashPanelMsg("skin-blacklist-msg", `Blacklisted ${data.entry.skin} -- existing opportunities containing it are hidden now.`);
-  await loadSkinBlacklist();
-  loadBestSimulations();
+  _flashPanelMsg("skin-blacklist-msg", `Blacklisted ${data.entry.skin} ${_expiryPhrase(data.entry.expires_at)} -- existing opportunities containing it are hidden now.`);
 });
 
 document.getElementById("price-override-form").addEventListener("submit", async (e) => {
@@ -4034,7 +4219,7 @@ function renderManualBuilder() {
     name: o.skin, image: o.image, wear: o.wear, probability_pct: o.prob_pct,
     price: o.price, volume: o.volume, profit_after_fee: o.net_profit, max_input_price: null,
     wear_probs: o.wear_probs,
-  })));
+  })), r.stattrak);
   resultEl.innerHTML = `
     <div class="sim-detail">
       <div class="float-strategy ${r.expected_roi_pct >= 0 ? "float-better" : ""}">
@@ -4049,7 +4234,7 @@ function renderManualBuilder() {
         ${r.low_volume_warning ? `<p class="disclaimer">at least one price here rests on thin/unreliable market data (dead-skin flagged) -- verify before spending money.</p>` : ""}
         <p class="disclaimer">Priced ${r.priced_output_variants}/${r.n_output_variants} possible outputs -- probability-weighted expected value across every priced output, ${(state.constants ? state.constants.steam_sell_fee_pct.toFixed(0) : "13")}% Steam fee applied. Theoretical estimate, not an order.</p>
       </div>
-      ${renderSimInputs(r.input_mix)}
+      ${renderSimInputs(r.input_mix, r.stattrak)}
       <strong>Possible outputs</strong>
       ${outputs}
     </div>`;
