@@ -6,6 +6,9 @@ cache/
 __pycache__/
 *.pyc
 
+# subagent-driven-development scratch: per-plan briefs, reports, review packages, progress ledger
+.superpowers/
+
 # EXCEPTION to "data/ is tracked": these append-only logs outgrow GitHub's hard 100 MB
 # per-file limit within a day or two of running the sim loop (the reliability log alone
 # grows ~200 MB/day). They're carried in git as small dated .jsonl.gz chunks under
