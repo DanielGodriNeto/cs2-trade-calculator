@@ -221,9 +221,10 @@ def rank(entries: list) -> list:
     # market_reliability.py's unified Excluded state is kept out of the reward-like composite
     # score entirely (per spec: "excluded from reward calculations"), not just dampened like an
     # ordinary low-confidence entry -- see that module's docstring.
+    _rel_cache: dict = {}
     entries = [e for e in entries if not market_reliability_mod.any_unit_excluded(
         e.get("input_mix") or [], e.get("output_distribution") or [],
-        currency=1, stattrak=e.get("stattrak", False))]
+        currency=1, stattrak=e.get("stattrak", False), cache=_rel_cache)]
     # Same hard exclusion for a partially-priced output side. simulate() now refuses to build a
     # SimulationRecord at all in that case (reason="incomplete_outputs"), so this only ever
     # catches entries admitted to a best list BEFORE that gate existed -- but those are already
