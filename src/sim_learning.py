@@ -301,6 +301,13 @@ def _leave_one_out_collection_means(rows: list) -> list:
     return out
 
 
+def _recency_weights(n: int) -> list:
+    """Exponential recency multiplier, one per training row, rows OLDEST-first (as
+    simulate.load_recent_simulations returns them): newest row (index n-1) -> 1.0,
+    oldest (index 0) -> 0.5 ** ((n-1) / RECENCY_HALFLIFE_ROWS)."""
+    return [0.5 ** ((n - 1 - i) / RECENCY_HALFLIFE_ROWS) for i in range(n)]
+
+
 def _not_excluded(r, cache: dict | None = None) -> bool:
     """Extends the existing low_volume_warning filter with market_reliability.py's unified
     Excluded state (see that module's docstring) -- a row can clear the plain volume-based
@@ -465,9 +472,10 @@ def _train_locked(model_dir: Path, sims_file: Path, t_start: float, t: float,
         weights.append(weight)
         weight_reasons[reason] = weight_reasons.get(reason, 0) + 1
     # Recency: a row from weeks ago is a weaker signal about today's market than yesterday's.
-    # Multiplies the reliability weight (does not replace it). age 0 = newest row.
-    n = len(rows)
-    weights = [w * (0.5 ** ((n - 1 - i) / RECENCY_HALFLIFE_ROWS)) for i, w in enumerate(weights)]
+    # Multiplies the reliability weight (does not replace it). age 0 = newest row -- direction
+    # pinned by tools/check_recency_weight.py.
+    rw = _recency_weights(len(rows))
+    weights = [w * rwi for w, rwi in zip(weights, rw)]
     sample_weight = np.array(weights, dtype=float)
     t = _mark("sample_weights", t)
 
