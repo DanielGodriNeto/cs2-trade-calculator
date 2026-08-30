@@ -486,6 +486,8 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 return self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8")
+            if path == "/charts-selftest.html":
+                return self._send_file(STATIC_DIR / "charts-selftest.html", "text/html; charset=utf-8")
             if path.startswith("/js/") or path.startswith("/vendor/"):
                 rel = path.lstrip("/")
                 if ".." in rel.replace("\\", "/").split("/"):

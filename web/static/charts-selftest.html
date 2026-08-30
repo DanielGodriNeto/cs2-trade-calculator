@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>selftest</title>
+<body style="font:13px monospace;background:#0B0F14;color:#D7DEE8;padding:16px">
+<pre id="out"></pre>
+<script type="module">
+const out = document.getElementById("out");
+let pass = 0, fail = 0;
+function eq(got, want, msg) {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  out.textContent += `${ok ? "ok  " : "FAIL"} ${msg}  got=${JSON.stringify(got)}${ok ? "" : ` want=${JSON.stringify(want)}`}\n`;
+  ok ? pass++ : fail++;
+}
+window.__eq = eq;
+
+import * as fmt from "./js/fmt.js";
+eq(fmt.money(0.42), "$0.42", "money cents");
+eq(fmt.money(1240), "$1,240.00", "money thousands");
+eq(fmt.money(null), "—", "money null");
+eq(fmt.pct(42), "+42.0%", "pct positive signed");
+eq(fmt.pct(-3.12), "-3.1%", "pct negative 1dp");
+eq(fmt.float(0.1623), "0.162", "float 3dp");
+eq(fmt.wearOfFloat(0.20).short, "FT", "wearOfFloat FT");
+eq(fmt.floatOfWear("FT"), 0.265, "floatOfWear FT midpoint");
+
+out.textContent += `\n${fail === 0 ? "SELFTEST OK" : "SELFTEST FAILED"} (${pass} pass, ${fail} fail)\n`;
+</script>
