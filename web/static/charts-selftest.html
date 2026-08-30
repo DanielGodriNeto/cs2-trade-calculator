@@ -3,7 +3,7 @@
 <pre id="out"></pre>
 <script type="module">
 const out = document.getElementById("out");
-window.__t = { pass: 0, fail: 0 };
+window.__t = { pass: 0, fail: 0, pending: [] };
 function eq(got, want, msg) {
   const ok = JSON.stringify(got) === JSON.stringify(want);
   out.textContent += `${ok ? "ok  " : "FAIL"} ${msg}  got=${JSON.stringify(got)}${ok ? "" : ` want=${JSON.stringify(want)}`}\n`;
@@ -44,12 +44,14 @@ hm.destroy();
 <script type="module">
 import { api } from "./js/api.js";
 const eq = window.__eq;
-try { const s = await api.status(); eq(typeof s, "object", "api.status() returns object"); }
-catch (e) { eq(String(e), "no-error", "api.status() threw: " + e); }
+window.__t.pending.push((async () => {
+  try { const s = await api.status(); eq(typeof s, "object", "api.status() returns object"); }
+  catch (e) { eq(String(e), "no-error", "api.status() threw: " + e); }
+})());
 </script>
 
 <script type="module">
-await new Promise(r => setTimeout(r, 0));
+await Promise.allSettled(window.__t.pending);
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;
 out.textContent += `\n${fail === 0 ? "SELFTEST OK" : "SELFTEST FAILED"} (${pass} pass, ${fail} fail)\n`;
