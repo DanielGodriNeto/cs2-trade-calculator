@@ -11,6 +11,7 @@ Then open: http://127.0.0.1:5000
 import csv
 import io
 import json
+import os
 import sys
 import threading
 import time
@@ -64,7 +65,7 @@ from src import watch_loop as watch_loop_mod
 import tempfile
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-PORT = 5000
+PORT = int(os.environ.get("PORT", "5000"))
 
 
 def _compute_app_version() -> dict:
@@ -485,6 +486,18 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 return self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
             if path == "/style.css":
                 return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8")
+            if path.startswith("/js/") or path.startswith("/vendor/"):
+                rel = path.lstrip("/")
+                if ".." in rel.split("/"):
+                    self.send_response(403); self.end_headers(); return
+                ext = rel.rsplit(".", 1)[-1].lower()
+                ctype = {
+                    "js": "application/javascript; charset=utf-8",
+                    "css": "text/css; charset=utf-8",
+                    "html": "text/html; charset=utf-8",
+                    "map": "application/json; charset=utf-8",
+                }.get(ext, "application/octet-stream")
+                return self._send_file(STATIC_DIR / rel, ctype)
             if path == "/api/status":
                 return self._send_json(state.snapshot())
             if path == "/api/tradeups":
