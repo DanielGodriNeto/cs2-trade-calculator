@@ -73,6 +73,17 @@ eq(__swallowMatchesOldApp("at f (http://x/js/app.js:9:1)"), false, "swallow igno
 </script>
 
 <script type="module">
+import { buildDistMatrix } from "./js/views/overview.js";
+const eq = window.__eq;
+const sims = [
+  { collection: "A", roi_pct: 10 }, { collection: "A", roi_pct: 120 }, { collection: "B", roi_pct: -30 },
+];
+const m = buildDistMatrix(sims);
+eq(m.cols.length, 8, "dist matrix has 8 ROI buckets");
+eq(m.values[m.rows.indexOf("A")][2], 1, "A has 1 candidate in [0,25) bucket");
+</script>
+
+<script type="module">
 await Promise.allSettled(window.__t.pending);
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;

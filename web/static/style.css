@@ -69,7 +69,7 @@ a { color: var(--accent); text-decoration: none; }
 .panel { background: var(--bg-panel); display: flex; flex-direction: column; min-width: 0; }
 .panel > .panel-head { display: flex; align-items: center; justify-content: space-between; height: 22px; padding: 0 8px; border-bottom: 1px solid var(--grid); font: 600 11px "Space Grotesk", sans-serif; letter-spacing: .06em; color: var(--text-dim); }
 .panel > .panel-body { padding: 10px; overflow: auto; }
-.col-12 { grid-column: span 12; } .col-6 { grid-column: span 6; } .col-4 { grid-column: span 4; } .col-3 { grid-column: span 3; }
+.col-12 { grid-column: span 12; } .col-8 { grid-column: span 8; } .col-6 { grid-column: span 6; } .col-4 { grid-column: span 4; } .col-3 { grid-column: span 3; }
 
 /* tables */
 table.tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
