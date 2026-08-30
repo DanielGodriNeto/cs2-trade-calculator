@@ -140,7 +140,8 @@ class ModelSelectionResult:
 
 
 def _candidates(random_state: int, n_samples: int, include: set | None = None,
-                 hgb_loss: str = "absolute_error", hgb_max_bins: int | None = None) -> dict:
+                 hgb_loss: str = "absolute_error", hgb_max_bins: int | None = None,
+                 hgb_monotonic_cst: list | None = None) -> dict:
     """Small, fixed set of already-regularized candidates -- max_depth/min_samples_leaf/
     n_estimators are chosen to behave reasonably at the small sample sizes this project
     realistically trains on (tens to low hundreds of rows), not tuned per-dataset.
@@ -152,7 +153,13 @@ def _candidates(random_state: int, n_samples: int, include: set | None = None,
     this module's original behavior so learning.py's real-outcomes model is untouched. Only
     sim_learning.py opts into different values -- see its FAST_* block for the measurements
     that justify them, and the loss= comment below for why this is a per-caller choice rather
-    than a new global default."""
+    than a new global default.
+
+    hgb_monotonic_cst: optional per-feature monotonicity vector (sklearn's monotonic_cst,
+    +1/0/-1 per column, index-aligned to X) applied to the boosted candidate ONLY -- RF/Ridge
+    ignore it. None (default) = unconstrained, learning.py's behavior. sim_learning.py passes
+    +1 on collection_mean_expected_roi so a higher collection-average ROI can never lower the
+    surrogate's prediction."""
     from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
     from sklearn.linear_model import Ridge
     from sklearn.pipeline import make_pipeline
@@ -184,6 +191,8 @@ def _candidates(random_state: int, n_samples: int, include: set | None = None,
     hgb_kwargs = {}
     if hgb_max_bins is not None:
         hgb_kwargs["max_bins"] = hgb_max_bins
+    if hgb_monotonic_cst is not None:
+        hgb_kwargs["monotonic_cst"] = hgb_monotonic_cst
     hgb = HistGradientBoostingRegressor(
         loss=hgb_loss, random_state=random_state, max_depth=4,
         min_samples_leaf=max(3, min(20, n_samples // 8)), **hgb_kwargs)
@@ -228,6 +237,7 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
                     importance_n_repeats: int = 5,
                     hgb_loss: str = "absolute_error",
                     hgb_max_bins: int | None = None,
+                    hgb_monotonic_cst: list | None = None,
                     max_threads: int | None = None) -> ModelSelectionResult:
     """X: 2D array (n_samples, n_features), may contain NaN. y: 1D array of targets.
     feature_names: parallel to X's columns, used only to label the returned importances.
@@ -241,10 +251,11 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
     per-fold fit weights through sklearn's pipeline parameter naming across the >=1.3 range
     this project supports. None behaves exactly like the historical unweighted path.
 
-    candidates/n_folds/importance_n_repeats/hgb_loss/hgb_max_bins/max_threads: all optional, all
-    default to this module's original fixed behavior (all 3 candidates, 5 folds, 5 importance
-    repeats, absolute_error loss, sklearn's default binning, uncapped native threads) -- used by
-    learning.py's small real-outcomes model unchanged. sim_learning.py's much larger, much-more-often-retrained sim-population
+    candidates/n_folds/importance_n_repeats/hgb_loss/hgb_max_bins/hgb_monotonic_cst/max_threads:
+    all optional, all default to this module's original fixed behavior (all 3 candidates, 5
+    folds, 5 importance repeats, absolute_error loss, sklearn's default binning, no monotonic
+    constraint, uncapped native threads) -- used by learning.py's small real-outcomes model
+    unchanged. sim_learning.py's much larger, much-more-often-retrained sim-population
     model passes its own faster FAST_* profile (see that module) instead -- see this function's
     callers, not this module, for why.
 
@@ -281,7 +292,8 @@ def fit_best_model(X, y, feature_names: list, random_state: int = 42,
         w = None  # every row zero-weighted -> degenerate; fall back to unweighted rather than crash
 
     candidate_estimators = _candidates(random_state, n, include=candidates,
-                                        hgb_loss=hgb_loss, hgb_max_bins=hgb_max_bins)
+                                        hgb_loss=hgb_loss, hgb_max_bins=hgb_max_bins,
+                                        hgb_monotonic_cst=hgb_monotonic_cst)
     candidate_maes = {}
     candidate_oof_preds = {}  # name -> (n_repeats, n) array, averaged into one oof estimate below
     timings: dict = {"sklearn_import": _import_seconds}
