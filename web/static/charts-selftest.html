@@ -51,6 +51,18 @@ window.__t.pending.push((async () => {
 </script>
 
 <script type="module">
+import { matchCommand } from "./js/command.js";
+const eq = window.__eq;
+const ctx = { collections: ["Dreams & Nightmares", "Recoil"], skins: [{ name: "AK-47 | Redline (Field-Tested)" }] };
+eq(matchCommand("", ctx), [], "empty query => no results");
+eq(matchCommand("opps", ctx)[0].kind, "view", "opps => view");
+eq(matchCommand("go calc", ctx)[0].label.includes("CALC"), true, "go calc => CALC view");
+eq(matchCommand("dream", ctx)[0].kind, "collection", "dream => collection");
+eq(matchCommand("ak redline", ctx)[0].kind, "skin", "ak redline => skin");
+eq(matchCommand("scan", ctx)[0].kind, "action", "scan => action");
+</script>
+
+<script type="module">
 await Promise.allSettled(window.__t.pending);
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;
