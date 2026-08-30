@@ -56,6 +56,10 @@ WARM_CACHE_BIAS = 3.0  # weight multiplier applied to a skin/wear that's ALREADY
 # whatever price_scan.py has already warmed, which would starve exploration of any signal about
 # what's worth warming next.
 
+STATTRAK_RATE = 0.15  # P(a random candidate is StatTrak-scoped). Module default; random_candidate/
+# generate_batch take a `stattrak_rate` override so a future adaptive/per-agent value has a seam
+# (sim_loop.run_round is NOT wired to it yet).
+
 
 @dataclass
 class CandidateLeg:
@@ -237,7 +241,7 @@ _ADJACENT_RARITY_PAIRS = list(zip([r for r, _ in data_mod.RARITY_CHAIN],
 def random_candidate(idx: dict, rng: random_mod.Random | None = None, n_inputs: int = N_INPUTS,
                       max_filler_collections: int = MAX_FILLER_COLLECTIONS,
                       filler_count_decay: float | None = None, wear_bias: float = 0.0,
-                      invalid_names: set | None = None, warm_names: set | None = None) -> "Candidate | None":
+                      invalid_names: set | None = None, warm_names: set | None = None, stattrak_rate: float | None = None) -> "Candidate | None":
     """One random candidate. Returns None on the rare case (mostly StatTrak-scoped rarity
     pairs) where no valid collection exists for the randomly drawn rarity pair -- OR where a
     chosen collection has no input skin with an obtainable price left after invalid_names
@@ -251,10 +255,11 @@ def random_candidate(idx: dict, rng: random_mod.Random | None = None, n_inputs: 
     warm_names: market_hash_names ALREADY warm in steam_prices' cache (see
     steam_prices.iter_cached_entries()) -- biases (never hard-filters) skin/wear selection
     toward these within each leg, see _random_skin_mix/WARM_CACHE_BIAS; None = no bias, the
-    original uniform-random behavior."""
+    original uniform-random behavior. stattrak_rate: override the module STATTRAK_RATE for
+    this draw (None = default)."""
     rng = rng or random_mod.Random()
     from_id, to_id = rng.choice(_ADJACENT_RARITY_PAIRS)
-    stattrak = rng.random() < 0.15  # StatTrak trade-ups are a real but minority use case
+    stattrak = rng.random() < (stattrak_rate if stattrak_rate is not None else STATTRAK_RATE)  # StatTrak trade-ups are a real but minority use case
 
     eligible = _eligible_collections(idx, from_id, to_id, stattrak)
     if not eligible:
@@ -333,7 +338,7 @@ def _softmax_weighted_sample(rng: random_mod.Random, scored: list, k: int, tempe
 def generate_batch(idx: dict, n: int, rng: random_mod.Random | None = None,
                     score_fn=None, keep_top_k: int | None = None, temperature: float = 1.0,
                     filler_count_decay: float | None = None, wear_bias: float = 0.0,
-                    invalid_names: set | None = None, warm_names: set | None = None) -> list:
+                    invalid_names: set | None = None, warm_names: set | None = None, stattrak_rate: float | None = None) -> list:
     """Draws up to n random candidates (retrying past the occasional None from
     random_candidate). If score_fn is given (sim_learning.predict_expected_roi), keeps only
     keep_top_k of them via temperature-controlled softmax-weighted sampling (see
@@ -346,14 +351,15 @@ def generate_batch(idx: dict, n: int, rng: random_mod.Random | None = None,
 
     filler_count_decay/wear_bias: forwarded straight to random_candidate -- the per-agent
     personality knobs from agents.py (collection_mixing_bias/wear_optimization_bias).
-    warm_names: forwarded straight to random_candidate -- see its own docstring/WARM_CACHE_BIAS."""
+    warm_names: forwarded straight to random_candidate -- see its own docstring/WARM_CACHE_BIAS.
+    stattrak_rate: forwarded to random_candidate."""
     rng = rng or random_mod.Random()
     candidates = []
     attempts = 0
     while len(candidates) < n and attempts < n * 5:
         attempts += 1
         c = random_candidate(idx, rng, filler_count_decay=filler_count_decay, wear_bias=wear_bias,
-                             invalid_names=invalid_names, warm_names=warm_names)
+                             invalid_names=invalid_names, warm_names=warm_names, stattrak_rate=stattrak_rate)
         if c is not None:
             candidates.append(c)
     if score_fn is None or keep_top_k is None:
