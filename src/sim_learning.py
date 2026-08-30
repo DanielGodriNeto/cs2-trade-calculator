@@ -472,7 +472,7 @@ def _train_locked(model_dir: Path, sims_file: Path, t_start: float, t: float,
 
     with _lock:
         model_dir.mkdir(parents=True, exist_ok=True)
-        joblib.dump(model, model_dir / MODEL_FILENAME)
+        joblib.dump(model, model_dir / MODEL_FILENAME, compress=3)
         elapsed = round(time.perf_counter() - t_start, 3)
         phase["persist"] = round(time.perf_counter() - t, 3)
         meta = {"trained_at": time.time(), "n_samples": len(rows), "validation_mae": mae,

@@ -214,7 +214,7 @@ def train() -> TrainResult:
     global _loaded_model, _loaded_model_mtime
     with _lock:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        joblib.dump(model, MODEL_FILE)
+        joblib.dump(model, MODEL_FILE, compress=3)
         meta = {"trained_at": time.time(), "n_samples": len(sold), "validation_mae": mae,
                 "feature_importances": importances, "feature_names": FEATURE_NAMES,
                 "sklearn_version": _sklearn_version(), "model_name": selection.model_name,
