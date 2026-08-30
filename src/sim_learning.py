@@ -240,7 +240,7 @@ def _price_ratio(output_prices: list, input_prices: list) -> float:
     no usable price. The M6 pre-simulation proxy for output-tier value vs input cost."""
     outs = [p for p in output_prices if p is not None]
     ins = [p for p in input_prices if p is not None]
-    if not outs or not ins:
+    if not outs or not ins or sum(ins) == 0:
         return float("nan")
     return (sum(outs) / len(outs)) / (sum(ins) / len(ins))
 
@@ -643,14 +643,24 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
             mhn = steam_prices_mod.market_hash_name(u["skin"]["name"], u["wear"], candidate.stattrak)
             pdata, _ = steam_prices_mod.get_cached_price(mhn, cur)
             input_prices.append((pdata.get("lowest_price") or pdata.get("median_price")) if pdata else None)
+    # serve numerator = each output skin's mean WARM-wear price (train uses its single LANDED-wear
+    # price -- the accepted "cheap proxy" latitude of finding M6; don't compute the landed wear
+    # pre-sim, that's real oddsmath complexity for an approximate feature). median-first matches
+    # simulate.py's output-pricing (:424), and one entry per priced skin matches training's
+    # one-row-per-output-skin structure.
     output_prices = []
     for leg in candidate.legs:
         for skin in leg.outputs:
+            skin_warm = []
             for w in skin["wears"]:
                 mhn = steam_prices_mod.market_hash_name(skin["name"], w, candidate.stattrak)
                 pdata, _ = steam_prices_mod.get_cached_price(mhn, cur)
                 if pdata:
-                    output_prices.append(pdata.get("lowest_price") or pdata.get("median_price"))
+                    p = pdata.get("median_price") or pdata.get("lowest_price")
+                    if p is not None:
+                        skin_warm.append(p)
+            if skin_warm:
+                output_prices.append(sum(skin_warm) / len(skin_warm))
     ratio = _price_ratio(output_prices, input_prices)
     n_target_outputs = float(sum(len(leg.outputs) for leg in candidate.legs))
     # cost is unknown pre-simulation -- fed as NaN, which HistGradientBoostingRegressor

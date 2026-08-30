@@ -20,4 +20,11 @@ fv = _feature_vector(from_rarity="Mil-Spec Grade",
                      output_input_price_ratio=2.0, n_target_outputs=5.0)
 assert len(fv) == len(FEATURE_NAMES) == 9, (len(fv), len(FEATURE_NAMES))
 assert fv[-2] == 2.0 and fv[-1] == 5.0
+
+fv_nan = _feature_vector(from_rarity="Mil-Spec Grade",
+    input_mix=[{"collection": "C", "wear": "Field-Tested", "count": 10}],
+    primary_collection="C", stattrak=False, cost=1.0, collection_mean_roi=0.0,
+    output_input_price_ratio=float("nan"), n_target_outputs=5.0)
+assert math.isnan(fv_nan[-2]) and fv_nan[-1] == 5.0   # nan ratio flows through, n_target_outputs stays real
+
 print("OK  _price_ratio + _feature_vector width (9)")
