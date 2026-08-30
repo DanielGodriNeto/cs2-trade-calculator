@@ -850,6 +850,7 @@ def full_reset(state: SimulationLoopState) -> None:
         meta_file = state.model_dir / sim_learning_mod.META_FILENAME
         model_file.unlink(missing_ok=True)
         meta_file.unlink(missing_ok=True)
+        (state.model_dir / sim_learning_mod.HI_MODEL_FILENAME).unlink(missing_ok=True)  # auxiliary quantile head
         sim_learning_mod.forget(state.model_dir, state.sims_file)
         _archive_cache.pop(state.sims_file, None)  # drop this son's stale opportunity-archive
         # cache too -- _update_archive_cache would self-heal on the next call anyway (truncated

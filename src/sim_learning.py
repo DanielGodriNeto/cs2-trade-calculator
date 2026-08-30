@@ -36,6 +36,8 @@ from . import verified_low_roi as verified_low_roi_mod
 
 MODEL_FILENAME = "sim_roi_model.joblib"
 META_FILENAME = "sim_roi_model_meta.json"
+HI_MODEL_FILENAME = "sim_roi_model_hi.joblib"  # auxiliary quantile head, see STD_QUANTILE / predict_expected_roi(with_std=True)
+STD_QUANTILE = 0.8413  # ~= P(Z <= 1) for a normal, so hi_pred - mean_pred ~= 1 sigma
 
 MIN_TRAINING_SAMPLES = 20
 TRAIN_TIME_HISTORY_KEEP = 20  # how many past retrain durations each son's metadata carries
@@ -197,6 +199,7 @@ RARITY_RANK_BY_NAME = {name: idx for idx, (_, name) in enumerate(data_mod.RARITY
 
 _lock = threading.Lock()
 _loaded_models: dict = {}          # model_dir -> (model, mtime)
+_loaded_hi_models: dict = {}       # model_dir -> (hi_model, mtime); parallel to _loaded_models
 _collection_roi_caches: dict = {}  # sims_file -> {"mtime":..., "lookup": {...}}
 
 
@@ -295,6 +298,7 @@ def forget(model_dir: Path, sims_file: Path) -> None:
     model or collection-ROI lookup from before the reset can never be served again."""
     with _lock:
         _loaded_models.pop(model_dir, None)
+        _loaded_hi_models.pop(model_dir, None)
         _collection_roi_caches.pop(sims_file, None)
     # simulate.py memoizes the parsed tail of this same sims_file (see its
     # load_recent_simulations). Its own guards would catch a reset on the next read anyway, but
@@ -485,9 +489,28 @@ def _train_locked(model_dir: Path, sims_file: Path, t_start: float, t: float,
     residual_p10 = float(np.percentile(residuals, 10))
     residual_p90 = float(np.percentile(residuals, 90))
 
+    # Auxiliary per-son quantile head (M2): ONE HistGradientBoostingRegressor fit -- no CV, it's
+    # an uncertainty band, not the CV-selected model -- on the SAME X/y/sample_weight as the
+    # winner. predict_expected_roi(with_std=True) loads it to return (mean_pred, hi_pred - mean_pred)
+    # as a rough per-candidate ~1 sigma. Fitted HERE, OUTSIDE `with _lock:` on purpose: that lock
+    # guards only microsecond dict ops on _loaded_models/_collection_roi_caches, so a multi-second
+    # .fit() under it would serialise every son's predict_expected_roi/_collection_roi_lookup. It
+    # still runs inside the _train_slots semaphore the caller holds, so retrain concurrency stays
+    # capped either way.
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    hi = HistGradientBoostingRegressor(loss="quantile", quantile=STD_QUANTILE, random_state=42,
+                                       max_depth=4,
+                                       min_samples_leaf=max(3, min(20, len(rows) // 8)),
+                                       max_bins=(FAST_MAX_BINS if len(rows) >= FAST_MAX_BINS_MIN_ROWS
+                                                 else 255))
+    with ml_common._thread_limit(FAST_MAX_THREADS):
+        hi.fit(X, y, sample_weight=sample_weight)
+    t = _mark("fit_hi_quantile", t)
+
     with _lock:
         model_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, model_dir / MODEL_FILENAME, compress=3)
+        joblib.dump(hi, model_dir / HI_MODEL_FILENAME, compress=3)
         elapsed = round(time.perf_counter() - t_start, 3)
         phase["persist"] = round(time.perf_counter() - t, 3)
         meta = {"trained_at": time.time(), "n_samples": len(rows), "validation_mae": mae,
@@ -508,6 +531,7 @@ def _train_locked(model_dir: Path, sims_file: Path, t_start: float, t: float,
                 "recent_train_seconds": (prev_times + [elapsed])[-TRAIN_TIME_HISTORY_KEEP:]}
         (model_dir / META_FILENAME).write_text(json.dumps(meta), encoding="utf-8")
         _loaded_models.pop(model_dir, None)  # force a reload on the next predict_expected_roi() call
+        _loaded_hi_models.pop(model_dir, None)
 
     return TrainResult(trained=True, reason="", n_samples=len(rows), validation_mae=mae,
                         feature_importances=importances, model_name=selection.model_name,
@@ -539,7 +563,8 @@ def get_model_status(model_dir: Path) -> dict:
 
 
 def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
-                          collection_roi_lookup: dict | None = None) -> float | None:
+                          collection_roi_lookup: dict | None = None,
+                          with_std: bool = False) -> "float | tuple[float, float] | None":
     """Scores a not-yet-simulated random_trade.Candidate for random_trade.generate_batch's
     guided sampling -- estimated from the candidate's structure alone (no pricing needed), so
     it's cheap enough to call on every random draw before deciding which ones are even worth
@@ -555,7 +580,14 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
     function's own per-call lookup is mtime-cached, but a hot loop calling log_simulation()
     between candidates invalidates that cache on almost every call -- see collection_roi_lookup's
     docstring). None (default) falls back to the original per-call lookup, fine for an
-    occasional/non-hot-loop caller."""
+    occasional/non-hot-loop caller.
+
+    with_std: default False keeps the historic contract exactly -- returns `float | None`. When
+    True, returns `(mean_pred, std_est) | None`: None on the same untrained/no-winner-model
+    early-returns as before; otherwise std_est is `max(0.0, hi_pred - mean_pred)` from this son's
+    auxiliary `sim_roi_model_hi.joblib` quantile head (see STD_QUANTILE). A son trained before the
+    hi head existed -- or one whose hi file is mid-write during a concurrent train() -- yields
+    std_est 0.0 rather than a fabricated band."""
     status = get_model_status(model_dir)
     model_file = model_dir / MODEL_FILENAME
     if not status["trained"] or not model_file.exists():
@@ -585,4 +617,28 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
     features = _feature_vector(from_rarity=candidate.from_rarity_name, input_mix=input_mix,
                                 primary_collection=candidate.legs[0].collection, stattrak=candidate.stattrak,
                                 cost=float("nan"), collection_mean_roi=collection_mean)
-    return float(model.predict(np.array([features], dtype=float))[0])
+    mean_pred = float(model.predict(np.array([features], dtype=float))[0])
+    if not with_std:
+        return mean_pred
+
+    # with_std path: load this son's auxiliary quantile head, parallel to the winner-model cache
+    # block above (same mtime guard, same mid-write handling). Missing file (older son) or a
+    # FileNotFoundError/EOFError from a concurrent train()'s mid-write -> std_est 0.0, never a
+    # fabricated band.
+    hi_file = model_dir / HI_MODEL_FILENAME
+    if not hi_file.exists():
+        return (mean_pred, 0.0)
+    with _lock:
+        hi_mtime = hi_file.stat().st_mtime
+        cached_hi = _loaded_hi_models.get(model_dir)
+        if cached_hi is None or cached_hi[1] != hi_mtime:
+            import joblib
+            try:
+                hi_model = joblib.load(hi_file)
+                _loaded_hi_models[model_dir] = (hi_model, hi_mtime)
+            except (FileNotFoundError, EOFError):
+                return (mean_pred, 0.0)  # hi file mid-write by a concurrent train() -- try again next call
+        else:
+            hi_model = cached_hi[0]
+    hi_pred = float(hi_model.predict(np.array([features], dtype=float))[0])
+    return (mean_pred, max(0.0, hi_pred - mean_pred))
