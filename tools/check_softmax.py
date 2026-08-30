@@ -9,7 +9,7 @@ import random
 from src.random_trade import _softmax_weighted_sample
 
 rng = random.Random(0)
-scored = [(0.0, "top")] + [(-80.0, f"tail{i}") for i in range(200)]   # exp(-80/0.2) underflows to 0
+scored = [(0.0, "top")] + [(-200.0, f"tail{i}") for i in range(200)]   # exp(-200/0.2) = exp(-1000) underflows to exactly 0.0
 picks = [tuple(_softmax_weighted_sample(random.Random(s), scored, 5, 0.2)) for s in range(60)]
 tails = [p[1:] for p in picks]
 assert len(set(tails)) > 1, "underflow: tail is deterministic list-order, not random"
