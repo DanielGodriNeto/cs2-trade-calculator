@@ -32,6 +32,7 @@ from . import ml_common
 from . import oddsmath
 from . import sim_blacklist as sim_blacklist_mod
 from . import simulate as simulate_mod
+from . import steam_prices as steam_prices_mod
 from . import verified_low_roi as verified_low_roi_mod
 
 MODEL_FILENAME = "sim_roi_model.joblib"
@@ -163,7 +164,12 @@ TRAIN_MAX_CONCURRENCY = 2
 _train_slots = threading.Semaphore(TRAIN_MAX_CONCURRENCY)
 
 FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "filler_fraction",
-                  "stattrak", "collection_mean_expected_roi"]
+                  "stattrak", "collection_mean_expected_roi",
+                  # M6: two structural features knowable BEFORE a candidate is priced --
+                  # output_input_price_ratio is the cheap pre-simulation proxy for output-tier
+                  # value vs input cost that the `cost` comment below proposes in place of `cost`
+                  # itself; n_target_outputs is the odds-dilution denominator, always known.
+                  "output_input_price_ratio", "n_target_outputs"]
 # The intended M5 constraint is [0, 0, 0, 0, 0, 0, 1] -- force the surrogate monotone
 # non-decreasing in collection_mean_expected_roi (last FEATURE_NAMES entry). It ships DORMANT
 # (None) because enabling it regressed CV-MAE on the current local simulations.jsonl by
@@ -229,8 +235,18 @@ def _wear_spread(input_mix: list) -> tuple:
     return len(wears), float(spread)
 
 
+def _price_ratio(output_prices: list, input_prices: list) -> float:
+    """mean(non-None output prices) / mean(non-None input prices); nan when either side has
+    no usable price. The M6 pre-simulation proxy for output-tier value vs input cost."""
+    outs = [p for p in output_prices if p is not None]
+    ins = [p for p in input_prices if p is not None]
+    if not outs or not ins:
+        return float("nan")
+    return (sum(outs) / len(outs)) / (sum(ins) / len(ins))
+
+
 def _feature_vector(*, from_rarity, input_mix, primary_collection, stattrak, cost,
-                     collection_mean_roi) -> list:
+                     collection_mean_roi, output_input_price_ratio, n_target_outputs) -> list:
     # `cost` is accepted but NOT included below -- see the FEATURE_NAMES comment for why
     # (it's unknowable at candidate-selection time, so training on it taught the model a
     # split it could never take when it mattered). Kept in the signature so both call sites
@@ -250,13 +266,19 @@ def _feature_vector(*, from_rarity, input_mix, primary_collection, stattrak, cos
         filler_fraction,
         1.0 if stattrak else 0.0,
         float(collection_mean_roi) if collection_mean_roi is not None else float("nan"),
+        float(output_input_price_ratio),
+        float(n_target_outputs),
     ]
 
 
 def _featurize_record(r, collection_mean_roi: float) -> list:
+    ratio = _price_ratio([u.get("price") for u in r.output_distribution],
+                          [u.get("unit_price") for u in r.input_mix])
     return _feature_vector(from_rarity=r.from_rarity, input_mix=r.input_mix,
                             primary_collection=r.primary_collection, stattrak=r.stattrak,
-                            cost=r.cost, collection_mean_roi=collection_mean_roi)
+                            cost=r.cost, collection_mean_roi=collection_mean_roi,
+                            output_input_price_ratio=ratio,
+                            n_target_outputs=float(r.n_output_variants))
 
 
 def _leave_one_out_collection_means(rows: list) -> list:
@@ -611,12 +633,33 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
     if collection_roi_lookup is None:
         collection_roi_lookup = _collection_roi_lookup(sims_file)
     collection_mean = collection_roi_lookup.get(candidate.legs[0].collection, float("nan"))
+    # M6 pre-simulation price-ratio: inputs/outputs aren't priced yet, so read Steam's WARM
+    # cache only (no network -- get_cached_price never fetches). A cold lookup contributes None;
+    # _price_ratio yields nan when a whole side is cold, matching _featurize_record's contract.
+    cur = 1  # this codebase runs currency=1 throughout (see run_round's currency default)
+    input_prices = []
+    for leg in candidate.legs:
+        for u in leg.units:
+            mhn = steam_prices_mod.market_hash_name(u["skin"]["name"], u["wear"], candidate.stattrak)
+            pdata, _ = steam_prices_mod.get_cached_price(mhn, cur)
+            input_prices.append((pdata.get("lowest_price") or pdata.get("median_price")) if pdata else None)
+    output_prices = []
+    for leg in candidate.legs:
+        for skin in leg.outputs:
+            for w in skin["wears"]:
+                mhn = steam_prices_mod.market_hash_name(skin["name"], w, candidate.stattrak)
+                pdata, _ = steam_prices_mod.get_cached_price(mhn, cur)
+                if pdata:
+                    output_prices.append(pdata.get("lowest_price") or pdata.get("median_price"))
+    ratio = _price_ratio(output_prices, input_prices)
+    n_target_outputs = float(sum(len(leg.outputs) for leg in candidate.legs))
     # cost is unknown pre-simulation -- fed as NaN, which HistGradientBoostingRegressor
     # handles natively (it has real cost values at training time, unlike the all-NaN
     # thirdparty_gap_pct case learning.py's FEATURE_NAMES comment documents avoiding).
     features = _feature_vector(from_rarity=candidate.from_rarity_name, input_mix=input_mix,
                                 primary_collection=candidate.legs[0].collection, stattrak=candidate.stattrak,
-                                cost=float("nan"), collection_mean_roi=collection_mean)
+                                cost=float("nan"), collection_mean_roi=collection_mean,
+                                output_input_price_ratio=ratio, n_target_outputs=n_target_outputs)
     mean_pred = float(model.predict(np.array([features], dtype=float))[0])
     if not with_std:
         return mean_pred
