@@ -126,6 +126,10 @@ ML_AGREEMENT_UNVERIFIED_SCALE = 0.5  # see _ml_agreement_bonus: halved when effe
 # agreeing is a weaker trust signal than the model agreeing with a verified, execution-checked ROI.
 
 
+ENSEMBLE_MAX_BONUS = 6.0        # sibling of ML_AGREEMENT_MAX_BONUS -- capped ensemble-agreement trust
+ENSEMBLE_SPREAD_CAP_PP = 30.0   # ensemble p90-p10 (ROI%pp) at/beyond which the bonus is zero
+
+
 def _ml_agreement_bonus(entry: dict) -> float:
     """0-ML_AGREEMENT_MAX_BONUS. Some entries carry ml_predicted_roi_pct (simulate.
     SimulationRecord.ml_predicted_roi_pct) -- the discovering agent's OWN sim_learning.py model's
@@ -156,14 +160,36 @@ def _ml_agreement_bonus(entry: dict) -> float:
     return bonus
 
 
+def _ensemble_agreement_bonus(entry: dict) -> float:
+    """0-ENSEMBLE_MAX_BONUS. When sim_loop attached ensemble_roi_median / ensemble_roi_spread
+    (>=3 of the 6 sons' models scored this exact composition), reward a consensus that is BOTH
+    tight AND matches the formula ROI: full bonus when the spread is small (< ENSEMBLE_SPREAD_CAP_PP)
+    AND the median is within ML_AGREEMENT_RESIDUAL_CAP_PP of effective_roi; zero when the spread is
+    wide or the median disagrees. Scaled by ML_AGREEMENT_UNVERIFIED_SCALE until Stage-2 verified,
+    exactly like the _ml_agreement_bonus sibling. Missing ensemble_* keys -> 0.0 (no penalty)."""
+    median = entry.get("ensemble_roi_median")
+    spread = entry.get("ensemble_roi_spread")
+    if median is None or spread is None:
+        return 0.0
+    residual = abs(median - _effective_roi(entry))
+    agree = max(0.0, 1.0 - residual / ML_AGREEMENT_RESIDUAL_CAP_PP)
+    tight = max(0.0, 1.0 - spread / ENSEMBLE_SPREAD_CAP_PP)
+    bonus = ENSEMBLE_MAX_BONUS * agree * tight
+    if entry.get("verified_roi_pct") is None:
+        bonus *= ML_AGREEMENT_UNVERIFIED_SCALE
+    return bonus
+
+
 def _confidence_score(entry: dict) -> float:
     """0-100. Prefers the STORED confidence_score (simulate.SimulationRecord.confidence_score,
     computed once at simulate()-time from the same cost-basis-freshness + worst-dead-skin-score
     formula) when present, rather than recomputing it -- falls back to computing it here for
-    entries logged before that field existed. Either way, adds two bonuses that can only be known
+    entries logged before that field existed. Either way, adds bonuses that can only be known
     after simulate()-time: one once this entry has actually been through Stage-2 verification
-    with a clean result, and one for how well this son's own model anticipated the result (see
-    _ml_agreement_bonus) -- neither is ever part of the stored base value."""
+    with a clean result, one for how well this son's own model anticipated the result (see
+    _ml_agreement_bonus), and one for how tightly ALL the sons' models agree on it and whether
+    that consensus matches the formula ROI (see _ensemble_agreement_bonus) -- none is ever part
+    of the stored base value."""
     stored = entry.get("confidence_score")
     if stored is not None:
         base = stored
@@ -180,7 +206,7 @@ def _confidence_score(entry: dict) -> float:
     verified_bonus = 0.0
     if entry.get("verified_roi_pct") is not None:
         verified_bonus = 15.0 if entry.get("price_confidence") == "ok" else 5.0
-    return min(100.0, base + verified_bonus + _ml_agreement_bonus(entry))
+    return min(100.0, base + verified_bonus + _ml_agreement_bonus(entry) + _ensemble_agreement_bonus(entry))
 
 
 def _discovery_value(entry: dict) -> float:

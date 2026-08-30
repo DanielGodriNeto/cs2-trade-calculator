@@ -28,8 +28,10 @@ own sim_learning.py model only ever reads that SAME son's own simulations.jsonl 
 another son's, and never the real outcomes.jsonl.
 """
 import json
+import math
 import os
 import random
+import statistics
 import threading
 import time
 from pathlib import Path
@@ -59,6 +61,10 @@ N_SONS = len(agents_mod.AGENT_PROFILES)
 # now DERIVED per-agent from memory_weight (see agents.py.base_temperature) instead of a
 # hardcoded list. Order matches son_id 0..N_SONS-1.
 SON_TEMPERATURES = [agents_mod.base_temperature(agents_mod.profile_for(i)) for i in range(N_SONS)]
+
+_RARITY_ID_BY_NAME = {name: rid for rid, name in data_mod.RARITY_CHAIN}  # "Mil-Spec Grade" -> "rarity_rare_weapon"
+# -- reverse of data.RARITY_CHAIN, for reconstructing a random_trade.Candidate from a stored
+# best-list/archive entry (which carries rarity NAMES, not ids). See _entry_to_candidate.
 
 BATCH_SIZE = 200          # random candidates drawn per round before scoring/filtering
 SIMULATE_PER_ROUND = 40   # of that batch, how many actually get simulate.simulate() called
@@ -283,6 +289,92 @@ def _consider_best(cp: dict, record, profile: "agents_mod.AgentProfile") -> None
     del cp["best"][BEST_KEPT:]
 
 
+def _percentile(vals: list, pct: float) -> float:
+    """Linear-interpolated pct-th percentile of `vals` (0 <= pct <= 100). Small, self-contained
+    -- the ensemble spread is p90-p10 over at most N_SONS predictions, not worth pulling numpy
+    into a read path for."""
+    s = sorted(vals)
+    k = (len(s) - 1) * pct / 100.0
+    lo, hi = math.floor(k), math.ceil(k)
+    if lo == hi:
+        return s[lo]
+    return s[lo] * (hi - k) + s[hi] * (k - lo)
+
+
+def _entry_to_candidate(entry: dict, idx: dict):
+    """Rebuilds a random_trade.Candidate from a stored best-list/archive entry so every
+    trained son's sim_learning model can score this exact composition (see
+    _attach_ensemble_predictions). The entry carries rarity NAMES + a flat input_mix of
+    {collection, skin(name str), wear, count} rows; a Candidate needs rarity ids, per-collection
+    legs, and REAL output skin dicts (predict_expected_roi reads leg.outputs[k]["name"]/["wears"]
+    and unit["skin"]["name"] for its warm-cache price features -- Task 9). Returns None whenever
+    the entry can't be faithfully reconstructed (unknown rarity, a collection the current skin
+    DB doesn't know, no outputs at the target rarity) -- a missing ensemble signal, never a
+    broken ranking call. Any exception -> None for the same reason."""
+    try:
+        from_id = _RARITY_ID_BY_NAME.get(entry["from_rarity"])
+        to_id = _RARITY_ID_BY_NAME.get(entry["to_rarity"])
+        if from_id is None or to_id is None:
+            return None
+        stattrak = bool(entry.get("stattrak"))
+        groups: dict = {}  # collection -> [unit rows], first-seen order preserved
+        for u in entry.get("input_mix") or []:
+            groups.setdefault(u["collection"], []).append(u)
+        if not groups:
+            return None
+        primary = entry.get("primary_collection")
+        ordered = ([primary] + [c for c in groups if c != primary]) if primary in groups else list(groups)
+        legs = []
+        for collection in ordered:
+            if collection not in idx:
+                return None
+            outs = idx.get(collection, {}).get(to_id, [])
+            if stattrak:
+                outs = [s for s in outs if s.get("stattrak")]
+            if not outs:
+                return None
+            units = [{"skin": {"name": u["skin"]}, "wear": u["wear"], "count": u["count"]}
+                     for u in groups[collection]]
+            legs.append(random_trade_mod.CandidateLeg(collection=collection, units=units, outputs=list(outs)))
+        return random_trade_mod.Candidate(
+            from_rarity_id=from_id, from_rarity_name=entry["from_rarity"],
+            to_rarity_id=to_id, to_rarity_name=entry["to_rarity"],
+            stattrak=stattrak, legs=legs)
+    except Exception:
+        return None
+
+
+def _attach_ensemble_predictions(entries: list) -> None:
+    """Mutates `entries` in place: for every entry that reconstructs to a Candidate (see
+    _entry_to_candidate), score it against EVERY currently-trained son's ROI surrogate and
+    attach ensemble_roi_median / ensemble_roi_spread (p90-p10) when >=3 models produced a
+    number -- ranking._ensemble_agreement_bonus turns a tight consensus that also matches the
+    formula ROI into a small confidence bonus. <3 models -> neither key attached (no signal).
+    Every predict_expected_roi call is guarded: a stale/broken per-son model must never break a
+    read path."""
+    trained = [(son_model_dir(i), son_sims_file(i), sim_learning_mod.collection_roi_lookup(son_sims_file(i)))
+               for i in range(N_SONS)
+               if sim_learning_mod.get_model_status(son_model_dir(i)).get("trained")]
+    if len(trained) < 3:
+        return  # can never reach the >=3-prediction bar below
+    idx = data_mod.collections_index(data_mod.load_skins())
+    for entry in entries:
+        cand = _entry_to_candidate(entry, idx)
+        if cand is None:
+            continue
+        preds = []
+        for md, sf, lookup in trained:
+            try:
+                p = sim_learning_mod.predict_expected_roi(cand, md, sf, collection_roi_lookup=lookup)
+            except Exception:
+                p = None
+            if p is not None:
+                preds.append(float(p))
+        if len(preds) >= 3:
+            entry["ensemble_roi_median"] = statistics.median(preds)
+            entry["ensemble_roi_spread"] = _percentile(preds, 90) - _percentile(preds, 10)
+
+
 def list_best_simulations(son_id: int | None = None, collection_filter: str | None = None) -> list:
     """Reads checkpoint(s) straight off disk -- no running loop required. son_id=None merges
     across every son (tagging each entry with its son id) for a combined leaderboard; used by
@@ -307,6 +399,10 @@ def list_best_simulations(son_id: int | None = None, collection_filter: str | No
                    for e in cp["best"] if not _entry_hidden(e))
     if collection_filter:
         out = [e for e in out if collection_filter.lower() in e["primary_collection"].lower()]
+    # 6-son ensemble trust signal: score each entry against every trained son's ROI surrogate
+    # and attach ensemble_roi_median/spread, so ranking._ensemble_agreement_bonus can reward a
+    # tight cross-model consensus that also matches the formula ROI (see that function).
+    _attach_ensemble_predictions(out)
     # Cross-son dedupe: the same composition can be independently banked by several sons, so
     # after ranking keep only the single best-ranked instance of each signature -- one row per
     # unique trade-up in the opportunities table, never the same one repeated across agents
@@ -417,6 +513,9 @@ def list_all_opportunities(son_id: int | None = None, collection_filter: str | N
         out = [e for e in out if collection_filter.lower() in (e["primary_collection"] or "").lower()]
     if min_roi is not None:
         out = [e for e in out if e["expected_roi_pct"] >= min_roi]
+    # 6-son ensemble trust signal -- same attach as list_best_simulations (see that call site
+    # and _attach_ensemble_predictions / ranking._ensemble_agreement_bonus).
+    _attach_ensemble_predictions(out)
     ranked = ranking_mod.rank(out)
     seen: set = set()
     deduped = []
