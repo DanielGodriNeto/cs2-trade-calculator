@@ -28,6 +28,8 @@ discovering agent's OWN sim_learning.py model anticipated this exact candidate's
 was simulated -- previously that trained model only ever influenced which candidates got
 sampled (random_trade.py), never how much the final ranking trusts a result once found.
 """
+import math
+
 from . import agents as agents_mod
 from . import dead_skin as dead_skin_mod
 from . import market_reliability as market_reliability_mod
@@ -58,10 +60,23 @@ def _effective_weights(entry: dict) -> dict:
     return weights
 
 
-def _normalize(value: float, lo: float, hi: float) -> float:
-    if hi <= lo:
-        return 0.5  # no spread across this set -- neutral rather than div-by-zero
-    return max(0.0, min(1.0, (value - lo) / (hi - lo)))
+ROI_SQUASH_CENTER = 25.0   # ROI% mapped to 0.5 by the sigmoid -- a "solidly good" trade-up
+ROI_SQUASH_SCALE = 25.0    # ROI% change for a ~0.23 score change near the centre
+PROFIT_SQUASH_REF = 500.0  # absolute profit ($) mapped to ~0.76; log1p keeps small profits legible
+
+
+def _squash_roi(roi_pct: float) -> float:
+    """Absolute 0-1 sigmoid of ROI% -- fixed scale, independent of the other entries in
+    this call (see rank()'s CAVEAT). ROI_SQUASH_CENTER -> 0.5."""
+    return 1.0 / (1.0 + math.exp(-(roi_pct - ROI_SQUASH_CENTER) / ROI_SQUASH_SCALE))
+
+
+def _squash_profit(profit: float) -> float:
+    """Absolute 0-1 log squash of profit ($). <= 0 -> 0.0; PROFIT_SQUASH_REF -> ~0.76;
+    saturates at 1.0. Fixed scale, independent of the other entries in this call."""
+    if profit <= 0:
+        return 0.0
+    return min(1.0, math.log1p(profit) / math.log1p(PROFIT_SQUASH_REF))
 
 
 def effective_roi(entry: dict) -> float:
@@ -187,10 +202,14 @@ def _has_unpriced_output(entry: dict) -> bool:
     return any(o.get("price") is None for o in (entry.get("output_distribution") or []))
 
 
-def score_breakdown(entry: dict, roi_lo: float, roi_hi: float, profit_lo: float, profit_hi: float) -> dict:
+def score_breakdown(entry: dict) -> dict:
+    """Per-factor 0-1 sub-scores for `entry`. roi/profit are ABSOLUTE squashes (fixed
+    sigmoid / log against module constants) -- their value depends only on this entry, not
+    on the other entries in the ranking call. liquidity/confidence/discovery are already
+    0-1 after the /100."""
     return {
-        "roi": _normalize(_effective_roi(entry), roi_lo, roi_hi),
-        "profit": _normalize(_profit_amount(entry), profit_lo, profit_hi),
+        "roi": _squash_roi(_effective_roi(entry)),
+        "profit": _squash_profit(_profit_amount(entry)),
         "liquidity": _liquidity_score(entry) / 100.0,
         "confidence": _confidence_score(entry) / 100.0,
         "discovery": _discovery_value(entry) / 100.0,
@@ -200,22 +219,20 @@ def score_breakdown(entry: dict, roi_lo: float, roi_hi: float, profit_lo: float,
 def rank(entries: list) -> list:
     """Ranks `entries` (checkpoint `best`-list dicts, from any/all agents) by the spec's
     weighted composite score instead of raw ROI alone. ROI/profit are unbounded, so
-    they're min-max normalized against the OTHER entries in THIS SAME call (a relative
-    comparison across the current candidate set, not an absolute scale) -- liquidity/
-    confidence/discovery are already 0-100 scores and don't need it.
+    they're squashed onto a FIXED absolute 0-1 scale (sigmoid for ROI%, log1p for profit
+    $, against the ROI_SQUASH_* / PROFIT_SQUASH_REF module constants) -- liquidity/
+    confidence/discovery are already 0-100 scores and just get /100.
 
     Non-destructive: returns NEW dicts (never mutates the input entries, which may be
     live references into a son's in-memory checkpoint) with 'composite_score',
     'score_breakdown', and 'effective_roi_pct'/'profit_amount' added for transparency --
     the dashboard can show the raw ROI% column right alongside this ranking.
 
-    CAVEAT: because roi/profit are normalized against the min/max of THIS SAME `entries`
-    list, composite_score is only comparable WITHIN one call -- it is not a stable,
-    absolute 0-100 scale. Calling this on a smaller/filtered subset (e.g. the archive
-    endpoint's collection/min_roi/agent filters) re-scales roi/profit against that
-    narrower set, so the same underlying entry can get a different composite_score
-    depending on what else was in the list it was ranked alongside. Don't compare
-    composite_score across two different filtered queries as if it were absolute."""
+    composite_score is a stable ABSOLUTE 0-100 scale: every input to it (the roi/profit
+    squashes, _effective_weights, the reliability dampener) is a function of the single
+    entry alone, so a given entry scores the same number whether it is ranked solo, in
+    the full list, or in any filtered subset (e.g. the archive endpoint's collection/
+    min_roi/agent filters). Two different filtered queries ARE comparable."""
     if not entries:
         return []
     # market_reliability.py's unified Excluded state is kept out of the reward-like composite
@@ -234,14 +251,10 @@ def rank(entries: list) -> list:
     entries = [e for e in entries if not _has_unpriced_output(e)]
     if not entries:
         return []
-    rois = [_effective_roi(e) for e in entries]
-    profits = [_profit_amount(e) for e in entries]
-    roi_lo, roi_hi = min(rois), max(rois)
-    profit_lo, profit_hi = min(profits), max(profits)
 
     scored = []
     for e in entries:
-        breakdown = score_breakdown(e, roi_lo, roi_hi, profit_lo, profit_hi)
+        breakdown = score_breakdown(e)
         weights = _effective_weights(e)
         weighted = sum(weights[k] * v for k, v in breakdown.items()) * 100.0
         # Reliability dampener (module docstring, refinement 2): a maximally unreliable
