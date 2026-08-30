@@ -335,10 +335,23 @@ def _softmax_weighted_sample(rng: random_mod.Random, scored: list, k: int, tempe
     return chosen
 
 
+def _acquisition_score(raw, acquisition_beta: float) -> float:
+    """Collapse one score_fn() result to the scalar _softmax_weighted_sample ranks on.
+    (mean, std) 2-tuple -> mean + acquisition_beta*std (UCB); bare float -> itself;
+    None -> -inf (unscored, as before)."""
+    if raw is None:
+        return float("-inf")
+    if isinstance(raw, tuple):
+        mean, std = raw
+        return mean + acquisition_beta * std
+    return raw
+
+
 def generate_batch(idx: dict, n: int, rng: random_mod.Random | None = None,
                     score_fn=None, keep_top_k: int | None = None, temperature: float = 1.0,
                     filler_count_decay: float | None = None, wear_bias: float = 0.0,
-                    invalid_names: set | None = None, warm_names: set | None = None, stattrak_rate: float | None = None) -> list:
+                    invalid_names: set | None = None, warm_names: set | None = None, stattrak_rate: float | None = None,
+                    acquisition_beta: float = 0.0) -> list:
     """Draws up to n random candidates (retrying past the occasional None from
     random_candidate). If score_fn is given (sim_learning.predict_expected_roi), keeps only
     keep_top_k of them via temperature-controlled softmax-weighted sampling (see
@@ -352,7 +365,9 @@ def generate_batch(idx: dict, n: int, rng: random_mod.Random | None = None,
     filler_count_decay/wear_bias: forwarded straight to random_candidate -- the per-agent
     personality knobs from agents.py (collection_mixing_bias/wear_optimization_bias).
     warm_names: forwarded straight to random_candidate -- see its own docstring/WARM_CACHE_BIAS.
-    stattrak_rate: forwarded to random_candidate."""
+    stattrak_rate: forwarded to random_candidate.
+    acquisition_beta: when score_fn returns (mean, std) tuples, the ranking score is
+    mean + acquisition_beta*std (UCB); 0.0 (default) or bare-float scores reproduce today's."""
     rng = rng or random_mod.Random()
     candidates = []
     attempts = 0
@@ -367,5 +382,5 @@ def generate_batch(idx: dict, n: int, rng: random_mod.Random | None = None,
     scored = [(score_fn(c), c) for c in candidates]
     if all(s is None for s, _ in scored):
         return candidates[:keep_top_k]
-    scored = [(s if s is not None else float("-inf"), c) for s, c in scored]
+    scored = [(_acquisition_score(s, acquisition_beta), c) for s, c in scored]
     return _softmax_weighted_sample(rng, scored, keep_top_k, temperature)

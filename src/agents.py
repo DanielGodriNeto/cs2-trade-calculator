@@ -180,3 +180,18 @@ def filler_decay_for(collection_mixing_bias: float) -> float:
 
 def filler_count_decay(profile: AgentProfile) -> float:
     return filler_decay_for(profile.collection_mixing_bias)
+
+
+# random_trade UCB acquisition weight -- see run_round's guided score_fn. exploration_rate 0 ->
+# pure exploit (beta 0), 1 -> beta 2.0 (a candidate's ~1 sigma counts as much as +2pp mean ROI).
+ACQUISITION_BETA_MAX = 2.0
+
+
+def acquisition_beta_for(exploration_rate: float) -> float:
+    """Raw-value variant (usable with adaptive.py's live per-son params, same reason as
+    temperature_for/filler_decay_for)."""
+    return max(0.0, min(ACQUISITION_BETA_MAX, exploration_rate * ACQUISITION_BETA_MAX))
+
+
+def acquisition_beta(profile: AgentProfile) -> float:
+    return acquisition_beta_for(profile.exploration_rate)

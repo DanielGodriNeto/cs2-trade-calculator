@@ -931,11 +931,15 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
                 * adaptive_mod.novelty_bonus(c, coverage, coverage_total, ucb_pp=novelty_ucb_pp))
 
     if model_status["trained"]:
+        acq_beta = agents_mod.acquisition_beta_for(live["exploration_rate"])
         def score_fn(c):
             pred = sim_learning_mod.predict_expected_roi(c, state.model_dir, state.sims_file,
-                                                          collection_roi_lookup=collection_roi_lookup)
-            return (pred if pred is not None else 0.0) + _novelty(c)
+                                                          collection_roi_lookup=collection_roi_lookup,
+                                                          with_std=True)
+            mean, std = pred if pred is not None else (0.0, 0.0)
+            return (mean + _novelty(c), std)
     else:
+        acq_beta = 0.0
         score_fn = _novelty
     keep_top_k = SIMULATE_PER_ROUND
     # exploration_rate scales how large a pool this agent casts before narrowing down to
@@ -973,7 +977,8 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
     candidates = random_trade_mod.generate_batch(
         idx, batch_size, rng=state.rng, score_fn=score_fn, keep_top_k=keep_top_k, temperature=temperature,
         filler_count_decay=agents_mod.filler_decay_for(live["collection_mixing_bias"]),
-        wear_bias=live["wear_optimization_bias"], invalid_names=invalid_names, warm_names=warm_names)
+        wear_bias=live["wear_optimization_bias"], invalid_names=invalid_names, warm_names=warm_names,
+        acquisition_beta=acq_beta)
 
     # mutation_strength-controlled share of this round's batch comes from mutating this
     # agent's OWN current best finds (mutation.py) instead of fresh random draws -- the
