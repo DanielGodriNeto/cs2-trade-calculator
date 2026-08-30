@@ -162,8 +162,14 @@ _train_slots = threading.Semaphore(TRAIN_MAX_CONCURRENCY)
 
 FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "filler_fraction",
                   "stattrak", "collection_mean_expected_roi"]
-# index-aligned to FEATURE_NAMES; only the target-encoded collection mean is constrained (monotone-increasing)
-MONOTONIC_CST = [0, 0, 0, 0, 0, 0, 1]
+# The intended M5 constraint is [0, 0, 0, 0, 0, 0, 1] -- force the surrogate monotone
+# non-decreasing in collection_mean_expected_roi (last FEATURE_NAMES entry). It ships DORMANT
+# (None) because enabling it regressed CV-MAE on the current local simulations.jsonl by
+# 1.37x / 1.39x / 3.26x on son_0 / son_2 / son_5 (recency-only parity: 1.04 / 0.98 / 1.04).
+# Re-enable only after re-running `python tools/mae_parity.py` against FRESH training data and
+# confirming every checked son stays <= 1.05x. The hgb_monotonic_cst passthrough in
+# ml_common.fit_best_model is wired and tested (tools/check_monotonic.py) so this is a one-line flip.
+MONOTONIC_CST = None
 # `cost` deliberately excluded -- the same train/serve-skew reasoning as learning.py's
 # thirdparty_gap_pct comment, arrived at from the opposite direction. It USED to be in this
 # list, and by permutation importance it looked like one of the strongest features (2nd of 8 on
