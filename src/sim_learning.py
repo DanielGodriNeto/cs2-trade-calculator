@@ -56,6 +56,8 @@ MAX_ROWS_FOR_ANALYSIS = 3000  # caps train()'s CV/fit cost AND _collection_roi_l
 # retrain -- ~136 MB across the 6 agents per cycle, growing every round, to then throw roughly
 # half of it away. The cap now bounds the I/O too, not just the fitting.
 
+RECENCY_HALFLIFE_ROWS = 750  # each training row's sample_weight halves per this many rows of age (newest row = age 0)
+
 # Fast candidate-selection profile for THIS (sim-population) model only -- see ml_common.py's
 # fit_best_model(). random_forest is dropped entirely: across every one of the 6 sim agents'
 # real trained models, it has never once won against hist_gradient_boosting (see ml_common.py's
@@ -422,6 +424,10 @@ def _train_locked(model_dir: Path, sims_file: Path, t_start: float, t: float,
             cache=reliability_cache)
         weights.append(weight)
         weight_reasons[reason] = weight_reasons.get(reason, 0) + 1
+    # Recency: a row from weeks ago is a weaker signal about today's market than yesterday's.
+    # Multiplies the reliability weight (does not replace it). age 0 = newest row.
+    n = len(rows)
+    weights = [w * (0.5 ** ((n - 1 - i) / RECENCY_HALFLIFE_ROWS)) for i, w in enumerate(weights)]
     sample_weight = np.array(weights, dtype=float)
     t = _mark("sample_weights", t)
 
