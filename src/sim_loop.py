@@ -348,6 +348,12 @@ def _entry_to_candidate(entry: dict, idx: dict):
         return None
 
 
+_ensemble_prep_lock = threading.Lock()  # serialize the first (cold) trained-son / collection_roi_lookup
+# build so N concurrent dashboard requests don't each run the same 40-60MB tail scans in parallel
+# (GIL thrash -> ~9s per request); once sim_learning's per-son caches are warm this lock is a
+# no-op fast path. Sibling of _archive_cache_lock below.
+
+
 def _attach_ensemble_predictions(entries: list) -> None:
     """Mutates `entries` in place: for every entry that reconstructs to a Candidate (see
     _entry_to_candidate), score it against EVERY currently-trained son's ROI surrogate and
@@ -356,13 +362,18 @@ def _attach_ensemble_predictions(entries: list) -> None:
     formula ROI into a small confidence bonus. <3 models -> neither key attached (no signal).
     Every predict_expected_roi call is guarded: a stale/broken per-son model must never break a
     read path."""
-    trained = [(son_model_dir(i), son_sims_file(i), sim_learning_mod.collection_roi_lookup(son_sims_file(i)))
-               for i in range(N_SONS)
-               if sim_learning_mod.get_model_status(son_model_dir(i)).get("trained")]
+    if not entries:
+        return  # nothing to attach to -- skip the cold per-son scans + load_skins() parse below
+    # The trained-son build (get_model_status + collection_roi_lookup per son) is the only cold
+    # cost here and it's identical for every concurrent request -- serialize it so N dashboard
+    # threads don't each tail-scan the same 40-60MB jsonls in parallel and thrash the GIL. The
+    # per-entry predict loop below stays OUTSIDE the lock (must run parallel across requests).
+    with _ensemble_prep_lock:
+        trained = [(son_model_dir(i), son_sims_file(i), sim_learning_mod.collection_roi_lookup(son_sims_file(i)))
+                   for i in range(N_SONS)
+                   if sim_learning_mod.get_model_status(son_model_dir(i)).get("trained")]
     if len(trained) < 3:
         return  # can never reach the >=3-prediction bar below
-    if not entries:
-        return  # nothing to attach to -- skip the load_skins() parse below
     # Only the entries that could plausibly rank near the top get the ensemble treatment:
     # predict_expected_roi does an O(output_skins x wears) warm-cache price sweep per call, so
     # running it across the whole (unbounded) list was a real dashboard-endpoint regression --
