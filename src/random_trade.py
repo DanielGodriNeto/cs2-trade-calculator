@@ -310,7 +310,8 @@ def _softmax_weighted_sample(rng: random_mod.Random, scored: list, k: int, tempe
     pool = list(scored)
     chosen = []
     for _ in range(min(k, len(pool))):
-        weights = [math.exp((s - max_score) / temperature) for s, _ in pool]
+        FLOOR = 1e-12
+        weights = [max(FLOOR, math.exp((s - max_score) / temperature)) for s, _ in pool]
         total = sum(weights)
         if total <= 0:
             chosen.extend(item for _, item in pool[:k - len(chosen)])
