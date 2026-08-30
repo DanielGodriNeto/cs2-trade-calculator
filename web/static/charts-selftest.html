@@ -63,6 +63,16 @@ eq(matchCommand("scan", ctx)[0].kind, "action", "scan => action");
 </script>
 
 <script type="module">
+// Task 6 fix: the /app.js swallow predicate must not match the new router at /js/app.js.
+import { __swallowMatchesOldApp } from "./js/views/legacy.js";
+const eq = window.__eq;
+eq(__swallowMatchesOldApp("http://x/app.js"), true, "swallow matches classic /app.js filename");
+eq(__swallowMatchesOldApp("http://x/js/app.js"), false, "swallow ignores new /js/app.js filename");
+eq(__swallowMatchesOldApp("at f (http://x/app.js:9:1)\n at g (http://x/js/app.js:4:1)"), true, "swallow matches a classic /app.js stack frame");
+eq(__swallowMatchesOldApp("at f (http://x/js/app.js:9:1)"), false, "swallow ignores a pure /js/app.js stack");
+</script>
+
+<script type="module">
 await Promise.allSettled(window.__t.pending);
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;

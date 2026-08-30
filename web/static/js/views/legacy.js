@@ -44,14 +44,22 @@ const LEGACY_LOADERS = {
 // fired) where a fast double-click could still fire the un-neutralised pollStatus. It only
 // suppresses exceptions whose origin is /app.js -- anything thrown by the new js/ modules
 // surfaces normally.
+// Matches the classic script at exactly "/app.js" — never the new router at "/js/app.js".
+// Handles both a bare URL (error event `filename`) and a multi-line stack blob.
+const OLD_APP_IN_STACK = /:\/\/[^/\s]+\/app\.js(?=[:?)\s]|$)/;
+export function __swallowMatchesOldApp(s) {
+  if (typeof s !== "string") return false;
+  try { if (new URL(s, location.origin).pathname === "/app.js") return true; } catch { /* not a bare URL */ }
+  return OLD_APP_IN_STACK.test(s);
+}
+
 let _oldApp = null;
 function _installOldAppSwallow() {
-  const fromOldApp = (s) => typeof s === "string" && s.includes("/app.js");
   window.addEventListener("error", (e) => {
-    if (fromOldApp(e.filename) || fromOldApp(e.error && e.error.stack)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    if (__swallowMatchesOldApp(e.filename) || __swallowMatchesOldApp(e.error && e.error.stack)) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
   window.addEventListener("unhandledrejection", (e) => {
-    if (fromOldApp(e.reason && e.reason.stack)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    if (__swallowMatchesOldApp(e.reason && e.reason.stack)) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 }
 function loadOldApp() {

@@ -48,7 +48,11 @@ cmd.addEventListener("keydown", (e) => {
   else if (e.key === "Escape") { cmd.value = ""; renderMenuReset(); cmd.blur(); }
 });
 addEventListener("keydown", (e) => {
-  if (e.key === "/" && document.activeElement !== cmd) { cmd.focus(); e.preventDefault(); }
+  if (e.key === "/" && document.activeElement !== cmd
+      && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "")
+      && !document.activeElement?.isContentEditable) {
+    cmd.focus(); e.preventDefault();
+  }
 });
 
 // telemetry strip + clock, 3s poll
