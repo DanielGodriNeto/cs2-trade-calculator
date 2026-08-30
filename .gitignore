@@ -20,6 +20,10 @@ tools/.mae_baseline.json
 data/market_reliability_log.jsonl
 data/sons/son_*/simulations.jsonl
 data/evolution/lineage.jsonl
+# Auxiliary per-son quantile head (Task 7): regenerated on every retrain beside the tracked
+# sim_roi_model.joblib, carries no meta/history of its own, and predict_expected_roi(with_std=
+# True) degrades to (mean, 0.0) when it's absent -- nothing is gained by tracking it.
+data/sons/son_*/model/sim_roi_model_hi.joblib
 # scratch files left behind by interrupted atomic writes
 data/**/*.tmp
 data/*.tmp
