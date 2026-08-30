@@ -3,11 +3,11 @@
 <pre id="out"></pre>
 <script type="module">
 const out = document.getElementById("out");
-let pass = 0, fail = 0;
+window.__t = { pass: 0, fail: 0 };
 function eq(got, want, msg) {
   const ok = JSON.stringify(got) === JSON.stringify(want);
   out.textContent += `${ok ? "ok  " : "FAIL"} ${msg}  got=${JSON.stringify(got)}${ok ? "" : ` want=${JSON.stringify(want)}`}\n`;
-  ok ? pass++ : fail++;
+  ok ? window.__t.pass++ : window.__t.fail++;
 }
 window.__eq = eq;
 
@@ -20,6 +20,29 @@ eq(fmt.pct(-3.12), "-3.1%", "pct negative 1dp");
 eq(fmt.float(0.1623), "0.162", "float 3dp");
 eq(fmt.wearOfFloat(0.20).short, "FT", "wearOfFloat FT");
 eq(fmt.floatOfWear("FT"), 0.265, "floatOfWear FT midpoint");
+</script>
 
+<script src="/vendor/uplot.min.js"></script>
+<script type="module">
+const eq = window.__eq;
+import { heatmap, cssVar } from "./js/charts.js";
+
+// colorFor + hitTest are pure geometry — assert them without visual inspection.
+const cv = document.createElement("canvas");
+cv.width = 300; cv.height = 100;                     // 3 cols x 2 rows => 100x40 cells (legend takes bottom 20)
+const hm = heatmap(cv, {
+  rows: ["a", "b"], cols: ["x", "y", "z"],
+  values: [[1, 2, 3], [4, 5, 6]],
+  colorFor: () => "#000", fmt: String, onHover: () => {}, onClick: () => {},
+});
+eq(hm.hitTest(10, 10), { r: 0, c: 0 }, "heatmap hitTest top-left cell");
+eq(hm.hitTest(299, 79), { r: 1, c: 2 }, "heatmap hitTest bottom-right cell");
+eq(hm.hitTest(10, 95), null, "heatmap hitTest in legend strip => null");
+hm.destroy();
+</script>
+
+<script type="module">
+const out = document.getElementById("out");
+const { pass, fail } = window.__t;
 out.textContent += `\n${fail === 0 ? "SELFTEST OK" : "SELFTEST FAILED"} (${pass} pass, ${fail} fail)\n`;
 </script>
