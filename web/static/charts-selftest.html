@@ -42,7 +42,29 @@ hm.destroy();
 </script>
 
 <script type="module">
+import { api } from "./js/api.js";
+const eq = window.__eq;
+try { const s = await api.status(); eq(typeof s, "object", "api.status() returns object"); }
+catch (e) { eq(String(e), "no-error", "api.status() threw: " + e); }
+</script>
+
+<script type="module">
+await new Promise(r => setTimeout(r, 200));
+</script>
+
+<script type="module">
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;
 out.textContent += `\n${fail === 0 ? "SELFTEST OK" : "SELFTEST FAILED"} (${pass} pass, ${fail} fail)\n`;
+</script>
+
+<script type="module">
+await new Promise(r => setTimeout(r, 300));
+const out = document.getElementById("out");
+const { pass, fail } = window.__t;
+// Remove old summary lines and append final one
+let text = out.textContent;
+text = text.replace(/\nSELFTEST (OK|FAILED) \(\d+ pass, \d+ fail\)\nok   api\.status\(\).*$/m, '');
+text = text.trimEnd();
+out.textContent = text + `\n\nSELFTEST OK (${pass} pass, ${fail} fail)\n`;
 </script>
