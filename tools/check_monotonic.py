@@ -7,6 +7,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))  # repo 
 
 import numpy as np
 from src import ml_common
+from src.sim_learning import MONOTONIC_CST, FEATURE_NAMES
+
+# Length-drift guard: this check pins its own synthetic 7-name FN below, so it stayed green
+# when T9 widened FEATURE_NAMES 7 -> 9. A re-enabled MONOTONIC_CST that isn't index-aligned to
+# the real feature list raises ValueError inside fit_best_model mid-retrain -- catch it here.
+assert MONOTONIC_CST is None or len(MONOTONIC_CST) == len(FEATURE_NAMES), (len(MONOTONIC_CST), len(FEATURE_NAMES))
+
 FN = ["rarity_rank","n_legs","n_distinct_wears","wear_spread","filler_fraction","stattrak","collection_mean_expected_roi"]
 rng = np.random.default_rng(0)
 X = rng.random((300, 7)); y = X[:, 6] * 40 + rng.normal(0, 5, 300)      # target roughly rises with feat 6

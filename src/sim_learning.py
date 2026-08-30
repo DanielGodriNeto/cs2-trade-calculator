@@ -170,13 +170,19 @@ FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "fi
                   # value vs input cost that the `cost` comment below proposes in place of `cost`
                   # itself; n_target_outputs is the odds-dilution denominator, always known.
                   "output_input_price_ratio", "n_target_outputs"]
-# The intended M5 constraint is [0, 0, 0, 0, 0, 0, 1] -- force the surrogate monotone
-# non-decreasing in collection_mean_expected_roi (last FEATURE_NAMES entry). It ships DORMANT
-# (None) because enabling it regressed CV-MAE on the current local simulations.jsonl by
-# 1.37x / 1.39x / 3.26x on son_0 / son_2 / son_5 (recency-only parity: 1.04 / 0.98 / 1.04).
-# Re-enable only after re-running `python tools/mae_parity.py` against FRESH training data and
-# confirming every checked son stays <= 1.05x. The hgb_monotonic_cst passthrough in
-# ml_common.fit_best_model is wired and tested (tools/check_monotonic.py) so this is a one-line flip.
+# The intended M5 constraint is [0, 0, 0, 0, 0, 0, 1, 0, 0] -- length 9, +1 on the 7th
+# FEATURE_NAMES entry (collection_mean_expected_roi), 0 on everything else INCLUDING the two
+# M6 features (output_input_price_ratio, n_target_outputs) -- forcing the surrogate monotone
+# non-decreasing in collection_mean_expected_roi. NOT [0,0,0,0,0,0,1] any more: T9 widened
+# FEATURE_NAMES from 7 to 9, so the old 7-long vector would raise ValueError (length 7 vs 9
+# features) in fit_best_model. It ships DORMANT (None) because enabling it regressed CV-MAE by
+# 1.37x / 1.39x / 3.26x on son_0 / son_2 / son_5 (recency-only parity: 1.04 / 0.98 / 1.04) --
+# BUT those numbers were measured against the 7-feature X from BEFORE M6, so they no longer
+# describe the current model. A re-enable must first re-run `python tools/mae_parity.py` on the
+# current 9-feature model AND on FRESH training-machine data, and confirm every checked son
+# stays <= 1.05x, before trusting any of them. The hgb_monotonic_cst passthrough in
+# ml_common.fit_best_model is wired and tested (tools/check_monotonic.py); a re-enable is then a
+# one-line flip of this constant to the length-9 vector above.
 MONOTONIC_CST = None
 # `cost` deliberately excluded -- the same train/serve-skew reasoning as learning.py's
 # thirdparty_gap_pct comment, arrived at from the opposite direction. It USED to be in this

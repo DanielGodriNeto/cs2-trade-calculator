@@ -157,8 +157,9 @@ def _candidates(random_state: int, n_samples: int, include: set | None = None,
 
     hgb_monotonic_cst: optional per-feature monotonicity vector (sklearn's monotonic_cst,
     +1/0/-1 per column, index-aligned to X) applied to the boosted candidate ONLY -- RF/Ridge
-    ignore it. None (default) = unconstrained, learning.py's behavior. sim_learning.py passes
-    +1 on collection_mean_expected_roi so a higher collection-average ROI can never lower the
+    ignore it. None (default) = unconstrained, learning.py's behavior. sim_learning.py is
+    wired to pass +1 on collection_mean_expected_roi (currently DORMANT -- MONOTONIC_CST =
+    None; see that constant's comment) so a higher collection-average ROI can never lower the
     surrogate's prediction."""
     from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
     from sklearn.linear_model import Ridge

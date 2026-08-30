@@ -254,11 +254,22 @@ def rank(entries: list) -> list:
     'score_breakdown', and 'effective_roi_pct'/'profit_amount' added for transparency --
     the dashboard can show the raw ROI% column right alongside this ranking.
 
-    composite_score is a stable ABSOLUTE 0-100 scale: every input to it (the roi/profit
-    squashes, _effective_weights, the reliability dampener) is a function of the single
-    entry alone, so a given entry scores the same number whether it is ranked solo, in
-    the full list, or in any filtered subset (e.g. the archive endpoint's collection/
-    min_roi/agent filters). Two different filtered queries ARE comparable."""
+    composite_score is built on a stable ABSOLUTE 0-100 scale: the roi/profit squashes,
+    _effective_weights and the reliability dampener are all fixed per-entry functions --
+    rank() itself never re-scales an entry against the rest of the batch, so those parts
+    of the score are identical whether an entry is ranked solo, in the full list, or in a
+    filtered subset (e.g. the archive endpoint's collection/min_roi/agent filters).
+
+    CAVEAT on cross-query comparability: _confidence_score can ADDITIONALLY carry a 6-son
+    ensemble-agreement bonus (_ensemble_agreement_bonus -- <=6 confidence pts, ~1-2
+    composite pts after the confidence weight + the reliability dampener) whose
+    AVAILABILITY is decided upstream in sim_loop, not here. sim_loop.
+    _attach_ensemble_predictions attaches ensemble_roi_median / ensemble_roi_spread only to
+    the top ENSEMBLE_ATTACH_TOP_N (sim_loop.py) entries by effective_roi of whatever list
+    it hands to rank(), and in list_all_opportunities it runs AFTER the collection_filter /
+    min_roi filters -- so a narrowing filter can promote a row into that top-N, give it the
+    bonus, and change its composite_score. Two different filtered queries are therefore
+    comparable only among rows that both carry (or both lack) ensemble_roi_*."""
     if not entries:
         return []
     # market_reliability.py's unified Excluded state is kept out of the reward-like composite
