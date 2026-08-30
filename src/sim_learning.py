@@ -162,6 +162,8 @@ _train_slots = threading.Semaphore(TRAIN_MAX_CONCURRENCY)
 
 FEATURE_NAMES = ["rarity_rank", "n_legs", "n_distinct_wears", "wear_spread", "filler_fraction",
                   "stattrak", "collection_mean_expected_roi"]
+# index-aligned to FEATURE_NAMES; only the target-encoded collection mean is constrained (monotone-increasing)
+MONOTONIC_CST = [0, 0, 0, 0, 0, 0, 1]
 # `cost` deliberately excluded -- the same train/serve-skew reasoning as learning.py's
 # thirdparty_gap_pct comment, arrived at from the opposite direction. It USED to be in this
 # list, and by permutation importance it looked like one of the strongest features (2nd of 8 on
@@ -457,6 +459,7 @@ def _train_locked(model_dir: Path, sims_file: Path, t_start: float, t: float,
                                           hgb_max_bins=(FAST_MAX_BINS
                                                         if len(rows) >= FAST_MAX_BINS_MIN_ROWS
                                                         else None),
+                                          hgb_monotonic_cst=MONOTONIC_CST,
                                           max_threads=FAST_MAX_THREADS)
     model, mae = selection.model, selection.cv_mae
     # On a skipped refresh fit_best_model returns {} -- carry the last real values forward
