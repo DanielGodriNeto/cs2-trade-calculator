@@ -69,6 +69,10 @@ _RARITY_ID_BY_NAME = {name: rid for rid, name in data_mod.RARITY_CHAIN}  # "Mil-
 BATCH_SIZE = 200          # random candidates drawn per round before scoring/filtering
 SIMULATE_PER_ROUND = 40   # of that batch, how many actually get simulate.simulate() called
 BEST_KEPT = 50            # best-known simulations kept per son's checkpoint
+ENSEMBLE_ATTACH_TOP_N = 40  # the ensemble trust bonus is <=0.6 composite pts, so only the
+# entries that could plausibly rank near the top need it -- computing it for the whole
+# (unbounded) list was a real dashboard-endpoint regression (predict_expected_roi's per-call
+# warm-cache sweep x entries x sons).
 HISTORY_KEEP = 300        # progress-history snapshots kept per son (older ones trimmed)
 ROUND_COOLDOWN_SECONDS = 10  # idle pause between rounds when the round finished cleanly (a
 # round with live-fetch cache misses can itself take much longer than this, rate-limited by
@@ -357,8 +361,15 @@ def _attach_ensemble_predictions(entries: list) -> None:
                if sim_learning_mod.get_model_status(son_model_dir(i)).get("trained")]
     if len(trained) < 3:
         return  # can never reach the >=3-prediction bar below
+    if not entries:
+        return  # nothing to attach to -- skip the load_skins() parse below
+    # Only the entries that could plausibly rank near the top get the ensemble treatment:
+    # predict_expected_roi does an O(output_skins x wears) warm-cache price sweep per call, so
+    # running it across the whole (unbounded) list was a real dashboard-endpoint regression --
+    # and the bonus is <=0.6 composite pts, which can't lift a mid-pack row into contention.
+    targets = sorted(entries, key=ranking_mod.effective_roi, reverse=True)[:ENSEMBLE_ATTACH_TOP_N]
     idx = data_mod.collections_index(data_mod.load_skins())
-    for entry in entries:
+    for entry in targets:
         cand = _entry_to_candidate(entry, idx)
         if cand is None:
             continue

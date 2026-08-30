@@ -17,6 +17,11 @@ assert ranking._ensemble_agreement_bonus(tight) > ranking.ENSEMBLE_MAX_BONUS * 0
 assert ranking._ensemble_agreement_bonus(wide) < 0.5
 assert ranking._ensemble_agreement_bonus(disagree) < 0.5
 assert ranking._ensemble_agreement_bonus(none_) == 0.0
+# unverified entries get exactly the ML_AGREEMENT_UNVERIFIED_SCALE (x0.5) discount
+tight_unverified = {k: v for k, v in tight.items() if k != "verified_roi_pct"}
+b_v = ranking._ensemble_agreement_bonus(tight)
+b_u = ranking._ensemble_agreement_bonus(tight_unverified)
+assert abs(b_u - b_v * ranking.ML_AGREEMENT_UNVERIFIED_SCALE) < 1e-9, (b_u, b_v)
 # confidence_score never exceeds 100 even with every bonus maxed
 maxed = {"cost_basis_source": "cache", "input_mix": [], "output_distribution": [],
          "expected_roi_pct": 40.0, "verified_roi_pct": 40.0, "price_confidence": "ok",
