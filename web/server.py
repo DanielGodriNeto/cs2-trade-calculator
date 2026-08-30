@@ -488,8 +488,11 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8")
             if path.startswith("/js/") or path.startswith("/vendor/"):
                 rel = path.lstrip("/")
-                if ".." in rel.split("/"):
+                if ".." in rel.replace("\\", "/").split("/"):
                     self.send_response(403); self.end_headers(); return
+                target = (STATIC_DIR / rel).resolve()
+                if not target.is_file() or not target.is_relative_to(STATIC_DIR.resolve()):
+                    self.send_response(404); self.end_headers(); return
                 ext = rel.rsplit(".", 1)[-1].lower()
                 ctype = {
                     "js": "application/javascript; charset=utf-8",
@@ -497,7 +500,7 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                     "html": "text/html; charset=utf-8",
                     "map": "application/json; charset=utf-8",
                 }.get(ext, "application/octet-stream")
-                return self._send_file(STATIC_DIR / rel, ctype)
+                return self._send_file(target, ctype)
             if path == "/api/status":
                 return self._send_json(state.snapshot())
             if path == "/api/tradeups":
