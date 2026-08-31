@@ -119,6 +119,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* responsive */
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } [class*="col-"] { grid-column: 1 / -1; } }
 
+/* OPPS TRUST micro-bar (Task 9) */
+.tbar { display: flex; gap: 1px; height: 6px; width: 56px; }
+.tbar i { background: var(--accent); }
+
 /* legacy screens: keep old markup readable under the new tokens */
 .legacy { padding: 12px; }
 .legacy h2, .legacy h3 { font-family: "Space Grotesk", sans-serif; color: var(--text); }

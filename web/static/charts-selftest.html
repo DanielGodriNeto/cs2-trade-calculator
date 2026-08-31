@@ -92,6 +92,14 @@ eq(s.ys, [1.10, 0.71, 0.42], "ys track xs order");
 </script>
 
 <script type="module">
+import { trustSegments } from "./js/views/opportunities.js";
+const eq = window.__eq;
+const seg = trustSegments({ composite_score: 0.8, confidence: 70, dead_skin_score: 40, price_basis: "cache" });
+eq(seg.find((s) => s.key === "dead_skin").v01, 0.6, "dead_skin 40 => 0.6 trust");
+eq(seg.find((s) => s.key === "price_basis").v01, 1, "cache => 1");
+</script>
+
+<script type="module">
 await Promise.allSettled(window.__t.pending);
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;
