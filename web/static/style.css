@@ -130,3 +130,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .legacy table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .legacy th, .legacy td { padding: 4px 8px; border-bottom: 1px solid var(--grid); text-align: left; }
 .legacy .learning-panel { border: 1px solid var(--grid); background: var(--bg-panel); padding: 10px; margin: 8px 0; }
+/* #steam-session-status gets a ~600-char unbroken masked-token string from app.js; break it
+   only where it would otherwise overflow the body (word-break: break-all would chop plain text too). */
+.legacy .learning-status { overflow-wrap: anywhere; }

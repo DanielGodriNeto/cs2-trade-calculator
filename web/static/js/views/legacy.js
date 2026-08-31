@@ -66,7 +66,20 @@ function loadOldApp() {
   if (_oldApp) return _oldApp;
   _installOldAppSwallow();
   _oldApp = new Promise((resolve) => {
+    const realGEBI = document.getElementById.bind(document);
+    const realSetInterval = window.setInterval;
+    // /app.js wires ~60 top-level getElementById("x").addEventListener(...) against the
+    // PRE-redesign DOM; a missing x throws and skips every later top-level statement for the
+    // life of the page. Hand back a throwaway <div> for gone ids so the wiring runs to
+    // completion -- the real legacy controls (all three blocks mounted before this loads) still
+    // resolve to their real nodes and get real listeners. Also stub the one setInterval so
+    // app.js's 2nd 3s pollStatus loop (app.js:4452) never starts competing with the new poll.
+    // Both are restored in done(), before LEGACY_LOADERS run.
+    document.getElementById = (id) => realGEBI(id) || document.createElement("div");
+    window.setInterval = () => 0;
     const done = () => {
+      document.getElementById = realGEBI;
+      window.setInterval = realSetInterval;
       if (typeof window.pollStatus === "function") window.pollStatus = function legacyPollNeutralised() {};
       if (typeof window.applyView === "function") window.applyView = function legacyApplyViewNeutralised() {};
       resolve();
@@ -126,6 +139,7 @@ const MARKUP = {
     override a clear formula winner. It retrains automatically once
     <strong><span id="const-retrain-delta">&hellip;</span></strong> new outcomes accumulate.
     Once trained, its feature importances are shown here:</p>
+    <div><span class="label">ML model:</span> <span id="model-status">loading&hellip;</span></div>
     <div class="chart-wrap" id="feature-importance-wrap" style="display:none;"><canvas id="feature-importance-chart"></canvas></div>
     <p id="feature-importance-empty" class="empty-state">(not trained yet)</p>
     <p class="disclaimer" id="candidate-comparison"></p>
@@ -664,18 +678,31 @@ const MARKUP = {
 </div><!-- /view-connections -->`,
 };
 
+// The three legacy blocks are mounted ONCE into a persistent host node and kept for the life of
+// the page. The HUD router does `root.innerHTML = ""` on every hashchange, so rebuilding the
+// markup string each visit would hand back brand-new nodes with no listeners (/app.js already
+// ran, won't re-wire). Instead we keep our own reference and re-append the SAME node -- its
+// listeners are intact -- then toggle which block is visible ourselves.
+let _host = null;
+const _BLOCK_ID = { lab: "view-ml-lab", patterns: "view-patterns", connections: "view-connections" };
+
 export async function renderLegacy(root, view) {
-  root.innerHTML = MARKUP[view] || `<div class="legacy">Unknown legacy view "${view}".</div>`;
-  await loadOldApp();
-  // /app.js's applyView() runs on load and on its stale hashchange listener, and sets
-  // hidden=true on #view-ml-lab whenever the route is "lab" (its own key is "ml-lab") -- which
-  // blanks the LAB screen. The router owns visibility now. Do this BEFORE the loaders so a
-  // slow/hanging loader can't leave the screen blank.
-  const show = () => root.querySelectorAll(".legacy").forEach((el) => { el.hidden = false; });
-  show();
+  const blockId = _BLOCK_ID[view];
+  if (!blockId) { root.innerHTML = `<div class="legacy">Unknown legacy view "${view}".</div>`; return; }
+  if (!_host) {
+    _host = document.createElement("div");
+    _host.id = "legacy-host";
+    _host.innerHTML = MARKUP.lab + MARKUP.patterns + MARKUP.connections;
+    root.appendChild(_host);          // must be in the DOM before /app.js bootstraps
+    await loadOldApp();
+  } else if (_host.parentNode !== root) {
+    root.appendChild(_host);          // router cleared #view-root on nav-away; SAME nodes, listeners intact
+  }
+  // legacy.js owns visibility now: exactly one block shown. /app.js's applyView() (neutralised
+  // in loadOldApp's done()) used to fight this by setting hidden=true on #view-ml-lab.
+  for (const el of _host.children) el.hidden = el.id !== blockId;
   for (const fn of (LEGACY_LOADERS[view] || [])) {
     try { await window[fn]?.(); } catch (e) { console.warn("legacy loader", fn, e); }
   }
-  try { window.wireCopyButtons?.(root); } catch (e) { /* copy-buttons are cosmetic */ }
-  show();
+  try { window.wireCopyButtons?.(_host); } catch (e) { /* copy-buttons are cosmetic */ }
 }
