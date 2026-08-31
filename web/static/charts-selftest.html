@@ -100,6 +100,13 @@ eq(seg.find((s) => s.key === "price_basis").v01, 1, "cache => 1");
 </script>
 
 <script type="module">
+import { landingOdds } from "./js/views/calculator.js";
+const eq = window.__eq;
+const o = landingOdds([0.05, 0.05, 0.05], { min: 0, max: 1 });
+eq(o.FN, 1, "avg float 0.05 => lands FN");
+</script>
+
+<script type="module">
 await Promise.allSettled(window.__t.pending);
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;
