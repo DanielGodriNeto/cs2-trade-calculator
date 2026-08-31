@@ -26,9 +26,19 @@ export function caption(el, text) {
 export function crosshairReadout(panelEl, rows) {
   let box = panelEl.querySelector(":scope > .readout");
   if (!box) { box = document.createElement("div"); box.className = "readout"; panelEl.appendChild(box); }
-  box.innerHTML = rows.map((r) =>
-    `<div class="readout-row ${r.tone || ""}"><span class="readout-label">${r.label}</span><span class="readout-val">${r.value}</span></div>`
-  ).join("");
+  // Build via textContent, not innerHTML: `value` can be an API string (e.g. a collection name).
+  box.replaceChildren(...rows.map((r) => {
+    const row = document.createElement("div");
+    row.className = `readout-row ${r.tone || ""}`.trim();
+    const label = document.createElement("span");
+    label.className = "readout-label";
+    label.textContent = r.label;
+    const val = document.createElement("span");
+    val.className = "readout-val";
+    val.textContent = r.value;
+    row.append(label, val);
+    return row;
+  }));
 }
 
 export function sparkline(el, values, { stroke } = {}) {
