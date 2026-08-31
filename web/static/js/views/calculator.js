@@ -406,7 +406,7 @@ function buildManualBuilder(root, body, curP, live) {
     const acc = {};
     for (const o of r.output_distribution) {
       const b = WEAR_BANDS.find((w) => w.name === o.wear);
-      const price = Number(o.price);
+      const price = o.price == null ? NaN : Number(o.price);  // Number(null)===0 would fold an unpriced band to $0
       if (!b || !Number.isFinite(price)) continue;
       const w = Number(o.prob_pct) || 1;
       const a = acc[b.short] || (acc[b.short] = { w: 0, p: 0 });
