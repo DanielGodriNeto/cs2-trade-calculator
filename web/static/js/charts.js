@@ -1,5 +1,3 @@
-import { money, pct, float } from "./fmt.js";
-
 export const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 export function uplotTheme() {

@@ -21,11 +21,12 @@ const LEGACY_LOADERS = {
 };
 
 // The classic /app.js wires ~60 top-level listeners against the PRE-redesign DOM. Under the
-// new shell only one legacy block is mounted at a time, so it hits a missing element and
-// aborts partway through its top-level code. That is mostly harmless: every load* / render* /
-// wireCopyButtons it defines is a hoisted `function` declaration, so all are on `window` by
-// then, and its own 3s poll loop (near the end of the file) sits past the abort point, so it
-// never starts and never competes with app.js's poll.
+// new shell only one legacy block is mounted at a time, so many of those ids are gone -- but
+// loadOldApp() shims document.getElementById to hand back a throwaway <div> for a missing id
+// (see below), so its top-level code runs to completion and every load* / render* /
+// wireCopyButtons it defines still lands on `window`. Its own 3s poll loop (near the end of
+// the file) is neutralised by the setInterval shim in loadOldApp, so it never competes with
+// app.js's poll.
 //
 // /app.js also registers a `hashchange` listener BEFORE the abort point:
 //   () => { applyView(); pollStatus(); }
@@ -684,9 +685,12 @@ const MARKUP = {
 // ran, won't re-wire). Instead we keep our own reference and re-append the SAME node -- its
 // listeners are intact -- then toggle which block is visible ourselves.
 let _host = null;
+let _gen = 0;   // bumps on every renderLegacy entry AND every hashchange; a chain whose myGen is stale bails.
 const _BLOCK_ID = { lab: "view-ml-lab", patterns: "view-patterns", connections: "view-connections" };
 
 export async function renderLegacy(root, view) {
+  const myGen = ++_gen;                                              // invalidates any prior in-flight chain
+  addEventListener("hashchange", () => { _gen++; }, { once: true }); // next nav bumps it, so this chain bails
   const blockId = _BLOCK_ID[view];
   if (!blockId) { root.innerHTML = `<div class="legacy">Unknown legacy view "${view}".</div>`; return; }
   if (!_host) {
@@ -698,11 +702,24 @@ export async function renderLegacy(root, view) {
   } else if (_host.parentNode !== root) {
     root.appendChild(_host);          // router cleared #view-root on nav-away; SAME nodes, listeners intact
   }
+  if (myGen !== _gen) return;         // navigated away while /app.js was loading
   // legacy.js owns visibility now: exactly one block shown. /app.js's applyView() (neutralised
   // in loadOldApp's done()) used to fight this by setting hidden=true on #view-ml-lab.
   for (const el of _host.children) el.hidden = el.id !== blockId;
   for (const fn of (LEGACY_LOADERS[view] || [])) {
-    try { await window[fn]?.(); } catch (e) { console.warn("legacy loader", fn, e); }
+    if (myGen !== _gen) return;       // navigated away mid-chain: stop firing loaders
+    try {
+      // A loader that never resolves (e.g. /api/retrain-loop/status hanging server-side) must
+      // not block the rest of the chain. Race it against a 4s timeout so the chain always
+      // finishes this visit; the socket old /app.js opened stays open until the server replies
+      // (no AbortSignal into classic code) -- the _gen guard caps that at one parked chain per
+      // page-load instead of one per LAB visit.
+      await Promise.race([
+        Promise.resolve(window[fn]?.()),
+        new Promise((r) => setTimeout(r, 4000)),
+      ]);
+    } catch (e) { console.warn("legacy loader", fn, e); }
   }
+  if (myGen !== _gen) return;
   try { window.wireCopyButtons?.(_host); } catch (e) { /* copy-buttons are cosmetic */ }
 }

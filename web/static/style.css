@@ -84,6 +84,7 @@ td.num, th.num { text-align: right; }
 .chart-caption { margin: 6px 0 0; font-size: 11px; color: var(--text-faint); }
 .readout { display: grid; gap: 2px; font-size: 12px; }
 .readout-row { display: flex; justify-content: space-between; gap: 12px; }
+.readout-row.sel { background: var(--bg-raised); }   /* command-menu arrow-key cursor (persistent, not a flash) */
 .readout-row.pos .readout-val { color: var(--profit); } .readout-row.neg .readout-val { color: var(--loss); }
 .readout-label { color: var(--text-dim); }
 
@@ -133,3 +134,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* #steam-session-status gets a ~600-char unbroken masked-token string from app.js; break it
    only where it would otherwise overflow the body (word-break: break-all would chop plain text too). */
 .legacy .learning-status { overflow-wrap: anywhere; }
+
+/* old /app.js (loaded by legacy.js) toggles this class on 10 .collapse-btn "Hide/Show" targets. */
+.legacy .collapse-hidden { display: none !important; }
+
+/* Chart.js needs a fixed container height; it won't size off an empty canvas. */
+.legacy .chart-wrap { position: relative; height: 220px; margin-bottom: 16px; }
+.legacy .chart-wrap-wide { height: 120px; }

@@ -116,7 +116,7 @@ function trustBar(row) {
   span.title = segs.map((s) => `${s.key} ${Math.round(s.v01 * 100)}%`).join("  ·  ");
   for (const s of segs) {
     const i = document.createElement("i");
-    i.style.flex = String(s.v01);
+    i.style.flex = "0 0 " + (s.v01 * 25) + "%";   // each seg 0..25% of the 56px bar; empty space = untrusted
     span.appendChild(i);
   }
   return span;
@@ -442,6 +442,7 @@ function toggleDetail(tr, row) {
         pricesByWear: pbw,
         floatCap: row.output_float_cap || {},
         marker: row.avg_input_float != null ? row.avg_input_float : avgInputFloat(row.input_mix),
+        caption: "Output value by landed wear, averaged from this candidate's outcome distribution — not a per-listing float sweep.",
       });
     } catch {
       floatEl.textContent = "float instrument unavailable";

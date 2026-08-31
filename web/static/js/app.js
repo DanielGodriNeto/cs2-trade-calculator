@@ -38,7 +38,7 @@ function renderMenu() {
   body.className = "panel-body";
   items.forEach((it, i) => {
     const row = document.createElement("div");
-    row.className = "readout-row " + (i === sel ? "flash" : "");
+    row.className = "readout-row" + (i === sel ? " sel" : "");
     row.dataset.i = i;
     row.style.cssText = "cursor:pointer;padding:3px 4px";
     const label = document.createElement("span");
@@ -86,15 +86,27 @@ async function poll() {
     const [s, net] = await Promise.all([api.status(), api.networkStats()]);
     const scan = s.status || "idle";
     const health = (net.consecutive_rate_limits || 0) > 0 ? "warn" : (net.requests_error && !net.requests_ok) ? "err" : "ok";
-    document.getElementById("telemetry").innerHTML =
-      `<span><span class="dot ${scan === "running" ? "ok" : scan === "error" ? "err" : ""}"></span>SCAN ${scan}</span>` +
-      `<span><span class="dot ${health}"></span>NET ${health === "ok" ? "healthy" : health === "warn" ? "rate-limited" : "errors"}</span>` +
-      (net.last_success_at ? `<span>last px ${timeAgo(net.last_success_at)}</span>` : "") +
-      (net.cache_size != null ? `<span>${Number(net.cache_size).toLocaleString()} priced</span>` : "") +
-      (net.request_interval != null ? `<span>spacing ${net.request_interval}s</span>` : "");
+    // createElement/textContent, same M1 rule as the view modules (values are server enums/numbers).
+    const strip = document.getElementById("telemetry");
+    const seg = (dotCls, text) => {
+      const span = document.createElement("span");
+      if (dotCls != null) { const d = document.createElement("span"); d.className = "dot " + dotCls; span.appendChild(d); }
+      span.appendChild(document.createTextNode(text));
+      return span;
+    };
+    strip.replaceChildren(
+      seg(scan === "running" ? "ok" : scan === "error" ? "err" : "", "SCAN " + scan),
+      seg(health, "NET " + (health === "ok" ? "healthy" : health === "warn" ? "rate-limited" : "errors")),
+    );
+    if (net.last_success_at) strip.appendChild(seg(null, "last px " + timeAgo(net.last_success_at)));
+    if (net.cache_size != null) strip.appendChild(seg(null, Number(net.cache_size).toLocaleString() + " priced"));
+    if (net.request_interval != null) strip.appendChild(seg(null, "spacing " + net.request_interval + "s"));
   } catch {}
 }
-setInterval(poll, 3000); poll();
+(async function pollLoop() {
+  await poll();
+  setTimeout(pollLoop, 3000);
+})();
 setInterval(() => { document.getElementById("clock").textContent = new Date().toTimeString().slice(0, 8); }, 1000);
 
 // jump-to targets: most-profitable collections (fire-and-forget — a failure must not break boot)

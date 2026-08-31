@@ -137,7 +137,7 @@ export function mountFloatInstrument(el, opts = {}) {
     box,
   );
 
-  caption(el, CAPTION);
+  caption(el, cur.caption || CAPTION);
 
   return {
     update(newOpts = {}) {

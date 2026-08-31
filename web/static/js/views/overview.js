@@ -213,24 +213,55 @@ function renderDist(body, bestSims) {
   caption(body, "How many trade-ups the agents have found in each collection, by how good they are. Bright = crowded. Click a cell to open those in OPPS.");
 }
 
+// M1: every cell (collOf / to_rarity are API strings) reaches the DOM via textContent /
+// dataset, never interpolated into an innerHTML template.
 function renderTop5(body, bestSims) {
   if (!body) return;
   const scoreOf = (s) => Number(s.composite_score ?? s.score ?? roiOf(s) ?? 0);
   const top = [...bestSims].sort((a, b) => scoreOf(b) - scoreOf(a)).slice(0, 5);
-  const rows = top.map((s) => {
-    const roi = Number(roiOf(s));
-    return `<tr data-rarity="${s.to_rarity || ""}" style="cursor:pointer">
-      <td>${collOf(s)}</td>
-      <td class="num ${sgn(roi)}">${pct(roi)}</td>
-      <td class="num">${money(s.cost)}</td>
-    </tr>`;
-  }).join("");
-  body.innerHTML = `<table class="tbl">
-    <thead><tr><th>Collection</th><th class="num">ROI%</th><th class="num">Cost</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="3">No candidates yet — sim population is cold.</td></tr>`}</tbody>
-  </table>`;
-  body.querySelectorAll("tbody tr[data-rarity]").forEach((tr) =>
-    tr.addEventListener("click", () => { location.hash = "#opportunities"; }));
+
+  const table = document.createElement("table");
+  table.className = "tbl";
+  const thead = document.createElement("thead");
+  const htr = document.createElement("tr");
+  for (const [label, cls] of [["Collection", ""], ["ROI%", "num"], ["Cost", "num"]]) {
+    const th = document.createElement("th");
+    if (cls) th.className = cls;
+    th.textContent = label;
+    htr.appendChild(th);
+  }
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  if (!top.length) {
+    const tr = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.textContent = "No candidates yet — sim population is cold.";
+    tr.appendChild(cell);
+    tbody.appendChild(tr);
+  } else {
+    for (const s of top) {
+      const roi = Number(roiOf(s));
+      const tr = document.createElement("tr");
+      tr.dataset.rarity = s.to_rarity || "";
+      tr.style.cursor = "pointer";
+      const td0 = document.createElement("td");
+      td0.textContent = collOf(s);
+      const td1 = document.createElement("td");
+      td1.className = "num " + sgn(roi);
+      td1.textContent = pct(roi);
+      const td2 = document.createElement("td");
+      td2.className = "num";
+      td2.textContent = money(s.cost);
+      tr.append(td0, td1, td2);
+      tr.addEventListener("click", () => { location.hash = "#opportunities"; });
+      tbody.appendChild(tr);
+    }
+  }
+  table.appendChild(tbody);
+  body.replaceChildren(table);
 }
 
 function renderConn(body, c) {
