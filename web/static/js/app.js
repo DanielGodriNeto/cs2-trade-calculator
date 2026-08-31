@@ -63,7 +63,7 @@ cmd.addEventListener("input", () => {
       const rows = await api.skins(q);
       ctx.skins = Array.isArray(rows) ? rows : [];
     } catch { return; }                       // leave ctx.skins as-is on error
-    if (cmd.value === issuedFor) { items = matchCommand(cmd.value, ctx); renderMenu(); }
+    if (cmd.value === issuedFor) { items = matchCommand(cmd.value, ctx); sel = 0; renderMenu(); }
   }, 180);
 });
 cmd.addEventListener("keydown", (e) => {
