@@ -30,17 +30,42 @@ addEventListener("hashchange", renderRoute);
 
 // command bar
 const cmd = document.getElementById("cmd"), menu = document.getElementById("cmd-menu");
-let items = [], sel = 0;
+let items = [], sel = 0, skinTimer = null;
 function renderMenu() {
   menu.style.display = items.length ? "block" : "none";
-  menu.innerHTML = `<div class="panel-body">${items.map((it, i) =>
-    `<div class="readout-row ${i === sel ? "flash" : ""}" data-i="${i}" style="cursor:pointer;padding:3px 4px">
-       <span>${it.label}</span><span class="readout-label">${it.hint}</span></div>`).join("")}</div>`;
-  menu.querySelectorAll("[data-i]").forEach((el) =>
-    el.onclick = () => { dispatchCommand(items[+el.dataset.i]); cmd.value = ""; renderMenuReset(); });
+  menu.textContent = "";
+  const body = document.createElement("div");
+  body.className = "panel-body";
+  items.forEach((it, i) => {
+    const row = document.createElement("div");
+    row.className = "readout-row " + (i === sel ? "flash" : "");
+    row.dataset.i = i;
+    row.style.cssText = "cursor:pointer;padding:3px 4px";
+    const label = document.createElement("span");
+    label.textContent = it.label;
+    const hint = document.createElement("span");
+    hint.className = "readout-label";
+    hint.textContent = it.hint;
+    row.append(label, hint);
+    row.onclick = () => { dispatchCommand(items[+row.dataset.i]); cmd.value = ""; renderMenuReset(); };
+    body.appendChild(row);
+  });
+  menu.appendChild(body);
 }
 function renderMenuReset() { items = []; sel = 0; menu.style.display = "none"; }
-cmd.addEventListener("input", () => { items = matchCommand(cmd.value, ctx); sel = 0; renderMenu(); });
+cmd.addEventListener("input", () => {
+  clearTimeout(skinTimer);
+  items = matchCommand(cmd.value, ctx); sel = 0; renderMenu();
+  const issuedFor = cmd.value, q = cmd.value.trim();
+  if (q.length < 2) { ctx.skins = []; return; }
+  skinTimer = setTimeout(async () => {
+    try {
+      const rows = await api.skins(q);
+      ctx.skins = Array.isArray(rows) ? rows : [];
+    } catch { return; }                       // leave ctx.skins as-is on error
+    if (cmd.value === issuedFor) { items = matchCommand(cmd.value, ctx); renderMenu(); }
+  }, 180);
+});
 cmd.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") { sel = Math.min(sel + 1, items.length - 1); renderMenu(); e.preventDefault(); }
   else if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); renderMenu(); e.preventDefault(); }
@@ -71,5 +96,14 @@ async function poll() {
 }
 setInterval(poll, 3000); poll();
 setInterval(() => { document.getElementById("clock").textContent = new Date().toTimeString().slice(0, 8); }, 1000);
+
+// jump-to targets: most-profitable collections (fire-and-forget — a failure must not break boot)
+(async () => {
+  try {
+    const lb = await api.leaderboards();
+    ctx.collections = (lb.collections || []).map((c) => c.collection).filter(Boolean);
+    if (cmd.value.trim()) { items = matchCommand(cmd.value, ctx); renderMenu(); }
+  } catch { /* no leaderboards — collection mode stays empty */ }
+})();
 
 renderRoute();
