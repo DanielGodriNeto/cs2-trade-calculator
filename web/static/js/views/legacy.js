@@ -690,7 +690,10 @@ const _BLOCK_ID = { lab: "view-ml-lab", patterns: "view-patterns", connections: 
 
 export async function renderLegacy(root, view) {
   const myGen = ++_gen;                                              // invalidates any prior in-flight chain
-  addEventListener("hashchange", () => { _gen++; }, { once: true }); // next nav bumps it, so this chain bails
+  // Next nav bumps _gen so this chain bails -- BUT only if a newer renderLegacy hasn't already
+  // advanced it (legacy->legacy nav: the incoming render's ++_gen must not be undone by the
+  // outgoing view's stale one-shot, or the destination runs only its first loader).
+  addEventListener("hashchange", () => { if (_gen === myGen) _gen++; }, { once: true });
   const blockId = _BLOCK_ID[view];
   if (!blockId) { root.innerHTML = `<div class="legacy">Unknown legacy view "${view}".</div>`; return; }
   if (!_host) {
