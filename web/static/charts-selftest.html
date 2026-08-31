@@ -107,6 +107,16 @@ eq(o.FN, 1, "avg float 0.05 => lands FN");
 </script>
 
 <script type="module">
+import { trendExtrapolate } from "./js/views/price.js";
+const eq = window.__eq;
+const pts = Array.from({ length: 10 }, (_, i) => ({ t: i, v: 2 * i + 1 }));
+const f = trendExtrapolate(pts);
+eq(Math.round(f.at(20)), 41, "linear fit y=2x+1 extrapolates to 41 at x=20");
+eq(trendExtrapolate(pts.slice(0, 5)), null, "fewer than 8 points => null");
+eq(trendExtrapolate(Array.from({ length: 10 }, () => ({ t: 5, v: 3 }))), null, "zero-variance x => null");
+</script>
+
+<script type="module">
 await Promise.allSettled(window.__t.pending);
 const out = document.getElementById("out");
 const { pass, fail } = window.__t;
