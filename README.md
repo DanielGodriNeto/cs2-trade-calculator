@@ -1536,6 +1536,16 @@ Notes:
   transient rate limit or dropped connection), the scanner tries it again once
   more after finishing the rest of that collection, before giving up on it.
 
+### Dashboard (telemetry HUD)
+
+`web/static/` is a no-build, native-ES-module app served by `web/server.py`.
+Entry: `index.html` → `js/app.js` (hash router). Screens: `js/views/*.js`.
+Charts: vendored uPlot (`vendor/`) + a canvas heatmap in `js/charts.js`.
+Overview / Opportunities / Calculator / Price are the rebuilt screens; Patterns /
+Lab / Connections still run the previous code via `js/views/legacy.js`.
+Logic self-check: open `/charts-selftest.html` — it prints `SELFTEST OK`.
+Command bar: press `/`, type a skin / collection / `GO <view>` / `scan|verify top|train`.
+
 ## Making scans faster
 
 Steam's ~1 request/1.5s throttle is the floor on speed (it adapts upward, not
