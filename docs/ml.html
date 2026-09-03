@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ML Training Sandbox</title>
+<meta name="description" content="Train the CS2 scanner's ROI model from zero, in your browser, on synthetic data — watch the error fall round by round." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --ground:#EFEDE7; --panel:#FBFAF7; --panel-2:#E4E0D6; --hairline:#D2CCBE;
+    --ink:#1B1915; --ink-muted:#6A6353; --ink-faint:#928B79;
+    --accent:#8A5E00; --accent-bright:#B27E10; --accent-soft:#EADCB8;
+    --good:#3E7D53; --bad:#B0402F; --grid:#DAD3C4;
+    --track:#4b69ff;
+    --shadow:0 1px 2px rgba(40,34,20,.06), 0 14px 34px -18px rgba(40,34,20,.20);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#131109; --panel:#1C1913; --panel-2:#241F16; --hairline:#352F22;
+      --ink:#ECE5D6; --ink-muted:#9C9382; --ink-faint:#6E6759;
+      --accent:#E4AE39; --accent-bright:#F1C05C; --accent-soft:#3A2E15;
+      --good:#5FB07C; --bad:#E0715C; --grid:#2C2719;
+      --track:#6b83ff;
+      --shadow:0 1px 2px rgba(0,0,0,.5), 0 16px 40px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#131109; --panel:#1C1913; --panel-2:#241F16; --hairline:#352F22;
+    --ink:#ECE5D6; --ink-muted:#9C9382; --ink-faint:#6E6759;
+    --accent:#E4AE39; --accent-bright:#F1C05C; --accent-soft:#3A2E15;
+    --good:#5FB07C; --bad:#E0715C; --grid:#2C2719;
+    --track:#6b83ff;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 16px 40px -18px rgba(0,0,0,.7);
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size:15.5px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  a{ color:var(--accent); text-decoration:none; }
+  a:hover{ color:var(--accent-bright); }
+  a:focus-visible, button:focus-visible, input:focus-visible{
+    outline:2px solid var(--accent-bright); outline-offset:3px; border-radius:2px;
+  }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric:tabular-nums; }
+
+  .wrap{ max-width:1000px; margin:0 auto; padding:34px 24px 72px; }
+
+  .top{ display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:6px; }
+  .back{ font-family:"IBM Plex Mono", monospace; font-size:12px; letter-spacing:.04em; }
+  h1{
+    font-family:"Archivo", "IBM Plex Sans", sans-serif; font-weight:800;
+    font-size:clamp(1.7rem, 4vw, 2.4rem); letter-spacing:-0.02em; line-height:1.12;
+    margin:0 0 12px; text-wrap:balance;
+  }
+  .lead{ color:var(--ink-muted); max-width:64ch; margin:0 0 24px; }
+  .lead b{ color:var(--ink); font-weight:600; }
+
+  /* controls */
+  .panel{
+    background:var(--panel); border:1px solid var(--hairline); border-radius:10px;
+    box-shadow:var(--shadow); padding:16px 18px;
+  }
+  .controls{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px; margin-bottom:16px; }
+  .controls button{
+    font-family:"IBM Plex Mono", monospace; font-size:12.5px; letter-spacing:.04em;
+    padding:8px 16px; border-radius:6px; cursor:pointer; border:1px solid var(--hairline);
+    background:var(--panel-2); color:var(--ink);
+  }
+  .controls button.primary{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  :root[data-theme="dark"] .controls button.primary,
+  :root:not([data-theme="light"]) .controls button.primary{ color:#1a1509; }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .controls button.primary{ color:#1a1509; } }
+  .controls button:disabled{ opacity:.45; cursor:not-allowed; }
+  .controls button:not(:disabled):hover{ border-color:var(--accent); }
+  .sliders{ display:flex; gap:18px; flex-wrap:wrap; }
+  .sliders label{ font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); display:flex; flex-direction:column; gap:4px; }
+  .sliders input[type=range]{ width:130px; accent-color:var(--accent); }
+  .sliders span{ color:var(--ink-muted); font-size:12px; text-transform:none; letter-spacing:0; }
+
+  /* metric readout */
+  .metrics{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--hairline);
+    border:1px solid var(--hairline); border-radius:8px; overflow:hidden; margin-bottom:18px; }
+  .metrics div{ background:var(--ground); padding:12px 14px; }
+  .metrics .v{ font-family:"Archivo", sans-serif; font-weight:800; font-size:1.35rem; font-variant-numeric:tabular-nums; letter-spacing:-0.01em; }
+  .metrics .v.beat{ color:var(--good); }
+  .metrics .k{ font-family:"IBM Plex Mono", monospace; font-size:9.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-faint); margin-top:2px; }
+  @media (max-width:620px){ .metrics{ grid-template-columns:repeat(2,1fr); } }
+
+  .charts{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .charts figure{ margin:0; }
+  .charts figcaption{
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--accent); margin-bottom:8px;
+  }
+  .chartbox{ background:var(--panel); border:1px solid var(--hairline); border-radius:10px; padding:12px; }
+  canvas{ display:block; width:100%; height:auto; }
+  .wide{ grid-column:1 / -1; }
+  @media (max-width:720px){ .charts{ grid-template-columns:1fr; } }
+
+  .legend{ display:flex; gap:14px; flex-wrap:wrap; font-family:"IBM Plex Mono", monospace; font-size:10.5px; color:var(--ink-muted); margin-top:8px; }
+  .legend i{ display:inline-block; width:16px; height:0; border-top:2px solid; vertical-align:middle; margin-right:5px; }
+
+  .note{ margin-top:26px; border-left:2px solid var(--accent); padding:2px 0 2px 16px; color:var(--ink-muted); font-size:14px; max-width:70ch; }
+  .note b{ color:var(--ink); }
+  .foot{ margin-top:30px; font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--ink-faint); }
+
+  .themebtn{
+    position:fixed; top:14px; right:14px; z-index:10;
+    font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.08em;
+    background:var(--panel); color:var(--ink-muted); border:1px solid var(--hairline);
+    border-radius:4px; padding:6px 10px; cursor:pointer;
+  }
+  .themebtn:hover{ color:var(--ink); border-color:var(--accent); }
+</style>
+</head>
+<body>
+<button class="themebtn mono" id="themebtn" type="button" aria-label="Switch colour theme">theme</button>
+
+<div class="wrap">
+  <div class="top">
+    <p class="back mono"><a href="./index.html">← project overview</a></p>
+  </div>
+
+  <h1>Train the ROI model from zero</h1>
+  <p class="lead">The real scanner trains a small gradient-boosted model to predict the <b>realised</b> ROI of a
+    trade-up, then uses it only as a tiebreaker next to the arithmetic. This page runs that same idea live in your
+    browser on <b>synthetic data</b>: press Train and watch the error fall, round by round, as boosting rounds are
+    added. Nothing is pre-trained — it starts from the mean and learns.</p>
+
+  <div class="panel">
+    <div class="controls">
+      <button id="train" class="primary" type="button">▸ Train</button>
+      <button id="pause" type="button" disabled>Pause</button>
+      <button id="reset" type="button">Reset</button>
+      <button id="newdata" type="button">New data</button>
+      <div class="sliders">
+        <label>learning rate <input id="lr" type="range" min="0.02" max="0.40" step="0.02" value="0.12" /><span id="lrv">0.12</span></label>
+        <label>label noise <input id="noise" type="range" min="0" max="1.5" step="0.1" value="0.6" /><span id="noisev">0.6</span></label>
+      </div>
+    </div>
+
+    <div class="metrics" aria-live="polite">
+      <div><div class="v mono" id="m-round">0</div><div class="k">boosting round</div></div>
+      <div><div class="v mono" id="m-train">–</div><div class="k">train MAE (ROI pts)</div></div>
+      <div><div class="v mono" id="m-val">–</div><div class="k">validation MAE</div></div>
+      <div><div class="v mono" id="m-base">–</div><div class="k">formula-only MAE</div></div>
+    </div>
+
+    <div class="charts">
+      <figure class="wide">
+        <figcaption>Learning curve — error vs. boosting round</figcaption>
+        <div class="chartbox"><canvas id="c-curve" role="img" aria-label="Learning curve chart"></canvas></div>
+        <div class="legend">
+          <span><i style="border-color:var(--ink)"></i>train MAE</span>
+          <span><i style="border-color:var(--accent)"></i>validation MAE</span>
+          <span><i style="border-color:var(--ink-faint); border-top-style:dashed"></i>formula-only baseline</span>
+        </div>
+      </figure>
+      <figure>
+        <figcaption>Predicted vs. actual ROI — validation set</figcaption>
+        <div class="chartbox"><canvas id="c-scatter" role="img" aria-label="Predicted versus actual ROI scatter"></canvas></div>
+      </figure>
+      <figure>
+        <figcaption>What the model leans on — feature influence</figcaption>
+        <div class="chartbox"><canvas id="c-imp" role="img" aria-label="Feature influence bar chart"></canvas></div>
+      </figure>
+    </div>
+  </div>
+
+  <p class="note"><b>Reading it:</b> the model has beaten the arithmetic once the validation line drops below the
+    dashed baseline. It should settle a little above the label-noise floor — pushing past that would be memorising
+    noise. Raise the noise slider and the achievable floor rises with it; raise the learning rate and it converges
+    faster but can wobble. In the real tool this model never overrides the formula — it breaks ties between
+    contracts the arithmetic rates as close.</p>
+
+  <p class="foot mono">Synthetic benchmark · gradient-boosted stumps, squared-error loss · 640 rows, 75/25 split ·
+    all computation in-browser</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- deterministic PRNG ---------- */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(rng) {
+    var u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  var FEATURES = ["formula ROI", "liquidity", "odds spread", "input cost", "float-mix", "filler coll.", "rarity gap"];
+  var N = 640, SPLIT = 0.75;
+
+  /* ---------- synthesise a dataset ----------
+     realised ROI is a deliberately non-linear function of the features:
+     the formula is optimistic and must be shrunk when liquidity is low or the
+     outcome odds are spread thin; float-mix adds a real bump; there are interactions. */
+  function makeData(seed, noise) {
+    var rng = mulberry32(seed);
+    var rows = [];
+    for (var i = 0; i < N; i++) {
+      var formula = -30 + 90 * rng();          // -30%..+60% predicted ROI
+      var liq = rng();                          // 0..1 liquidity
+      var spread = rng();                       // 0..1 how spread the outcome odds are
+      var cost = 2 + 78 * Math.pow(rng(), 1.7); // $2..$80, skewed cheap
+      var fmix = rng() < 0.42 ? 1 : 0;
+      var filler = rng() < 0.30 ? 1 : 0;
+      var gap = 1 + Math.floor(4 * rng());      // 1..4 rarity tiers jumped
+      var y =
+        0.82 * formula                          // formula tracks realised ROI, but its slope runs ~18% hot
+        - 5                                      // and it is biased optimistic by a few points
+        + 10 * (liq - 0.5)                       // liquid contracts realise closer to fair value
+        - 14 * spread * Math.max(0, formula) / 60 // thin outcome odds punish an optimistic formula
+        + (fmix ? 5.0 : 0)                       // float-mixing is a real, learnable bump
+        + (filler ? -2.5 : 0)
+        - 1.2 * (gap - 2)
+        - 0.04 * (cost - 20)
+        + noise * 7 * gauss(rng);
+      rows.push({ x: [formula, liq * 100, spread * 100, cost, fmix * 100, filler * 100, gap * 25], y: y });
+    }
+    // standardise features
+    var P = FEATURES.length, mean = new Array(P).fill(0), sd = new Array(P).fill(0);
+    rows.forEach(function (r) { for (var j = 0; j < P; j++) mean[j] += r.x[j]; });
+    for (j = 0; j < P; j++) mean[j] /= rows.length;
+    rows.forEach(function (r) { for (var j = 0; j < P; j++) sd[j] += (r.x[j] - mean[j]) * (r.x[j] - mean[j]); });
+    for (var j = 0; j < P; j++) sd[j] = Math.sqrt(sd[j] / rows.length) || 1;
+    rows.forEach(function (r) { r.z = r.x.map(function (v, k) { return (v - mean[k]) / sd[k]; }); });
+    var cut = Math.floor(rows.length * SPLIT);
+    return { train: rows.slice(0, cut), val: rows.slice(cut) };
+  }
+
+  /* ---------- gradient-boosted stumps ---------- */
+  var CANDS = 24; // split thresholds probed per feature
+  function bestStump(rows, resid) {
+    var P = FEATURES.length, best = null;
+    for (var j = 0; j < P; j++) {
+      var vals = rows.map(function (r) { return r.z[j]; }).slice().sort(function (a, b) { return a - b; });
+      for (var c = 1; c < CANDS; c++) {
+        var thr = vals[Math.floor((c / CANDS) * vals.length)];
+        var sL = 0, nL = 0, sR = 0, nR = 0;
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].z[j] <= thr) { sL += resid[i]; nL++; } else { sR += resid[i]; nR++; }
+        }
+        if (nL < 8 || nR < 8) continue;
+        var mL = sL / nL, mR = sR / nR;
+        var gain = nL * mL * mL + nR * mR * mR; // SSE reduction (up to const)
+        if (!best || gain > best.gain) best = { j: j, thr: thr, mL: mL, mR: mR, gain: gain };
+      }
+    }
+    return best;
+  }
+  function mae(rows, pred) {
+    var s = 0; for (var i = 0; i < rows.length; i++) s += Math.abs(rows[i].y - pred[i]);
+    return s / rows.length;
+  }
+
+  /* ---------- state ---------- */
+  var MAX_ROUNDS = 120;
+  var seed = 12345, S = null, raf = 0, running = false;
+
+  function fresh() {
+    cancelAnimationFrame(raf); running = false;
+    var noise = parseFloat($("noise").value);
+    var d = makeData(seed, noise);
+    var base = d.train.reduce(function (a, r) { return a + r.y; }, 0) / d.train.length;
+    S = {
+      d: d, lr: parseFloat($("lr").value), round: 0,
+      predTr: new Array(d.train.length).fill(base),
+      predVa: new Array(d.val.length).fill(base),
+      imp: new Array(FEATURES.length).fill(0),
+      histTr: [], histVa: [],
+      baseMAE: mae(d.val, d.val.map(function (r) { return r.x[0]; })) // formula-only = raw "formula ROI" feature
+    };
+    // round 0 metrics
+    S.histTr.push(mae(d.train, S.predTr));
+    S.histVa.push(mae(d.val, S.predVa));
+    paint(); syncButtons();
+  }
+
+  function step() {
+    if (S.round >= MAX_ROUNDS) return false;
+    var tr = S.d.train, va = S.d.val;
+    var resid = tr.map(function (r, i) { return r.y - S.predTr[i]; });
+    var st = bestStump(tr, resid);
+    if (!st) return false;
+    for (var i = 0; i < tr.length; i++) S.predTr[i] += S.lr * (tr[i].z[st.j] <= st.thr ? st.mL : st.mR);
+    for (i = 0; i < va.length; i++) S.predVa[i] += S.lr * (va[i].z[st.j] <= st.thr ? st.mL : st.mR);
+    S.imp[st.j] += st.gain;
+    S.round++;
+    S.histTr.push(mae(tr, S.predTr));
+    S.histVa.push(mae(va, S.predVa));
+    return true;
+  }
+
+  function loop() {
+    var per = reduceMotion ? MAX_ROUNDS : 1;
+    for (var k = 0; k < per && S.round < MAX_ROUNDS; k++) step();
+    paint();
+    if (running && S.round < MAX_ROUNDS) { raf = requestAnimationFrame(loop); }
+    else { running = false; syncButtons(); }
+  }
+
+  /* ---------- buttons ---------- */
+  function syncButtons() {
+    var done = S.round >= MAX_ROUNDS;
+    $("train").disabled = running || done;
+    $("train").textContent = done ? "✓ done" : (S.round > 0 ? "▸ resume" : "▸ Train");
+    $("pause").disabled = !running;
+    $("reset").disabled = running;
+    $("newdata").disabled = running;
+    $("lr").disabled = $("noise").disabled = running;
+  }
+  $("train").addEventListener("click", function () {
+    if (S.round >= MAX_ROUNDS) return;
+    running = true; syncButtons();
+    if (reduceMotion) { loop(); } else { raf = requestAnimationFrame(loop); }
+  });
+  $("pause").addEventListener("click", function () { running = false; cancelAnimationFrame(raf); syncButtons(); });
+  $("reset").addEventListener("click", fresh);
+  $("newdata").addEventListener("click", function () { seed = (seed * 1664525 + 1013904223) >>> 0; fresh(); });
+  $("lr").addEventListener("input", function () { $("lrv").textContent = (+this.value).toFixed(2); if (S) S.lr = +this.value; });
+  $("noise").addEventListener("input", function () { $("noisev").textContent = (+this.value).toFixed(1); });
+  $("noise").addEventListener("change", fresh);
+
+  /* ---------- theme toggle ---------- */
+  (function () {
+    var KEY = "cs2ml-theme", root = document.documentElement, btn = $("themebtn"), stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) {}
+    if (stored === "dark" || stored === "light") root.setAttribute("data-theme", stored);
+    function isDark() {
+      var e = root.getAttribute("data-theme");
+      return e ? e === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    function label() { btn.textContent = isDark() ? "☀ light" : "☾ dark"; }
+    label();
+    btn.addEventListener("click", function () {
+      var next = isDark() ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(KEY, next); } catch (e) {}
+      label(); paint();
+    });
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { label(); paint(); });
+  })();
+
+  /* ---------- drawing ---------- */
+  function tok(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; }
+  function setup(cv, h) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = cv.parentElement.clientWidth - 24; // minus chartbox padding
+    cv.width = Math.max(120, w) * dpr;
+    cv.height = h * dpr;
+    cv.style.height = h + "px";
+    var g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    return { g: g, w: Math.max(120, w), h: h };
+  }
+
+  function drawCurve() {
+    var C = setup($("c-curve"), 210), g = C.g, w = C.w, h = C.h;
+    var pad = { l: 44, r: 12, t: 10, b: 26 };
+    var iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+    var all = S.histTr.concat(S.histVa, [S.baseMAE]);
+    var ymax = Math.max.apply(null, all) * 1.05, ymin = 0;
+    var xN = MAX_ROUNDS;
+    var X = function (i) { return pad.l + (i / xN) * iw; };
+    var Y = function (v) { return pad.t + ih - ((v - ymin) / (ymax - ymin)) * ih; };
+    var ink = tok("--ink"), acc = tok("--accent"), faint = tok("--ink-faint"), grid = tok("--grid");
+
+    g.strokeStyle = grid; g.lineWidth = 1; g.font = '10px "IBM Plex Mono", monospace'; g.fillStyle = faint;
+    for (var t = 0; t <= 4; t++) {
+      var yy = pad.t + (t / 4) * ih, val = ymax - (t / 4) * (ymax - ymin);
+      g.beginPath(); g.moveTo(pad.l, yy); g.lineTo(w - pad.r, yy); g.stroke();
+      g.fillText(val.toFixed(1), 6, yy + 3);
+    }
+    for (var xt = 0; xt <= xN; xt += 30) { g.fillText(String(xt), X(xt) - 6, h - 8); }
+
+    // baseline
+    g.strokeStyle = faint; g.setLineDash([4, 4]); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(pad.l, Y(S.baseMAE)); g.lineTo(w - pad.r, Y(S.baseMAE)); g.stroke();
+    g.setLineDash([]);
+
+    function line(hist, color, width) {
+      g.strokeStyle = color; g.lineWidth = width; g.beginPath();
+      hist.forEach(function (v, i) { var px = X(i), py = Y(v); i ? g.lineTo(px, py) : g.moveTo(px, py); });
+      g.stroke();
+    }
+    line(S.histTr, tok("--ink-muted"), 1.4);
+    line(S.histVa, acc, 2.2);
+  }
+
+  function drawScatter() {
+    var C = setup($("c-scatter"), 200), g = C.g, w = C.w, h = C.h;
+    var pad = 26, iw = w - pad * 2, ih = h - pad * 2;
+    var ys = S.d.val.map(function (r) { return r.y; }).concat(S.predVa);
+    var lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+    var span = (hi - lo) || 1;
+    var A = function (v) { return pad + ((v - lo) / span) * iw; };
+    var B = function (v) { return pad + ih - ((v - lo) / span) * ih; };
+    var acc = tok("--accent"), faint = tok("--ink-faint"), good = tok("--good");
+
+    g.strokeStyle = faint; g.lineWidth = 1; g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(A(lo), B(lo)); g.lineTo(A(hi), B(hi)); g.stroke(); g.setLineDash([]);
+    g.font = '9px "IBM Plex Mono", monospace'; g.fillStyle = faint;
+    g.fillText("actual →", w - 58, h - 8); g.save(); g.translate(9, 44); g.rotate(-Math.PI / 2); g.fillText("predicted →", 0, 0); g.restore();
+
+    g.fillStyle = acc;
+    S.d.val.forEach(function (r, i) {
+      var err = Math.abs(r.y - S.predVa[i]);
+      g.globalAlpha = err < 6 ? 0.85 : 0.4;
+      g.fillStyle = err < 6 ? good : acc;
+      g.beginPath(); g.arc(A(r.y), B(S.predVa[i]), 2.6, 0, 7); g.fill();
+    });
+    g.globalAlpha = 1;
+  }
+
+  function drawImp() {
+    var C = setup($("c-imp"), 200), g = C.g, w = C.w, h = C.h;
+    var max = Math.sqrt(Math.max.apply(null, S.imp)) || 1;
+    var acc = tok("--accent"), ink = tok("--ink"), pan2 = tok("--panel-2");
+    var rowH = (h - 10) / FEATURES.length;
+    g.font = '10px "IBM Plex Mono", monospace';
+    FEATURES.forEach(function (name, i) {
+      var y = 6 + i * rowH, bw = (Math.sqrt(S.imp[i]) / max) * (w - 96);
+      g.fillStyle = pan2; g.fillRect(90, y, w - 96, rowH - 6);
+      g.fillStyle = acc; g.fillRect(90, y, Math.max(0, bw), rowH - 6);
+      g.fillStyle = ink; g.textAlign = "right"; g.fillText(name, 84, y + rowH / 2 + 1);
+      g.textAlign = "left";
+    });
+  }
+
+  function fmt(v) { return (v == null || isNaN(v)) ? "–" : v.toFixed(2); }
+  function paint() {
+    if (!S) return;
+    drawCurve(); drawScatter(); drawImp();
+    var tr = S.histTr[S.histTr.length - 1], va = S.histVa[S.histVa.length - 1];
+    $("m-round").textContent = S.round;
+    $("m-train").textContent = fmt(tr);
+    $("m-val").textContent = fmt(va);
+    $("m-base").textContent = fmt(S.baseMAE);
+    var beat = va != null && va < S.baseMAE;
+    $("m-val").classList.toggle("beat", beat);
+    $("c-curve").setAttribute("aria-label",
+      "Learning curve. Round " + S.round + " of " + MAX_ROUNDS + ". Training error " + fmt(tr) +
+      ", validation error " + fmt(va) + " ROI points, versus formula-only baseline " + fmt(S.baseMAE) +
+      (beat ? ". The model is beating the formula." : "."));
+  }
+
+  var rt;
+  window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(paint, 120); });
+
+  fresh();
+})();
+</script>
+</body>
+</html>
