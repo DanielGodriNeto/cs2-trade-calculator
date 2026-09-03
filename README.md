@@ -6,8 +6,12 @@ does not place buy/sell orders, and does not touch any inventory or account.
 
 **Project overview page** -- what it does, how the math works, the architecture, and
 which parts were my design vs. AI-assisted build:
-<https://danielgodrineto.github.io/cs2-trade-calculator/> (source:
-[`docs/index.html`](docs/index.html), served from GitHub Pages on `main` `/docs`).
+<https://claude.ai/code/artifact/6354bd1f-2713-43c2-b9f6-ee70d1b606c1>
+(includes a link to an in-browser **ML training sandbox**).
+
+Source for both pages is in [`docs/`](docs/). Once GitHub Actions is enabled on this
+account, the workflow in `.github/workflows/pages.yml` also serves them at
+`https://danielgodrineto.github.io/cs2-trade-calculator/`.
 
 ## Why it doesn't auto-buy (yet)
 
