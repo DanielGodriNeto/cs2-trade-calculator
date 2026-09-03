@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CS2 Trade-Up Scanner</title>
+<meta name="description" content="A quantitative scanner for Counter-Strike 2 trade-up contracts and market mispricings. Concept, strategy and architecture by Daniel Godri Neto; implementation AI-accelerated." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<style>
+  /* ---------- tokens: light is the bare :root ---------- */
+  :root {
+    --ground:#EFEDE7;
+    --panel:#FBFAF7;
+    --panel-2:#E4E0D6;
+    --hairline:#D2CCBE;
+    --ink:#1B1915;
+    --ink-muted:#6A6353;
+    --ink-faint:#928B79;
+    --accent:#8A5E00;
+    --accent-bright:#B27E10;
+    --accent-soft:#EADCB8;
+    --win:#3E7D53;
+    --loss:#B9B0A0;
+    --scale-grad:linear-gradient(90deg,#e9e4d7,#d3ccb8);
+    /* CS rarity ramp — a data-encoding palette, identical in both themes */
+    --r1:#7d8aa0; --r2:#3f77c4; --r3:#4b69ff; --r4:#8847ff; --r5:#c026c9; --r6:#e0403f;
+    --shadow: 0 1px 2px rgba(40,34,20,.06), 0 14px 34px -18px rgba(40,34,20,.20);
+    --spine-w: 60px;
+    --measure: 66ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#131109;
+      --panel:#1C1913;
+      --panel-2:#241F16;
+      --hairline:#352F22;
+      --ink:#ECE5D6;
+      --ink-muted:#9C9382;
+      --ink-faint:#6E6759;
+      --accent:#E4AE39;
+      --accent-bright:#F1C05C;
+      --accent-soft:#3A2E15;
+      --win:#5FB07C;
+      --loss:#5C564A;
+      --scale-grad:linear-gradient(90deg,#2a251a,#3c3423);
+      --r1:#b0c3d9; --r2:#5e98d9; --r3:#6b83ff; --r4:#9a5cff; --r5:#d32ce6; --r6:#eb4b4b;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 16px 40px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#131109;
+    --panel:#1C1913;
+    --panel-2:#241F16;
+    --hairline:#352F22;
+    --ink:#ECE5D6;
+    --ink-muted:#9C9382;
+    --ink-faint:#6E6759;
+    --accent:#E4AE39;
+    --accent-bright:#F1C05C;
+    --accent-soft:#3A2E15;
+    --win:#5FB07C;
+    --loss:#5C564A;
+    --scale-grad:linear-gradient(90deg,#2a251a,#3c3423);
+    --r1:#b0c3d9; --r2:#5e98d9; --r3:#6b83ff; --r4:#9a5cff; --r5:#d32ce6; --r6:#eb4b4b;
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 16px 40px -18px rgba(0,0,0,.7);
+  }
+
+  *,*::before,*::after { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0;
+    background:var(--ground);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size:16px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  img { max-width:100%; display:block; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { color:var(--accent-bright); }
+  a:focus-visible, button:focus-visible {
+    outline:2px solid var(--accent-bright);
+    outline-offset:3px;
+    border-radius:2px;
+  }
+  ::selection { background:var(--accent-soft); color:var(--ink); }
+
+  .mono {
+    font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* ---------- shell + float spine ---------- */
+  .wrap {
+    max-width:900px;
+    margin:0 auto;
+    padding:0 24px 0 calc(24px + var(--spine-w));
+    position:relative;
+  }
+  .spine {
+    position:absolute;
+    left:24px; top:0; bottom:0;
+    width:var(--spine-w);
+    border-right:1px solid var(--hairline);
+    pointer-events:none;
+  }
+  .spine::before {
+    content:"0.00";
+    position:absolute; top:6px; right:10px;
+    font-family:"IBM Plex Mono", monospace; font-size:10px;
+    letter-spacing:.06em; color:var(--ink-faint);
+  }
+  .spine::after {
+    content:"1.00";
+    position:absolute; bottom:6px; right:10px;
+    font-family:"IBM Plex Mono", monospace; font-size:10px;
+    letter-spacing:.06em; color:var(--ink-faint);
+  }
+  .spine i {
+    position:absolute; right:0; width:9px; height:1px;
+    background:var(--hairline);
+  }
+  .spine i:nth-child(1){ top:20%; } .spine i:nth-child(2){ top:40%; }
+  .spine i:nth-child(3){ top:60%; } .spine i:nth-child(4){ top:80%; }
+  /* the rarity ramp caps the spine */
+  .spine u {
+    position:absolute; left:-1px; top:0; width:3px; height:120px;
+    background:linear-gradient(var(--r1),var(--r2),var(--r3),var(--r4),var(--r5),var(--r6));
+  }
+
+  @media (max-width:720px) {
+    :root { --spine-w:0px; }
+    .wrap { padding:0 20px; }
+    .spine { display:none; }
+  }
+
+  /* ---------- sections ---------- */
+  section { padding:46px 0; border-top:1px solid var(--hairline); }
+  section:first-of-type { border-top:0; }
+  .eyebrow {
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px; font-weight:500;
+    letter-spacing:.18em; text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 18px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before {
+    content:attr(data-idx);
+    color:var(--ink-faint);
+    border:1px solid var(--hairline);
+    border-radius:2px;
+    padding:1px 5px;
+    letter-spacing:.05em;
+  }
+  h1,h2,h3 {
+    font-family:"Archivo", "IBM Plex Sans", sans-serif;
+    font-weight:700;
+    line-height:1.12;
+    letter-spacing:-0.015em;
+    text-wrap:balance;
+    margin:0 0 16px;
+  }
+  h1 { font-size:clamp(1.95rem, 5vw, 3rem); font-weight:800; letter-spacing:-0.025em; }
+  h2 { font-size:clamp(1.5rem, 3.4vw, 2rem); }
+  h3 { font-size:1.06rem; font-weight:600; margin-bottom:8px; }
+  p { margin:0 0 16px; max-width:var(--measure); }
+  .lead { font-size:1.15rem; color:var(--ink); max-width:60ch; }
+  .muted { color:var(--ink-muted); }
+  strong { font-weight:600; color:var(--ink); }
+
+  /* ---------- hero ---------- */
+  .hero { padding-top:64px; padding-bottom:40px; }
+  .hero .kicker {
+    font-family:"IBM Plex Mono", monospace;
+    font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink-muted); margin:0 0 22px;
+  }
+  .hero .kicker b { color:var(--accent); font-weight:600; }
+
+  .contract {
+    margin:34px 0 26px;
+    background:var(--panel);
+    border:1px solid var(--hairline);
+    border-radius:8px;
+    box-shadow:var(--shadow);
+    padding:22px 22px 18px;
+    max-width:640px;
+  }
+  .contract .row-label {
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-faint); margin-bottom:9px;
+  }
+  .inputs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; }
+  .inputs span {
+    width:30px; height:30px; border-radius:4px;
+    background:var(--panel-2);
+    border:1px solid var(--r3);
+    box-shadow:inset 0 0 0 2px var(--panel), inset 0 -13px 14px -10px var(--r3);
+    opacity:0;
+    transform:translateY(6px);
+    animation:cellIn .4s ease forwards;
+  }
+  .inputs span:nth-child(1){animation-delay:.05s} .inputs span:nth-child(2){animation-delay:.09s}
+  .inputs span:nth-child(3){animation-delay:.13s} .inputs span:nth-child(4){animation-delay:.17s}
+  .inputs span:nth-child(5){animation-delay:.21s} .inputs span:nth-child(6){animation-delay:.25s}
+  .inputs span:nth-child(7){animation-delay:.29s} .inputs span:nth-child(8){animation-delay:.33s}
+  .inputs span:nth-child(9){animation-delay:.37s} .inputs span:nth-child(10){animation-delay:.41s}
+  @keyframes cellIn { to { opacity:1; transform:none; } }
+
+  .funnel {
+    font-family:"IBM Plex Mono", monospace;
+    font-size:12px; color:var(--ink-faint);
+    text-align:center; margin:0 0 12px; letter-spacing:.3em;
+  }
+  .dist {
+    display:flex; height:38px; border-radius:4px; overflow:hidden;
+    border:1px solid var(--hairline);
+  }
+  .dist i {
+    height:100%;
+    width:0;
+    animation:grow .9s cubic-bezier(.2,.7,.2,1) forwards;
+    animation-delay:.5s;
+  }
+  .dist i.w { background:var(--win); }
+  .dist i.l { background:var(--loss); }
+  .dist i:nth-child(1){ --to:22%; } .dist i:nth-child(2){ --to:15%; }
+  .dist i:nth-child(3){ --to:7%; }  .dist i:nth-child(4){ --to:19%; }
+  .dist i:nth-child(5){ --to:29%; } .dist i:nth-child(6){ --to:8%; }
+  @keyframes grow { to { width:var(--to); } }
+
+  .readout {
+    margin-top:14px;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:13px; letter-spacing:.02em;
+    color:var(--ink-muted);
+    display:flex; flex-wrap:wrap; gap:6px 20px;
+  }
+  .readout b { color:var(--win); font-weight:600; }
+  .readout span { color:var(--ink-faint); }
+
+  .stats {
+    display:flex; flex-wrap:wrap; gap:12px;
+    margin-top:30px;
+  }
+  .stat {
+    flex:1 1 150px;
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    padding:14px 16px;
+    background:var(--panel);
+  }
+  .stat .n {
+    font-family:"Archivo", sans-serif; font-weight:800;
+    font-size:1.7rem; letter-spacing:-0.02em;
+    font-variant-numeric:tabular-nums;
+  }
+  .stat .k {
+    font-family:"IBM Plex Mono", monospace;
+    font-size:10.5px; letter-spacing:.11em; text-transform:uppercase;
+    color:var(--ink-faint); margin-top:2px;
+  }
+
+  /* ---------- attribution table ---------- */
+  .split {
+    display:grid; grid-template-columns:1fr 1fr; gap:0;
+    border:1px solid var(--hairline); border-radius:8px; overflow:hidden;
+    margin:20px 0 0;
+  }
+  .split > div { padding:20px 22px; }
+  .split > div:first-child { border-right:1px solid var(--hairline); background:var(--panel); }
+  .split > div:last-child { background:transparent; }
+  .split h3 {
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-muted); margin-bottom:14px;
+  }
+  .split ul { margin:0; padding:0; list-style:none; }
+  .split li {
+    position:relative; padding-left:20px; margin-bottom:11px;
+    font-size:14.5px; line-height:1.5;
+  }
+  .split li::before {
+    position:absolute; left:0; top:0;
+    font-family:"IBM Plex Mono", monospace; font-size:13px;
+  }
+  .split .mine li::before { content:"→"; color:var(--accent); }
+  .split .ai li::before { content:"+"; color:var(--ink-faint); }
+  @media (max-width:640px) {
+    .split { grid-template-columns:1fr; }
+    .split > div:first-child { border-right:0; border-bottom:1px solid var(--hairline); }
+  }
+
+  /* ---------- feature grid ---------- */
+  .feats { display:grid; grid-template-columns:repeat(2,1fr); gap:1px; background:var(--hairline);
+    border:1px solid var(--hairline); border-radius:8px; overflow:hidden; margin-top:8px; }
+  .feats article { background:var(--ground); padding:20px 20px 18px; }
+  .feats .tag {
+    font-family:"IBM Plex Mono", monospace; font-size:10px;
+    letter-spacing:.12em; text-transform:uppercase; color:var(--accent);
+    display:block; margin-bottom:7px;
+  }
+  .feats p { font-size:14px; color:var(--ink-muted); margin:0; max-width:none; }
+  @media (max-width:640px){ .feats { grid-template-columns:1fr; } }
+
+  /* ---------- math / worked example ---------- */
+  .scale {
+    margin:22px 0 6px; border:1px solid var(--hairline); border-radius:8px;
+    background:var(--panel); padding:18px 20px; max-width:620px;
+  }
+  .scale .bar {
+    position:relative; height:14px; border-radius:3px; margin:16px 0 8px;
+    background:var(--scale-grad);
+  }
+  .scale .bar b {
+    position:absolute; top:-5px; height:24px; width:2px; background:var(--accent);
+  }
+  .scale .scalecap {
+    font-family:"IBM Plex Mono", monospace; font-size:10.5px;
+    color:var(--ink-muted); margin:12px 0 0; max-width:none; letter-spacing:.02em;
+  }
+  .scale .scalecap b { color:var(--accent); font-weight:600; }
+  .scale .ticks {
+    display:flex; justify-content:space-between;
+    font-family:"IBM Plex Mono", monospace; font-size:10px; color:var(--ink-faint);
+  }
+  .scale .brackets {
+    display:flex; margin-top:14px; font-family:"IBM Plex Mono", monospace;
+    font-size:10px; text-align:center; color:var(--ink-faint);
+  }
+  .scale .brackets span { flex:1; padding:5px 2px; border-right:1px solid var(--hairline); }
+  .scale .brackets span:last-child { border-right:0; }
+  .rarity-legend { display:flex; flex-wrap:wrap; gap:12px; margin:18px 0 0; }
+  .rarity-legend span {
+    font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--ink-muted);
+    display:flex; align-items:center; gap:6px;
+  }
+  .rarity-legend i { width:11px; height:11px; border-radius:2px; }
+
+  .principle {
+    border-left:2px solid var(--accent);
+    padding:4px 0 4px 18px;
+    margin:22px 0;
+    font-size:15px;
+  }
+
+  /* ---------- architecture diagram ---------- */
+  .diagram { margin:20px 0 6px; border:1px solid var(--hairline); border-radius:8px;
+    background:var(--panel); padding:22px; overflow-x:auto; }
+  .diagram svg { display:block; min-width:560px; width:100%; height:auto; }
+  .diagram text { font-family:"IBM Plex Mono", monospace; fill:var(--ink-muted); }
+  .diagram .box { fill:var(--panel-2); stroke:var(--hairline); }
+  .diagram .lbl { fill:var(--ink); font-weight:600; }
+  .diagram .flow { stroke:var(--hairline); fill:none; }
+  .diagram .accent { fill:var(--accent); }
+
+  /* ---------- responsible ---------- */
+  .guard { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:8px; }
+  .guard div { border:1px solid var(--hairline); border-radius:6px; padding:16px; background:var(--panel); }
+  .guard .mono { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); }
+  .guard p { font-size:13.5px; color:var(--ink-muted); margin:8px 0 0; max-width:none; }
+  @media (max-width:640px){ .guard { grid-template-columns:1fr; } }
+
+  /* ---------- footer ---------- */
+  footer { border-top:1px solid var(--hairline); padding:40px 0 60px; }
+  .flinks { display:flex; flex-wrap:wrap; gap:10px 28px; font-family:"IBM Plex Mono", monospace; font-size:13px; }
+  footer .sig { margin-top:22px; font-family:"IBM Plex Mono", monospace; font-size:11px; color:var(--ink-faint); letter-spacing:.04em; }
+
+  /* ---------- theme toggle ---------- */
+  .themebtn {
+    position:fixed; top:14px; right:14px; z-index:10;
+    font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.08em;
+    background:var(--panel); color:var(--ink-muted);
+    border:1px solid var(--hairline); border-radius:4px;
+    padding:6px 10px; cursor:pointer;
+  }
+  .themebtn:hover { color:var(--ink); border-color:var(--accent); }
+
+  @media (prefers-reduced-motion:reduce) {
+    .inputs span { opacity:1; transform:none; animation:none; }
+    .dist i { width:var(--to); animation:none; }
+  }
+</style>
+</head>
+<body>
+<button class="themebtn mono" id="themebtn" type="button" aria-label="Switch colour theme">theme</button>
+
+<div class="wrap">
+  <div class="spine" aria-hidden="true"><u></u><i></i><i></i><i></i><i></i></div>
+
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <p class="kicker mono">Counter-Strike&nbsp;2 · trade-up contracts · <b>quantitative&nbsp;scanner</b></p>
+    <h1>Every trade-up is a bet. This scanner prices it.</h1>
+    <p class="lead muted">Ten skins go in; a probability distribution comes out. The tool reads public CS2 price
+      data, models every trade-up contract as an expected-value wager, and ranks the ones — along with the
+      underpriced market listings — that actually carry an edge. It reads only; it executes nothing.</p>
+
+    <div class="contract" role="img" aria-label="A trade-up contract: ten mil-spec inputs resolving into an outcome distribution with expected value plus 4.2 percent.">
+      <div class="row-label mono">10 inputs · one rarity tier</div>
+      <div class="inputs"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="funnel">▼ ▼ ▼</div>
+      <div class="row-label mono">outcome distribution · by drop odds · win / loss</div>
+      <div class="dist"><i class="l"></i><i class="l"></i><i class="w"></i><i class="l"></i><i class="w"></i><i class="l"></i></div>
+      <div class="readout mono"><span>expected value</span> <b>+4.2%</b> <span>win mass</span> 36% <span>best output</span> ×3.8</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n mono">50+</div><div class="k">python modules</div></div>
+      <div class="stat"><div class="n mono">30+</div><div class="k">api endpoints</div></div>
+      <div class="stat"><div class="n mono">6</div><div class="k">scan strategies</div></div>
+      <div class="stat"><div class="n mono">ML</div><div class="k">roi calibration</div></div>
+    </div>
+  </header>
+
+  <!-- ============ ATTRIBUTION ============ -->
+  <section>
+    <p class="eyebrow mono" data-idx="01">Whose project this is</p>
+    <h2>The thinking is mine. The typing was accelerated.</h2>
+    <p>I designed this system — what to scan, which market mechanics were worth modelling, how a contract
+      gets scored, and the rules it holds itself to. I used AI coding assistants the way a working engineer
+      does: to move faster through implementation, refactors, and boilerplate, under my direction and review.
+      Every design decision below is one I made and can defend.</p>
+
+    <div class="split">
+      <div class="mine">
+        <h3>Designed &amp; decided by me</h3>
+        <ul>
+          <li>The premise: mine public price data for trade-up edge and market mispricing, execute nothing</li>
+          <li>Which strategies earn their complexity — float-mixing, filler-collection odds, Covert→knife</li>
+          <li>The expected-value model and per-outcome win/loss scoring</li>
+          <li>Product rules: read-only, ToS-respecting, ML as a tiebreaker and never a replacement</li>
+          <li>Predicted-vs-actual logging so the tool stays honest over time</li>
+          <li>The shape: CLI + always-on dashboard, auto-retrain loop, portable data archive, inventory extension</li>
+        </ul>
+      </div>
+      <div class="ai">
+        <h3>Where AI assisted</h3>
+        <ul>
+          <li>Writing implementation code across the modules, to my spec</li>
+          <li>Refactors, error handling, and repetitive plumbing</li>
+          <li>First drafts of documentation and inline explanations</li>
+          <li>Test scaffolding and edge-case enumeration</li>
+          <li>Chart and data-table scaffolding for the dashboard</li>
+          <li>Rubber-ducking trade-offs — I kept or discarded each call</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <section>
+    <p class="eyebrow mono" data-idx="02">What it scans</p>
+    <h2>Six strategies, one ranked list of opportunities</h2>
+    <p class="muted">Each scan reports cost, expected revenue, profit and ROI, ranked best first. Every result
+      expands to show each possible output skin, its drop probability, and whether that outcome wins or loses.</p>
+
+    <div class="feats">
+      <article><span class="tag mono">trade-ups</span><p>For every collection, simulates buying 10 of the cheapest skin at a rarity and trading up to the next tier.</p></article>
+      <article><span class="tag mono">anomalies</span><p>Flags listings where the lowest ask sits far below the median — the classic "someone underpriced this" flip signal — filtered by trade volume.</p></article>
+      <article><span class="tag mono">covert → knife</span><p>Scans the Oct-2025 rule: five Covert skins from one weapon case trading up into a knife or gloves from that case's pool.</p></article>
+      <article><span class="tag mono">float-mix</span><p>Finds the cheapest mix of input wear conditions that steers the output into its most valuable wear bracket instead of leaving it to chance.</p></article>
+      <article><span class="tag mono">filler collection</span><p>Tests diluting a collection's inputs with a cheap skin from a second collection, using the group-based odds rules, to see if it beats going solo.</p></article>
+      <article><span class="tag mono">price verification</span><p>Cross-checks the cheapest input's Steam price against Skinport and CSFloat to catch a "drought" — Steam priced high on thin supply, not real value.</p></article>
+    </div>
+  </section>
+
+  <!-- ============ MATH ============ -->
+  <section>
+    <p class="eyebrow mono" data-idx="03">How the math works</p>
+    <h2>Wear is a number between 0 and 1, so value is a bracket you can aim at</h2>
+    <p>A trade-up's output wear is the average of its ten inputs' wear, rescaled into the output skin's own
+      range. Because the same skin is worth far more Factory New than Battle-Scarred, deliberately mixing
+      input conditions moves the output across a price boundary — that's the <strong>float-mix</strong> strategy.</p>
+
+    <div class="scale" role="img" aria-label="The wear scale from 0 to 1, divided into five value brackets, with an averaged input wear marker at 0.11 landing in the Factory New bracket.">
+      <div class="ticks"><span>0.00</span><span>0.25</span><span>0.50</span><span>0.75</span><span>1.00</span></div>
+      <div class="bar"><b style="left:11%"></b></div>
+      <div class="brackets"><span>Factory New</span><span>Minimal Wear</span><span>Field-Tested</span><span>Well-Worn</span><span>Battle-Scarred</span></div>
+      <p class="scalecap">Marker: an averaged input wear of <b>0.11</b> — lands in Factory New, the top price bracket.</p>
+    </div>
+
+    <p class="muted" style="margin-top:18px">Output skins are drawn from the combined next-rarity pools of the input
+      collections, each weighted by how many inputs came from that collection. The scanner enumerates the full
+      pool, prices every outcome, and sums probability × profit into one expected value.</p>
+
+    <div class="rarity-legend" aria-hidden="true">
+      <span><i style="background:var(--r1)"></i>Consumer</span>
+      <span><i style="background:var(--r2)"></i>Industrial</span>
+      <span><i style="background:var(--r3)"></i>Mil-Spec</span>
+      <span><i style="background:var(--r4)"></i>Restricted</span>
+      <span><i style="background:var(--r5)"></i>Classified</span>
+      <span><i style="background:var(--r6)"></i>Covert</span>
+    </div>
+
+    <div class="principle">
+      <strong>ML calibrates; it never overrules.</strong> Once enough real trade-up outcomes are logged, a
+      lightweight model predicts realised ROI and acts as a tiebreaker alongside the formula — surfaced
+      everywhere, trusted nowhere as a replacement for the arithmetic.
+    </div>
+  </section>
+
+  <!-- ============ ARCHITECTURE ============ -->
+  <section>
+    <p class="eyebrow mono" data-idx="04">Architecture</p>
+    <h2>One engine, three ways to reach it</h2>
+    <p class="muted">A pure-Python core does the pricing and simulation. A local HTTP server exposes it as an
+      API. A React dashboard and a browser extension consume that API; a watch loop retrains the model in the
+      background whenever enough new outcomes land.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 620 240" role="img" aria-label="Data flow: public price sources feed the Python core; the core backs an HTTP API; the API serves a React dashboard, a CLI, and a browser extension; a retrain loop feeds the model back into the core.">
+        <!-- sources -->
+        <rect class="box" x="8" y="24" width="120" height="52" rx="4"/>
+        <text class="lbl" x="20" y="46" font-size="11">price sources</text>
+        <text x="20" y="62" font-size="9">Steam · Skinport · CSFloat</text>
+        <!-- core -->
+        <rect class="box" x="188" y="14" width="130" height="72" rx="4"/>
+        <text class="lbl" x="203" y="40" font-size="11">python core</text>
+        <text x="203" y="56" font-size="9">pricing · simulate</text>
+        <text x="203" y="69" font-size="9">EV · ranking · ML</text>
+        <!-- api -->
+        <rect class="box" x="188" y="120" width="130" height="46" rx="4"/>
+        <text class="lbl" x="203" y="140" font-size="11">http api</text>
+        <text x="203" y="155" font-size="9">30+ endpoints</text>
+        <!-- consumers -->
+        <rect class="box" x="392" y="16" width="150" height="40" rx="4"/>
+        <text class="lbl" x="406" y="40" font-size="11">react dashboard</text>
+        <rect class="box" x="392" y="72" width="150" height="40" rx="4"/>
+        <text class="lbl" x="406" y="96" font-size="11">CLI</text>
+        <rect class="box" x="392" y="128" width="150" height="40" rx="4"/>
+        <text class="lbl" x="406" y="152" font-size="11">browser extension</text>
+        <!-- retrain -->
+        <rect class="box" x="188" y="196" width="130" height="34" rx="4"/>
+        <text class="accent" x="203" y="217" font-size="10">retrain-watch loop</text>
+        <!-- flows -->
+        <path class="flow" d="M128 50 H188" stroke-width="1.4"/>
+        <path class="flow" d="M253 86 V120" stroke-width="1.4"/>
+        <path class="flow" d="M318 138 H360 V36 H392" stroke-width="1.4"/>
+        <path class="flow" d="M360 138 V92 H392" stroke-width="1.4"/>
+        <path class="flow" d="M318 143 H392" stroke-width="1.4"/>
+        <path class="flow accent" d="M253 196 V174 M253 196 C253 130 253 110 253 90" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="3 3"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ============ RESPONSIBLE ============ -->
+  <section>
+    <p class="eyebrow mono" data-idx="05">Built inside the rules</p>
+    <h2>It stops at "here are the opportunities"</h2>
+    <p>Steam's Subscriber Agreement prohibits bots that buy or sell on the Community Market, so the tool
+      deliberately does none of that. You review each opportunity and execute it yourself. Automated execution
+      is a later phase, and only through marketplaces that publish an official trading API for it.</p>
+
+    <div class="guard">
+      <div><span class="mono">no login</span><p>Never authenticates to Steam. No account, no session, no credentials.</p></div>
+      <div><span class="mono">no orders</span><p>Places no buy or sell orders anywhere. Reads public price data only.</p></div>
+      <div><span class="mono">no inventory</span><p>Doesn't touch any inventory or balance. Nothing auto-buys.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="flinks">
+      <a href="https://github.com/DanielGodriNeto/cs2-trade-calculator">GitHub — source &amp; full docs ↗</a>
+      <a href="https://github.com/DanielGodriNeto">More projects ↗</a>
+    </div>
+    <p class="sig">Daniel Godri Neto · Computer Science, PUCPR · Curitiba, Brazil · concept, strategy &amp; architecture by me; implementation AI-accelerated</p>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var KEY = "cs2scan-theme";
+    var root = document.documentElement;
+    var btn = document.getElementById("themebtn");
+    var stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) {}
+    if (stored === "dark" || stored === "light") root.setAttribute("data-theme", stored);
+    function label() {
+      var explicit = root.getAttribute("data-theme");
+      var dark = explicit ? explicit === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      btn.textContent = dark ? "☀ light" : "☾ dark";
+    }
+    label();
+    btn.addEventListener("click", function () {
+      var explicit = root.getAttribute("data-theme");
+      var dark = explicit ? explicit === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = dark ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(KEY, next); } catch (e) {}
+      label();
+    });
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", label);
+  })();
+</script>
+</body>
+</html>

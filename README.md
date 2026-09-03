@@ -4,6 +4,10 @@ Finds CS2 trade-up contracts and Steam Market listings that look profitable, usi
 public price data. This is a **read-only scanner** -- it does not log into Steam,
 does not place buy/sell orders, and does not touch any inventory or account.
 
+**Project overview:** <https://danielgodrineto.github.io/cs2-trade-calculator/> --
+what it does, how the math works, the architecture, and which parts were my design
+vs. AI-assisted build. Source for that page lives in [`docs/`](docs/).
+
 ## Why it doesn't auto-buy (yet)
 
 Steam's Subscriber Agreement prohibits bots that automatically buy/sell on the
