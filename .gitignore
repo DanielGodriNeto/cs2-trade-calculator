@@ -12,28 +12,13 @@ __pycache__/
 # tools/mae_parity.py's per-son CV-MAE baseline -- machine-local, re-baselined on `main`
 tools/.mae_baseline.json
 
-# EXCEPTION to "data/ is tracked": these append-only logs outgrow GitHub's hard 100 MB
-# per-file limit within a day or two of running the sim loop (the reliability log alone
-# grows ~200 MB/day). They're carried in git as small dated .jsonl.gz chunks under
-# data/archive/ instead -- run `python -m src.main split-data` before committing (and
-# `split-data --restore` on a fresh clone to rebuild them; see src/split_archive.py).
-data/market_reliability_log.jsonl
-data/sons/son_*/simulations.jsonl
-data/evolution/lineage.jsonl
-# Auxiliary per-son quantile head (Task 7): regenerated on every retrain beside the tracked
-# sim_roi_model.joblib, carries no meta/history of its own, and predict_expected_roi(with_std=
-# True) degrades to (mean, 0.0) when it's absent -- nothing is gained by tracking it.
-data/sons/son_*/model/sim_roi_model_hi.joblib
-# scratch files left behind by interrupted atomic writes
-data/**/*.tmp
-data/*.tmp
-
-# data/ is DELIBERATELY NOT ignored here -- it's your accumulated outcomes, price history,
-# and trained ML model (see src/outcomes.py, src/price_history.py, src/learning.py). It's
-# plain JSON/JSONL text (diff- and merge-friendly,
-# except the .joblib model file), which is exactly what makes committing it to git a
-# reasonable way to carry your training data across machines -- see the README's
-# "Training across multiple machines" section.
+# data/ is NO LONGER tracked in git (was, until 2026-09-03) -- it held accumulated outcomes,
+# price history, the sim-population logs, and trained ML models, and grew to ~330 MB tracked
+# (~99% of this repo's git history). It stays entirely local now. Carry it between machines
+# with the project's own `export-data` / `import-data` (src/data_archive.py) or the dedicated
+# backup repo, NOT git. The whole directory is ignored; a .gitkeep keeps the folder on clone.
+/data/
+!/data/.gitkeep
 
 # Archives from `export-data`/`backup_engine.py` land in the project root by default -- keep
 # them out of git unless you specifically want to check one in as a point-in-time backup (in
