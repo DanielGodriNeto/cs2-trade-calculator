@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ML Training Sandbox</title>
-<meta name="description" content="Train the CS2 scanner's ROI model from zero, in your browser, on synthetic data — watch the error fall round by round." />
+<meta name="description" content="Train the CS2 scanner's ROI model from zero, in your browser, on synthetic data. Watch the error fall round by round." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
@@ -124,18 +124,18 @@
 
 <div class="wrap">
   <div class="top">
-    <p class="back mono"><a href="./index.html">← project overview</a></p>
+    <p class="back mono"><a href="./index.html">Back to project overview</a></p>
   </div>
 
   <h1>Train the ROI model from zero</h1>
   <p class="lead">The real scanner trains a small gradient-boosted model to predict the <b>realised</b> ROI of a
-    trade-up, then uses it only as a tiebreaker next to the arithmetic. This page runs that same idea live in your
-    browser on <b>synthetic data</b>: press Train and watch the error fall, round by round, as boosting rounds are
-    added. Nothing is pre-trained — it starts from the mean and learns.</p>
+    trade-up, then uses it only as a tiebreaker next to the formula. This page runs the same idea in your
+    browser on <b>synthetic data</b>. Press Train and the error falls, round by round, as boosting rounds are
+    added. Nothing is pre-trained. The model starts from the mean and learns from there.</p>
 
   <div class="panel">
     <div class="controls">
-      <button id="train" class="primary" type="button">▸ Train</button>
+      <button id="train" class="primary" type="button">Train</button>
       <button id="pause" type="button" disabled>Pause</button>
       <button id="reset" type="button">Reset</button>
       <button id="newdata" type="button">New data</button>
@@ -147,14 +147,14 @@
 
     <div class="metrics" aria-live="polite">
       <div><div class="v mono" id="m-round">0</div><div class="k">boosting round</div></div>
-      <div><div class="v mono" id="m-train">–</div><div class="k">train MAE (ROI pts)</div></div>
-      <div><div class="v mono" id="m-val">–</div><div class="k">validation MAE</div></div>
-      <div><div class="v mono" id="m-base">–</div><div class="k">formula-only MAE</div></div>
+      <div><div class="v mono" id="m-train">&middot;&middot;</div><div class="k">train MAE (ROI pts)</div></div>
+      <div><div class="v mono" id="m-val">&middot;&middot;</div><div class="k">validation MAE</div></div>
+      <div><div class="v mono" id="m-base">&middot;&middot;</div><div class="k">formula-only MAE</div></div>
     </div>
 
     <div class="charts">
       <figure class="wide">
-        <figcaption>Learning curve — error vs. boosting round</figcaption>
+        <figcaption>Learning curve: error vs. boosting round</figcaption>
         <div class="chartbox"><canvas id="c-curve" role="img" aria-label="Learning curve chart"></canvas></div>
         <div class="legend">
           <span><i style="border-color:var(--ink)"></i>train MAE</span>
@@ -163,21 +163,21 @@
         </div>
       </figure>
       <figure>
-        <figcaption>Predicted vs. actual ROI — validation set</figcaption>
+        <figcaption>Predicted vs. actual ROI, validation set</figcaption>
         <div class="chartbox"><canvas id="c-scatter" role="img" aria-label="Predicted versus actual ROI scatter"></canvas></div>
       </figure>
       <figure>
-        <figcaption>What the model leans on — feature influence</figcaption>
+        <figcaption>Feature influence: what the model leans on</figcaption>
         <div class="chartbox"><canvas id="c-imp" role="img" aria-label="Feature influence bar chart"></canvas></div>
       </figure>
     </div>
   </div>
 
-  <p class="note"><b>Reading it:</b> the model has beaten the arithmetic once the validation line drops below the
-    dashed baseline. It should settle a little above the label-noise floor — pushing past that would be memorising
-    noise. Raise the noise slider and the achievable floor rises with it; raise the learning rate and it converges
-    faster but can wobble. In the real tool this model never overrides the formula — it breaks ties between
-    contracts the arithmetic rates as close.</p>
+  <p class="note"><b>Reading it:</b> the model beats the formula once the validation line drops below the dashed
+    baseline. It should settle a little above the label-noise floor. Pushing below that would mean it is
+    memorising noise. Raising the noise slider lifts the achievable floor with it. Raising the learning rate
+    makes it converge faster, but it can wobble. In the real tool the model never overrides the formula. It
+    only breaks ties between contracts the formula rates as close.</p>
 
   <p class="foot mono">Synthetic benchmark · gradient-boosted stumps, squared-error loss · 640 rows, 75/25 split ·
     all computation in-browser</p>
@@ -321,7 +321,7 @@
   function syncButtons() {
     var done = S.round >= MAX_ROUNDS;
     $("train").disabled = running || done;
-    $("train").textContent = done ? "✓ done" : (S.round > 0 ? "▸ resume" : "▸ Train");
+    $("train").textContent = done ? "Done" : (S.round > 0 ? "Resume" : "Train");
     $("pause").disabled = !running;
     $("reset").disabled = running;
     $("newdata").disabled = running;
@@ -419,7 +419,7 @@
     g.strokeStyle = faint; g.lineWidth = 1; g.setLineDash([3, 3]);
     g.beginPath(); g.moveTo(A(lo), B(lo)); g.lineTo(A(hi), B(hi)); g.stroke(); g.setLineDash([]);
     g.font = '9px "IBM Plex Mono", monospace'; g.fillStyle = faint;
-    g.fillText("actual →", w - 58, h - 8); g.save(); g.translate(9, 44); g.rotate(-Math.PI / 2); g.fillText("predicted →", 0, 0); g.restore();
+    g.fillText("actual", w - 44, h - 8); g.save(); g.translate(9, 40); g.rotate(-Math.PI / 2); g.fillText("predicted", 0, 0); g.restore();
 
     g.fillStyle = acc;
     S.d.val.forEach(function (r, i) {
@@ -446,7 +446,7 @@
     });
   }
 
-  function fmt(v) { return (v == null || isNaN(v)) ? "–" : v.toFixed(2); }
+  function fmt(v) { return (v == null || isNaN(v)) ? "··" : v.toFixed(2); }
   function paint() {
     if (!S) return;
     drawCurve(); drawScatter(); drawImp();

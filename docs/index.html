@@ -24,7 +24,7 @@
     --win:#3E7D53;
     --loss:#B9B0A0;
     --scale-grad:linear-gradient(90deg,#e9e4d7,#d3ccb8);
-    /* CS rarity ramp — a data-encoding palette, identical in both themes */
+    /* CS rarity ramp: a data-encoding palette, identical in both themes */
     --r1:#7d8aa0; --r2:#3f77c4; --r3:#4b69ff; --r4:#8847ff; --r5:#c026c9; --r6:#e0403f;
     --shadow: 0 1px 2px rgba(40,34,20,.06), 0 14px 34px -18px rgba(40,34,20,.20);
     --spine-w: 60px;
@@ -290,7 +290,7 @@
     position:absolute; left:0; top:0;
     font-family:"IBM Plex Mono", monospace; font-size:13px;
   }
-  .split .mine li::before { content:"→"; color:var(--accent); }
+  .split .mine li::before { content:"▸"; color:var(--accent); }
   .split .ai li::before { content:"+"; color:var(--ink-faint); }
   @media (max-width:640px) {
     .split { grid-template-columns:1fr; }
@@ -398,9 +398,9 @@
   <header class="hero">
     <p class="kicker mono">Counter-Strike&nbsp;2 · trade-up contracts · <b>quantitative&nbsp;scanner</b></p>
     <h1>Every trade-up is a bet. This scanner prices it.</h1>
-    <p class="lead muted">Ten skins go in; a probability distribution comes out. The tool reads public CS2 price
-      data, models every trade-up contract as an expected-value wager, and ranks the ones — along with the
-      underpriced market listings — that actually carry an edge. It reads only; it executes nothing.</p>
+    <p class="lead muted">Ten skins go in and a probability distribution comes out. The tool reads public CS2
+      price data, models every trade-up contract as an expected-value bet, and ranks the contracts (and the
+      underpriced market listings) that actually carry an edge. It only reads data. It never buys or sells.</p>
 
     <div class="contract" role="img" aria-label="A trade-up contract: ten mil-spec inputs resolving into an outcome distribution with expected value plus 4.2 percent.">
       <div class="row-label mono">10 inputs · one rarity tier</div>
@@ -422,20 +422,19 @@
   <!-- ============ ATTRIBUTION ============ -->
   <section>
     <p class="eyebrow mono" data-idx="01">Whose project this is</p>
-    <h2>The thinking is mine. The typing was accelerated.</h2>
-    <p>I designed this system — what to scan, which market mechanics were worth modelling, how a contract
-      gets scored, and the rules it holds itself to. I used AI coding assistants the way a working engineer
-      does: to move faster through implementation, refactors, and boilerplate, under my direction and review.
-      Every design decision below is one I made and can defend.</p>
+    <h2>What I designed, and where AI helped</h2>
+    <p>I designed this system. I decided what to scan, which market mechanics were worth modelling, how a
+      contract gets scored, and the rules it follows. I used AI coding assistants to write and refactor the
+      implementation faster, working from my spec and reviewing the output. Every design decision below is mine.</p>
 
     <div class="split">
       <div class="mine">
         <h3>Designed &amp; decided by me</h3>
         <ul>
           <li>The premise: mine public price data for trade-up edge and market mispricing, execute nothing</li>
-          <li>Which strategies earn their complexity — float-mixing, filler-collection odds, Covert→knife</li>
+          <li>Which strategies were worth the complexity: float-mixing, filler-collection odds, Covert-to-knife</li>
           <li>The expected-value model and per-outcome win/loss scoring</li>
-          <li>Product rules: read-only, ToS-respecting, ML as a tiebreaker and never a replacement</li>
+          <li>Product rules: read-only, respects the platform terms, the model as a tiebreaker and never a replacement</li>
           <li>Predicted-vs-actual logging so the tool stays honest over time</li>
           <li>The shape: CLI + always-on dashboard, auto-retrain loop, portable data archive, inventory extension</li>
         </ul>
@@ -448,7 +447,7 @@
           <li>First drafts of documentation and inline explanations</li>
           <li>Test scaffolding and edge-case enumeration</li>
           <li>Chart and data-table scaffolding for the dashboard</li>
-          <li>Rubber-ducking trade-offs — I kept or discarded each call</li>
+          <li>Talking through trade-offs, where I kept or discarded each call</li>
         </ul>
       </div>
     </div>
@@ -457,17 +456,17 @@
   <!-- ============ FEATURES ============ -->
   <section>
     <p class="eyebrow mono" data-idx="02">What it scans</p>
-    <h2>Six strategies, one ranked list of opportunities</h2>
+    <h2>Six strategies feeding one ranked list</h2>
     <p class="muted">Each scan reports cost, expected revenue, profit and ROI, ranked best first. Every result
       expands to show each possible output skin, its drop probability, and whether that outcome wins or loses.</p>
 
     <div class="feats">
       <article><span class="tag mono">trade-ups</span><p>For every collection, simulates buying 10 of the cheapest skin at a rarity and trading up to the next tier.</p></article>
-      <article><span class="tag mono">anomalies</span><p>Flags listings where the lowest ask sits far below the median — the classic "someone underpriced this" flip signal — filtered by trade volume.</p></article>
-      <article><span class="tag mono">covert → knife</span><p>Scans the Oct-2025 rule: five Covert skins from one weapon case trading up into a knife or gloves from that case's pool.</p></article>
+      <article><span class="tag mono">anomalies</span><p>Flags listings where the lowest ask sits far below the median. That is the classic "someone underpriced this" flip signal, filtered by trade volume.</p></article>
+      <article><span class="tag mono">covert to knife</span><p>Scans the Oct-2025 rule: five Covert skins from one weapon case trading up into a knife or gloves from that case's pool.</p></article>
       <article><span class="tag mono">float-mix</span><p>Finds the cheapest mix of input wear conditions that steers the output into its most valuable wear bracket instead of leaving it to chance.</p></article>
       <article><span class="tag mono">filler collection</span><p>Tests diluting a collection's inputs with a cheap skin from a second collection, using the group-based odds rules, to see if it beats going solo.</p></article>
-      <article><span class="tag mono">price verification</span><p>Cross-checks the cheapest input's Steam price against Skinport and CSFloat to catch a "drought" — Steam priced high on thin supply, not real value.</p></article>
+      <article><span class="tag mono">price verification</span><p>Cross-checks the cheapest input's Steam price against Skinport and CSFloat to catch a "drought", where Steam is priced high on thin supply rather than real value.</p></article>
     </div>
   </section>
 
@@ -477,13 +476,13 @@
     <h2>Wear is a number between 0 and 1, so value is a bracket you can aim at</h2>
     <p>A trade-up's output wear is the average of its ten inputs' wear, rescaled into the output skin's own
       range. Because the same skin is worth far more Factory New than Battle-Scarred, deliberately mixing
-      input conditions moves the output across a price boundary — that's the <strong>float-mix</strong> strategy.</p>
+      input conditions moves the output across a price boundary. That is the <strong>float-mix</strong> strategy.</p>
 
     <div class="scale" role="img" aria-label="The wear scale from 0 to 1, divided into five value brackets, with an averaged input wear marker at 0.11 landing in the Factory New bracket.">
       <div class="ticks"><span>0.00</span><span>0.25</span><span>0.50</span><span>0.75</span><span>1.00</span></div>
       <div class="bar"><b style="left:11%"></b></div>
       <div class="brackets"><span>Factory New</span><span>Minimal Wear</span><span>Field-Tested</span><span>Well-Worn</span><span>Battle-Scarred</span></div>
-      <p class="scalecap">Marker: an averaged input wear of <b>0.11</b> — lands in Factory New, the top price bracket.</p>
+      <p class="scalecap">Marker: an averaged input wear of <b>0.11</b>, which lands in Factory New, the top price bracket.</p>
     </div>
 
     <p class="muted" style="margin-top:18px">Output skins are drawn from the combined next-rarity pools of the input
@@ -500,19 +499,19 @@
     </div>
 
     <div class="principle">
-      <strong>ML calibrates; it never overrules.</strong> Once enough real trade-up outcomes are logged, a
-      lightweight model predicts realised ROI and acts as a tiebreaker alongside the formula — surfaced
-      everywhere, trusted nowhere as a replacement for the arithmetic.
+      <strong>The model adjusts the ranking. It never overrules the formula.</strong> Once enough real
+      trade-up outcomes are logged, a lightweight model predicts realised ROI and acts as a tiebreaker next
+      to the formula. It is shown everywhere in the tool, but it never replaces the arithmetic.
     </div>
   </section>
 
   <!-- ============ ARCHITECTURE ============ -->
   <section>
     <p class="eyebrow mono" data-idx="04">Architecture</p>
-    <h2>One engine, three ways to reach it</h2>
+    <h2>One engine, reached three ways</h2>
     <p class="muted">A pure-Python core does the pricing and simulation. A local HTTP server exposes it as an
-      API. A React dashboard and a browser extension consume that API; a watch loop retrains the model in the
-      background whenever enough new outcomes land.</p>
+      API. A React dashboard and a browser extension both consume that API. A watch loop retrains the model
+      in the background whenever enough new outcomes have been logged.</p>
 
     <div class="diagram">
       <svg viewBox="0 0 620 240" role="img" aria-label="Data flow: public price sources feed the Python core; the core backs an HTTP API; the API serves a React dashboard, a CLI, and a browser extension; a retrain loop feeds the model back into the core.">
@@ -556,12 +555,12 @@
     <h2>It stops at "here are the opportunities"</h2>
     <p>Steam's Subscriber Agreement prohibits bots that buy or sell on the Community Market, so the tool
       deliberately does none of that. You review each opportunity and execute it yourself. Automated execution
-      is a later phase, and only through marketplaces that publish an official trading API for it.</p>
+      would come later, and only through marketplaces that publish an official trading API for it.</p>
 
     <div class="guard">
-      <div><span class="mono">no login</span><p>Never authenticates to Steam. No account, no session, no credentials.</p></div>
-      <div><span class="mono">no orders</span><p>Places no buy or sell orders anywhere. Reads public price data only.</p></div>
-      <div><span class="mono">no inventory</span><p>Doesn't touch any inventory or balance. Nothing auto-buys.</p></div>
+      <div><span class="mono">no login</span><p>It never signs in to Steam, and it stores no credentials.</p></div>
+      <div><span class="mono">no orders</span><p>It places no buy or sell orders. It only reads public price data.</p></div>
+      <div><span class="mono">no inventory</span><p>It never touches an inventory or a balance, and nothing is bought automatically.</p></div>
     </div>
   </section>
 
@@ -569,19 +568,19 @@
   <section>
     <p class="eyebrow mono" data-idx="06">Try it</p>
     <h2>Train the ROI model from zero, in your browser</h2>
-    <p>A bare-bones, dependency-free sandbox that runs the same idea live on synthetic data: press Train and
-      watch the error fall round by round, with the predicted-vs-actual scatter tightening and the feature
-      influence settling. No backend, nothing pre-trained.</p>
-    <p><a href="./ml.html">Open the ML training sandbox →</a></p>
+    <p>A small, dependency-free sandbox that runs the same idea on synthetic data. Press Train and the error
+      falls round by round while the predicted-vs-actual scatter tightens and the feature influence settles.
+      There is no backend and nothing is pre-trained.</p>
+    <p><a href="./ml.html">Open the ML training sandbox</a></p>
   </section>
 
   <footer>
     <div class="flinks">
-      <a href="./ml.html">ML training sandbox ↗</a>
-      <a href="https://github.com/DanielGodriNeto/cs2-trade-calculator">GitHub — source &amp; full docs ↗</a>
-      <a href="https://github.com/DanielGodriNeto">More projects ↗</a>
+      <a href="./ml.html">ML training sandbox</a>
+      <a href="https://github.com/DanielGodriNeto/cs2-trade-calculator">GitHub: source and full docs</a>
+      <a href="https://github.com/DanielGodriNeto">More projects</a>
     </div>
-    <p class="sig">Daniel Godri Neto · Computer Science, PUCPR · Curitiba, Brazil · concept, strategy &amp; architecture by me; implementation AI-accelerated</p>
+    <p class="sig">Daniel Godri Neto · Computer Science, PUCPR · Curitiba, Brazil. I designed it; AI helped me build it.</p>
   </footer>
 </div>
 
