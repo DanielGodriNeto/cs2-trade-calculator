@@ -10,7 +10,7 @@
 
 **Tech Stack:** Python 3.14 stdlib, scikit-learn 1.9 (`HistGradientBoostingRegressor`, `Ridge` via `ml_common.fit_best_model`), numpy 2.5, joblib. No test framework in this repo — checks are `tools/*.py` assertion scripts (`python tools/<name>.py` → prints `OK` / raises) plus `python profile_retrain.py` (existing, read-only) for timing.
 
-**Spec:** none — this plan implements findings M1–M8, P-1–P-4, N1–N3, S1–S2 from the 2026-08-29 code review (see `MEMORY.md` → `telemetry-hud-redesign`, and the review transcript). Related but out of scope: backlog items P2/P6/P7/P8 in `ml-ux-review-2026-08` (still need their own specs); the retrain-speed items #1/#3/#4 in `docs/superpowers/plans/2026-08-29-sim-retrain-speedups.md`.
+**Spec:** none — this plan implements findings M1–M8, P-1–P-4, N1–N3, S1–S2 from the 2026-08-29 code review (see `MEMORY.md` → `telemetry-hud-redesign`, and the review transcript). Related but out of scope: backlog items P2/P6/P7/P8 in `ml-ux-review-2026-08` (still need their own specs); the retrain-speed items #1/#3/#4 in `docs/planning/plans/2026-08-29-sim-retrain-speedups.md`.
 
 ## Global Constraints
 
@@ -37,9 +37,9 @@
 | `src/agents.py` | 8 | M1 map `exploration_rate` → acquisition beta (helper only, no new profile field). |
 | `tools/mae_parity.py` | 4 (create) | CV-MAE before/after harness, reused by 5, 7, 9. |
 | `tools/*.py` | per task | one assertion script per non-trivial change. |
-| `docs/superpowers/specs/2026-08-29-backtest-harness-design.md` | 12 (create) | N2 design. |
-| `docs/superpowers/specs/2026-08-29-formula-error-calibration-design.md` | 13 (create) | M3 design. |
-| `docs/superpowers/specs/2026-08-29-outcome-backfill-importer-design.md` | 14 (create) | N1 design. |
+| `docs/planning/specs/2026-08-29-backtest-harness-design.md` | 12 (create) | N2 design. |
+| `docs/planning/specs/2026-08-29-formula-error-calibration-design.md` | 13 (create) | M3 design. |
+| `docs/planning/specs/2026-08-29-outcome-backfill-importer-design.md` | 14 (create) | N1 design. |
 
 **Task order matters:** 4 before 5/7/9 (they use `tools/mae_parity.py`); 7 before 8 (M1 needs M2's std); 1 is independent; 12–14 are design-only and can run any time but are listed last.
 
@@ -558,7 +558,7 @@ This task is **measure-first**. Its deliverable is a decision recorded in the le
 
 ## Task 12 (design only): Walk-forward backtest harness spec (N2)
 
-**Deliverable:** `docs/superpowers/specs/2026-08-29-backtest-harness-design.md`, committed. **No implementation in this plan** — a follow-on `writing-plans` cycle builds it from this spec.
+**Deliverable:** `docs/planning/specs/2026-08-29-backtest-harness-design.md`, committed. **No implementation in this plan** — a follow-on `writing-plans` cycle builds it from this spec.
 
 The spec MUST cover, concretely:
 1. **Data sources & time index.** `data/price_history.jsonl` (timestamped snapshots) and per-son `data/sons/son_*/round_history.jsonl` (round-indexed, not wall-clock). State plainly what is and isn't time-reconstructable — checkpoints are not time-indexed, so "the ranker's top-N at time T" has to be rebuilt from `simulations.jsonl` rows whose timestamps precede T.
@@ -574,7 +574,7 @@ The spec MUST cover, concretely:
 
 ## Task 13 (design only): Formula-error calibration model spec (M3)
 
-**Deliverable:** `docs/superpowers/specs/2026-08-29-formula-error-calibration-design.md`, committed.
+**Deliverable:** `docs/planning/specs/2026-08-29-formula-error-calibration-design.md`, committed.
 
 MUST cover:
 1. **Label source and the firewall.** Training pairs are `(features, verified_roi_pct − expected_roi_pct)` where `verified_roi_pct` comes from `verify_queue` Stage-2 external-market cross-checks (Skinport/Buff163/CSFloat) — **not** `data/outcomes.jsonl` (user trades). State why this does not breach the "never train on our own numbers / never merge the two models" rule, and require the code reviewer to confirm it. Data on disk today: `data/verified_low_roi.json` (396 KB), `data/mispriced_skins.json` (660 KB), and `verified_roi_pct` written back onto checkpoint entries.
@@ -589,7 +589,7 @@ MUST cover:
 
 ## Task 14 (design only): Real-outcome backfill importer spec (N1)
 
-**Deliverable:** `docs/superpowers/specs/2026-08-29-outcome-backfill-importer-design.md`, committed.
+**Deliverable:** `docs/planning/specs/2026-08-29-outcome-backfill-importer-design.md`, committed.
 
 MUST cover:
 1. **Problem.** `data/outcomes.jsonl` is empty → `learning.py` (the real ROI model, the app's stated "compare with real prices" goal) is fully dormant. Two-stage logging (backlog P4) reduces friction going forward; this is about seeding history.

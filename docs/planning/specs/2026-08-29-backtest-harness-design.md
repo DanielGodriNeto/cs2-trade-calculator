@@ -3,7 +3,7 @@
 **Date:** 2026-08-29
 **Status:** Design only. A follow-on `writing-plans` cycle builds it from this spec; nothing here is implemented.
 **Owner module (to be created):** `tools/backtest_harness.py` + `tools/backtest/` package. Read-only over `data/`. No `src/` change except the config seams M1/M3/M6 already added.
-**Source finding:** N2 in the 2026-08-29 ML & performance code review (`docs/superpowers/plans/2026-08-29-ml-and-perf-betterments.md`). N3 (stratified candidate generation) is folded in — see §7.
+**Source finding:** N2 in the 2026-08-29 ML & performance code review (`docs/planning/plans/2026-08-29-ml-and-perf-betterments.md`). N3 (stratified candidate generation) is folded in — see §7.
 
 ---
 
@@ -169,7 +169,7 @@ Caveat surfaced in the report: the models on disk are trained on *later* data th
 
 ### 4.2 M3 — formula-error correction on/off
 
-`--m3 {off,on}` (default `off`). When `on`, after step §3.2.3 the harness computes `calibrated_roi_pct = roi_at_T − predicted_formula_error` using the M3 calibration model (design: `docs/superpowers/specs/2026-08-29-formula-error-calibration-design.md`), and the ranker orders on `calibrated_roi_pct` instead of `roi_at_T` (mirrors the `effective_roi` preference `verified → calibrated → expected` from that spec). Requires a trained M3 model artifact path (`--m3-model PATH`); absent → hard error, not a silent fallback.
+`--m3 {off,on}` (default `off`). When `on`, after step §3.2.3 the harness computes `calibrated_roi_pct = roi_at_T − predicted_formula_error` using the M3 calibration model (design: `docs/planning/specs/2026-08-29-formula-error-calibration-design.md`), and the ranker orders on `calibrated_roi_pct` instead of `roi_at_T` (mirrors the `effective_roi` preference `verified → calibrated → expected` from that spec). Requires a trained M3 model artifact path (`--m3-model PATH`); absent → hard error, not a silent fallback.
 
 ### 4.3 M6 — feature sets
 

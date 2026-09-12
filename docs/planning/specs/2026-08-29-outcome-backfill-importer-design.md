@@ -3,7 +3,7 @@
 **Date:** 2026-08-29
 **Status:** Design only. A follow-on `writing-plans` cycle builds it from this spec; nothing here is implemented.
 **Owner module (to be created):** `src/outcome_import.py` + a CLI subcommand + one web endpoint. Writes `data/outcomes.jsonl` through `src/outcomes.py`'s existing helpers only.
-**Source finding:** N1 in the 2026-08-29 ML & performance code review (`docs/superpowers/plans/2026-08-29-ml-and-perf-betterments.md`).
+**Source finding:** N1 in the 2026-08-29 ML & performance code review (`docs/planning/plans/2026-08-29-ml-and-perf-betterments.md`).
 
 ---
 
@@ -180,7 +180,7 @@ Each row is validated before acceptance; a failure rejects **that row only**, im
 
 An **"Import history"** control, wired to a new endpoint `POST /api/outcomes/import` (multipart file upload: the CSV or the saved Steam JSON, plus `mode`, `dry_run`, `currency`). The endpoint calls `outcome_import.run(...)` and returns the accept / skip / needs-review report as JSON; with `dry_run=false` it also returns the appended `Outcome`s. Sits beside the existing `/api/log-outcome` / `/api/update-outcome-sale` handlers (`web/server.py:1023-1047`) and, like them, takes no `state.lock` (`outcomes.py` has its own write lock).
 
-Placement in the redesigned dashboard — cross-referencing `docs/superpowers/plans/2026-08-29-telemetry-hud-redesign.md` and `docs/superpowers/specs/2026-08-29-telemetry-hud-redesign-design.md`:
+Placement in the redesigned dashboard — cross-referencing `docs/planning/plans/2026-08-29-telemetry-hud-redesign.md` and `docs/planning/specs/2026-08-29-telemetry-hud-redesign-design.md`:
 
 - **Primary home: the Connections screen (`CONN`).** The redesign runs Connections through `js/views/legacy.js` (telemetry-HUD plan Task 6 / spec §7.1) — it mounts the current markup + bind logic, CSS-reskinned only. The importer control is a small panel there ("Backfill / Import" section): a file picker, a `mode` toggle (Manual CSV / Steam JSON), a "Dry run" checkbox (default checked), a "Download CSV template" link (serves a static header-only CSV), and a results `<pre>` for the report. Connections is the natural fit because it is already the "hook the tool up to your data" screen (CSFloat key, GitHub backup, NTFY).
 - **Secondary surfacing: the Overview screen (`OVW`).** Per spec §6.1, OVW shows a "Learning progress" KPI cell and three inline connection status chips. When `learning.get_model_status()` reports `trained: false` **and** `outcomes.stats()["n_total"] == 0`, the "Learning progress" cell renders a one-line call to action — `0 outcomes · Import history →` — linking to the `CONN` importer panel. This is the discoverability path: the user who never opens Connections still sees, on the landing screen, that the real-ROI model is starved and that there's a way to feed it. It disappears once any outcome exists.

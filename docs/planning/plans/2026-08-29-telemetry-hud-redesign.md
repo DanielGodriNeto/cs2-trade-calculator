@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla ES modules, CSS custom properties + CSS grid, [uPlot](https://github.com/leeoniya/uPlot) (vendored, ~45 KB), HTML5 canvas (heatmap), Python stdlib `http.server` (unchanged except static routing). Google Fonts: Space Grotesk + JetBrains Mono.
 
-**Spec:** `docs/superpowers/specs/2026-08-29-telemetry-hud-redesign-design.md`
+**Spec:** `docs/planning/specs/2026-08-29-telemetry-hud-redesign-design.md`
 
 ## Global Constraints
 

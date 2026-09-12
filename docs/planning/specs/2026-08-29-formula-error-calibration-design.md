@@ -3,7 +3,7 @@
 **Date:** 2026-08-29
 **Status:** Design only. A follow-on `writing-plans` cycle builds it from this spec; nothing here is implemented.
 **Owner module (to be created):** `src/formula_calibration.py` — a **third** model, structurally parallel to `src/learning.py` and `src/sim_learning.py`, never merged with either.
-**Source finding:** M3 in the 2026-08-29 ML & performance code review (`docs/superpowers/plans/2026-08-29-ml-and-perf-betterments.md`).
+**Source finding:** M3 in the 2026-08-29 ML & performance code review (`docs/planning/plans/2026-08-29-ml-and-perf-betterments.md`).
 
 ---
 
@@ -116,7 +116,7 @@ calibrated_roi_pct      = expected_roi_pct - predicted_formula_error
 
 `calibrated_roi_pct` is attached:
 - onto the `SimulationRecord` as a new optional field `calibrated_roi_pct: float | None = None` (default `None` so old `simulations.jsonl` lines still load via `SimulationRecord(**json.loads(line))`, same backward-compat reasoning as `avg_input_float` / `ml_predicted_roi_pct` already documented at `simulate.py:249-266`), set by `sim_loop.run_round()` right after `simulate()` returns — the same "one place that actually knows" pattern already used there for `agent` and `ml_predicted_roi_pct`;
-- onto the ranking payload (`ranking.rank()` output dicts) and the dashboard row, **beside** the existing three ROI numbers — formula (`expected_roi_pct`), ML (`ml_predicted_roi_pct`), verified (`verified_roi_pct`) — so the operator sees all four. This is the same panel the telemetry-HUD OPPS row-expand already plans to show "formula ROI + ML ROI + verified ROI shown together" (`docs/superpowers/specs/2026-08-29-telemetry-hud-redesign-design.md` §6.2); M3 adds a fourth cell, `calibrated`.
+- onto the ranking payload (`ranking.rank()` output dicts) and the dashboard row, **beside** the existing three ROI numbers — formula (`expected_roi_pct`), ML (`ml_predicted_roi_pct`), verified (`verified_roi_pct`) — so the operator sees all four. This is the same panel the telemetry-HUD OPPS row-expand already plans to show "formula ROI + ML ROI + verified ROI shown together" (`docs/planning/specs/2026-08-29-telemetry-hud-redesign-design.md` §6.2); M3 adds a fourth cell, `calibrated`.
 
 ### 4.2 `ranking.effective_roi` preference order
 
