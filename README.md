@@ -1,5 +1,16 @@
 # CS2 Trade-Up & Anomaly Scanner
 
+<p align="center">
+  <img src="docs/images/portfolio-preview.png" alt="CS2 Trade-Up & Anomaly Scanner overview" width="800">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.x-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/React-Dashboard-61dafb?style=flat-square&logo=react&logoColor=white" alt="React">
+  <img src="https://img.shields.io/badge/API-30%2B%20endpoints-orange?style=flat-square" alt="30+ endpoints">
+  <img src="https://img.shields.io/badge/Trading-Read--only-red?style=flat-square" alt="Read-only, no auto-buy">
+</p>
+
 Finds CS2 trade-up contracts and Steam Market listings that look profitable, using
 public price data. This is a **read-only scanner** -- it does not log into Steam,
 does not place buy/sell orders, and does not touch any inventory or account.
