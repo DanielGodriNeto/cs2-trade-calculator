@@ -1590,6 +1590,11 @@ def main():
     threading.Thread(target=backup_engine_mod.worker_loop, args=(backup_worker,),
                       daemon=True).start()
 
+    if HOST not in ("127.0.0.1", "localhost") and not DASHBOARD_PASS:
+        print(f"WARNING: binding {HOST} (non-loopback) with DASHBOARD_PASS unset -- "
+              f"do_POST's write endpoints are reachable with no auth. Set DASHBOARD_USER "
+              f"and DASHBOARD_PASS to require login for writes.", file=sys.stderr)
+
     httpd = QuietThreadingHTTPServer((HOST, PORT),
                                  make_handler(state, retrain_state, price_scan_state,
                                               sim_population, verify_queue_state, convergence_watcher,
