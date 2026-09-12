@@ -8,7 +8,9 @@ orders, or touches an inventory -- see ../README.md for why.
 Run with:  python web/server.py   (from the cs2-trade-calculator directory)
 Then open: http://127.0.0.1:5000
 """
+import base64
 import csv
+import hmac
 import io
 import json
 import os
@@ -66,6 +68,27 @@ import tempfile
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 PORT = int(os.environ.get("PORT", "5000"))
+# ponytail: default HOST to 0.0.0.0 whenever PORT is set by the environment (Render, and
+# most other hosts, always set PORT; a bare `python web/server.py` locally never does) --
+# don't depend on the host platform actually applying render.yaml's HOST=0.0.0.0, which only
+# happens if the Render service is Blueprint-linked. Explicit HOST env var still wins either way.
+HOST = os.environ.get("HOST") or ("0.0.0.0" if "PORT" in os.environ else "127.0.0.1")
+# ponytail: HTTP Basic Auth, only enforced when DASHBOARD_PASS is set. Local `python
+# web/server.py` runs with no env vars, so this stays a no-op there -- the local threat
+# model at line ~955 (bind to 127.0.0.1 only) is unchanged. Set HOST=0.0.0.0 plus these two
+# to expose this on a public host; upgrade to per-user accounts if more than one person
+# needs access.
+DASHBOARD_USER = os.environ.get("DASHBOARD_USER", "")
+DASHBOARD_PASS = os.environ.get("DASHBOARD_PASS", "")
+
+
+def _basic_auth_ok(auth_header: str, user: str, password: str) -> bool:
+    """True if `auth_header` (the request's raw Authorization value) matches
+    user/password, or if password is empty (auth disabled -- the local-dev default)."""
+    if not password:
+        return True
+    expected = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+    return hmac.compare_digest(auth_header, expected)
 
 
 def _compute_app_version() -> dict:
@@ -453,6 +476,14 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                   pattern_scan_state: "pattern_scanner_mod.PatternScanState",
                   backup_worker: "backup_engine_mod.BackupWorkerState"):
     class Handler(BaseHTTPRequestHandler):
+        def _check_auth(self) -> bool:
+            if _basic_auth_ok(self.headers.get("Authorization", ""), DASHBOARD_USER, DASHBOARD_PASS):
+                return True
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="CS2 Scanner"')
+            self.end_headers()
+            return False
+
         def _send_json(self, obj, status=200):
             body = json.dumps(obj).encode("utf-8")
             self.send_response(status)
@@ -479,6 +510,9 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
             return json.loads(raw or b"{}")
 
         def do_GET(self):
+            # Read-only: no auth gate. Everything served here is the public, read-only
+            # dashboard -- the same one linked from the portfolio for reviewers to open
+            # without a login. DASHBOARD_PASS still gates every write in do_POST below.
             path = urlparse(self.path).path
             if path == "/":
                 return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
@@ -870,6 +904,8 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
             self.end_headers()
 
         def do_POST(self):
+            if not self._check_auth():
+                return
             path = urlparse(self.path).path
             if path == "/api/config":
                 length = int(self.headers.get("Content-Length", 0) or 0)
@@ -952,9 +988,12 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 # thing that can read the steamLoginSecure cookie -- it is HttpOnly, so no page
                 # script or bookmarklet can, by design.
                 #
-                # Threat model, since this accepts a session token: the server already binds
-                # 127.0.0.1 only, so nothing off-machine can reach it. The remaining exposure is
-                # a malicious PAGE in the user's own browser POSTing here cross-origin. Two
+                # Threat model, since this accepts a session token: by default the server binds
+                # 127.0.0.1 only, so nothing off-machine can reach it. If HOST is set to expose
+                # this beyond localhost (see HOST/DASHBOARD_PASS above), _check_auth() gates
+                # every request first, so this endpoint is never reachable pre-auth either way.
+                # The remaining exposure once authenticated is a malicious PAGE in the user's
+                # own browser POSTing here cross-origin. Two
                 # things close that: (1) a browser extension sends Origin: chrome-extension://...
                 # (or moz-extension://), and a normal web page cannot forge that header; (2) a
                 # page attempting this with Content-Type: application/json triggers a CORS
@@ -1551,11 +1590,11 @@ def main():
     threading.Thread(target=backup_engine_mod.worker_loop, args=(backup_worker,),
                       daemon=True).start()
 
-    httpd = QuietThreadingHTTPServer(("127.0.0.1", PORT),
+    httpd = QuietThreadingHTTPServer((HOST, PORT),
                                  make_handler(state, retrain_state, price_scan_state,
                                               sim_population, verify_queue_state, convergence_watcher,
                                               round_robin, pattern_scan_state, backup_worker))
-    print(f"CS2 scanner dashboard running at http://127.0.0.1:{PORT}  (Ctrl+C to stop)")
+    print(f"CS2 scanner dashboard running at http://{HOST}:{PORT}  (Ctrl+C to stop)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
