@@ -62,11 +62,31 @@ from src import pattern_db as pattern_db_mod
 from src import pattern_scanner as pattern_scanner_mod
 from src import backup_engine as backup_engine_mod
 from src import connections_config as connections_config_mod
+from src import inventory as inventory_mod
 from src import alerts as alerts_mod
 from src import watch_loop as watch_loop_mod
 import tempfile
 
+INVENTORY_CACHE_FILE = Path(__file__).resolve().parent.parent / "data" / "inventory_cache.json"
+
+
+def _save_inventory_cache(result: dict) -> None:
+    """Persist the last successfully-loaded inventory so it survives restarts and Phase 4's
+    inventory-aware opportunity annotations can read it server-side. Best-effort."""
+    try:
+        INVENTORY_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = INVENTORY_CACHE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(result), encoding="utf-8")
+        tmp.replace(INVENTORY_CACHE_FILE)
+    except OSError:
+        pass
+
+
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+# The React+Vite frontend builds to frontend/dist (see frontend/vite.config.js). When that
+# build exists we serve it as the dashboard; otherwise we fall back to the legacy hand-written
+# static/ dashboard, so the server keeps working before the first `npm run build`.
+DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 PORT = int(os.environ.get("PORT", "5000"))
 # ponytail: default HOST to 0.0.0.0 whenever PORT is set by the environment (Render, and
 # most other hosts, always set PORT; a bare `python web/server.py` locally never does) --
@@ -509,26 +529,35 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
             raw = self.rfile.read(length) if length else b"{}"
             return json.loads(raw or b"{}")
 
-        def do_GET(self):
-            # Read-only: no auth gate. Everything served here is the public, read-only
-            # dashboard -- the same one linked from the portfolio for reviewers to open
-            # without a login. DASHBOARD_PASS still gates every write in do_POST below.
-            path = urlparse(self.path).path
-            if path == "/":
-                return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
-            if path == "/app.js":
-                return self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
-            if path == "/style.css":
-                return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8")
-            if path == "/charts-selftest.html":
-                return self._send_file(STATIC_DIR / "charts-selftest.html", "text/html; charset=utf-8")
+        def _serve_frontend(self, path: str) -> bool:
+            """Serves the built React SPA (frontend/dist) for any non-/api path, with a fallback
+            to index.html for client-side routes (so a hard refresh on /opportunities works).
+            Returns True if it handled the request. When dist/ doesn't exist yet, serves the
+            legacy static/ dashboard so the server still works before the first `npm run build`."""
+            import mimetypes
+            # Legacy dashboard escape hatch: the new React UI doesn't yet replicate every
+            # power-user feature (outcome logging, market-intelligence registries, connections
+            # editing, sim-population controls, CSV/XLSX exports). The old hand-written dashboard
+            # stays fully reachable at /legacy until the React UI reaches parity. Its assets are
+            # /app.js and /style.css (Vite puts its own under /assets/, so there's no collision).
+            if path in ("/legacy", "/legacy/", "/legacy/index.html"):
+                return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8") or True
+            if path == "/app.js" and (STATIC_DIR / "app.js").exists():
+                return self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8") or True
+            if path == "/style.css" and (STATIC_DIR / "style.css").exists():
+                return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8") or True
+            if path == "/charts-selftest.html" and (STATIC_DIR / "charts-selftest.html").exists():
+                return self._send_file(STATIC_DIR / "charts-selftest.html", "text/html; charset=utf-8") or True
             if path.startswith("/js/") or path.startswith("/vendor/"):
+                # Legacy dashboard's vendored assets (index.html references these at the root,
+                # not under /legacy/ -- see web/static/index.html). Same traversal guard as
+                # do_GET used before the frontend routing existed.
                 rel = path.lstrip("/")
                 if ".." in rel.replace("\\", "/").split("/"):
-                    self.send_response(403); self.end_headers(); return
+                    self.send_response(403); self.end_headers(); return True
                 target = (STATIC_DIR / rel).resolve()
                 if not target.is_file() or not target.is_relative_to(STATIC_DIR.resolve()):
-                    self.send_response(404); self.end_headers(); return
+                    self.send_response(404); self.end_headers(); return True
                 ext = rel.rsplit(".", 1)[-1].lower()
                 ctype = {
                     "js": "application/javascript; charset=utf-8",
@@ -536,7 +565,35 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                     "html": "text/html; charset=utf-8",
                     "map": "application/json; charset=utf-8",
                 }.get(ext, "application/octet-stream")
-                return self._send_file(target, ctype)
+                return self._send_file(target, ctype) or True
+            if DIST_DIR.exists():
+                # Map the URL path to a file under dist/. "/" and unknown client-routes -> the
+                # SPA shell. A path is treated as a real asset only if the file actually exists
+                # inside dist (guards against path traversal + serving index.html as a 404).
+                rel = path.lstrip("/")
+                candidate = (DIST_DIR / rel).resolve() if rel else None
+                if candidate is not None and DIST_DIR.resolve() in candidate.parents and candidate.is_file():
+                    ctype = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
+                    return self._send_file(candidate, ctype) or True
+                # Client-side route or "/" -> serve the SPA entry point.
+                return self._send_file(DIST_DIR / "index.html", "text/html; charset=utf-8") or True
+            # Legacy fallback (pre-build): the old three-file dashboard.
+            if path in ("/", "/index.html"):
+                return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8") or True
+            if path == "/app.js":
+                return self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8") or True
+            if path == "/style.css":
+                return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8") or True
+            return False
+
+        def do_GET(self):
+            # Read-only: no auth gate. Everything served here is the public, read-only
+            # dashboard -- the same one linked from the portfolio for reviewers to open
+            # without a login. DASHBOARD_PASS still gates every write in do_POST below.
+            path = urlparse(self.path).path
+            if not path.startswith("/api/"):
+                if self._serve_frontend(path):
+                    return
             if path == "/api/status":
                 return self._send_json(state.snapshot())
             if path == "/api/tradeups":
@@ -677,6 +734,34 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                     if len(out) >= 30:
                         break
                 return self._send_json(out)
+            if path == "/api/inventory/cached":
+                # The last inventory loaded by EITHER path (public fetch or extension import),
+                # so the My Skins page can pick up an extension import it didn't initiate, and
+                # the inventory-aware opportunity annotations survive a page reload.
+                if INVENTORY_CACHE_FILE.exists():
+                    try:
+                        return self._send_json(json.loads(INVENTORY_CACHE_FILE.read_text(encoding="utf-8")))
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                return self._send_json({"ok": False, "error": "no inventory loaded yet"})
+            if path == "/api/inventory":
+                # Load & value a PUBLIC CS2 inventory by SteamID/vanity/profile-URL. Keyless,
+                # read-only (see src/inventory.py). For the user's OWN private inventory, the
+                # steamLoginSecure cookie they've saved under Connections is passed along so
+                # Steam returns it -- anyone else's private inventory still 403s, as it should.
+                params = parse_qs(urlparse(self.path).query)
+                steamid = params.get("steamid", [""])[0].strip()
+                cur_param = params.get("currency", ["1"])[0]
+                currency = int(cur_param) if cur_param.isdigit() else 1
+                if not steamid:
+                    return self._send_json({"ok": False, "error": "Enter a SteamID, profile URL, or custom URL name."}, 400)
+                cookie = connections_config_mod.load_config().get("steam_login_secure") or None
+                try:
+                    result = inventory_mod.fetch_public(steamid, currency, steam_cookie=cookie)
+                    _save_inventory_cache(result)
+                    return self._send_json(result)
+                except inventory_mod.InventoryError as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
             if path == "/api/mispriced-skins":
                 params = parse_qs(urlparse(self.path).query)
                 cur_param = params.get("currency", ["1"])[0]
@@ -907,6 +992,24 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
             if not self._check_auth():
                 return
             path = urlparse(self.path).path
+            if path == "/api/inventory/import":
+                # The browser extension POSTs an inventory JSON blob it fetched from the
+                # logged-in Steam session, so PRIVATE inventories work without this server ever
+                # touching the user's Steam credentials (see src/inventory.py import_raw).
+                try:
+                    body = self._read_json_body()
+                except json.JSONDecodeError:
+                    return self._send_json({"ok": False, "error": "invalid JSON"}, 400)
+                try:
+                    cur = int(body.get("currency", 1))
+                except (TypeError, ValueError):
+                    cur = 1
+                try:
+                    result = inventory_mod.import_raw(body, cur)
+                    _save_inventory_cache(result)
+                    return self._send_json(result)
+                except inventory_mod.InventoryError as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
             if path == "/api/config":
                 length = int(self.headers.get("Content-Length", 0) or 0)
                 raw = self.rfile.read(length) if length else b"{}"
@@ -1515,6 +1618,17 @@ def main():
     # Apply any previously-saved Connections settings (CSFloat key, NTFY topic/server) before
     # anything else starts -- see src/connections_config.py for why this lives outside data/.
     connections_config_mod.apply_to_runtime()
+
+    # Compact the market-reliability audit log if it has grown huge (it's append-only and had
+    # reached ~3.8 GB in normal use). Archives the full history into git-carried .jsonl.gz chunks
+    # first, then trims the live file to its recent tail -- no data is lost. Best-effort and
+    # a no-op cheap size check when the file is already small. Done synchronously before the
+    # background loops (one of which appends to this very file) start.
+    compacted = market_reliability_mod.compact_log()
+    if compacted:
+        print(f"Compacted market_reliability_log.jsonl: "
+              f"{compacted['bytes_before'] / 1e9:.2f} GB -> {compacted['bytes_after'] / 1e6:.1f} MB "
+              f"(full history preserved in data/archive/market_reliability_log/)")
 
     # Absorb sklearn's one-time per-process startup cost (~3.2s: the import itself plus a
     # further ~1.6s hidden inside the first gradient-boosting fit) on a throwaway 32-row fit

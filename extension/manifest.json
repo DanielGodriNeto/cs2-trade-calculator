@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "CS2 Trade-Up Dashboard -- Steam Session Sync",
-  "version": "1.0.0",
-  "description": "Sends your Steam session cookie to your own locally-running CS2 Trade-Up dashboard, so the Rare Patterns scanner gets Steam's authenticated rate limit instead of the anonymous one.",
+  "name": "CS2 Trade-Up Dashboard -- Steam Session & Inventory Sync",
+  "version": "1.1.0",
+  "description": "Sends your Steam session cookie to your own locally-running CS2 Trade-Up dashboard (so the Rare Patterns scanner gets Steam's authenticated rate limit) and imports your CS2 inventory for the My Skins page -- works even on a private inventory. Nothing is sent anywhere except localhost.",
   "permissions": ["cookies"],
   "host_permissions": [
     "https://steamcommunity.com/*",
@@ -11,7 +11,7 @@
   ],
   "background": { "service_worker": "background.js" },
   "action": {
-    "default_title": "Sync Steam session to CS2 dashboard",
+    "default_title": "Sync Steam session + import inventory to CS2 dashboard",
     "default_icon": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
   },
   "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }

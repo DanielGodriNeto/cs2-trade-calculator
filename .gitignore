@@ -9,6 +9,14 @@ __pycache__/
 # subagent-driven-development scratch: per-plan briefs, reports, review packages, progress ledger
 .superpowers/
 
+# React + Vite frontend: node_modules is huge/regenerable (npm install), dist is a build
+# artifact rebuilt by `npm run build` and served by web/server.py. Source under frontend/src
+# IS tracked. (data/inventory_cache.json and the various data/*.jsonl exceptions this section
+# used to list are now redundant -- see the blanket /data/ ignore below.)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
 # tools/mae_parity.py's per-son CV-MAE baseline -- machine-local, re-baselined on `main`
 tools/.mae_baseline.json
 

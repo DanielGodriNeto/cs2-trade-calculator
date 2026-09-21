@@ -1,0 +1,54 @@
+/* Design tokens — the single source of truth for colour, spacing, type and radius.
+   Deliberately DARK-ONLY and high-contrast, matching the original dashboard's look: a
+   near-black background, one phosphor-green accent used sparingly, sharp corners and a
+   monospace face. No light theme — the old style was mostly black and stays that way. */
+
+:root {
+  /* Core surfaces — near-black, minimal tint, stepped for contrast */
+  --bg: #070807;
+  --bg-2: #0b0d0b;
+  --surface: #101310;
+  --surface-2: #171b16;
+  --card: #0e110d;
+  --chip: #171b16;
+
+  --border: #2b322a;
+  --border-strong: #414a40;
+
+  /* Text — brighter than the old #c9d1c9 for higher contrast on true black */
+  --text: #d8e0d6;
+  --text-2: #97a295;
+  --text-dim: #6b756a;
+
+  /* One accent: phosphor green (old --accent #39d97a) */
+  --accent: #39d97a;
+  --accent-strong: #2fbf68;
+  --accent-ink: #05130a; /* text on an accent fill */
+
+  /* Semantic status colours (carried from the old palette) */
+  --win: #39d97a;
+  --loss: #e0524f;
+  --warn: #d9a83c;
+  --info: #7a7fd9;
+
+  /* Spacing scale */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* Sharp corners, like the old dashboard */
+  --radius: 4px;
+  --radius-sm: 2px;
+  --radius-lg: 6px;
+
+  /* Monospace face, like the old dashboard */
+  --font: "Cascadia Mono", "Consolas", "SF Mono", "JetBrains Mono", ui-monospace, "Liberation Mono", monospace;
+  --mono: var(--font);
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+}

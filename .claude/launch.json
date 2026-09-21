@@ -15,6 +15,12 @@
       "port": 5001,
       "url": "http://127.0.0.1:5001",
       "env": { "PORT": "5001" }
+    },
+    {
+      "name": "frontend-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 5173
     }
   ]
 }

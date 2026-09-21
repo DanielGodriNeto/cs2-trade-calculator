@@ -214,6 +214,90 @@ def split_source(label: str, path: Path, ts_keys: tuple[str, ...]) -> list[dict]
     return written
 
 
+_TAIL_CHUNK_BYTES = 1 << 20  # 1 MB reverse-read step for compact_live_to_tail's tail walk
+
+
+def _tail_cut_offset(path: Path, keep_lines: int) -> int:
+    """Byte offset of the start of the last `keep_lines` lines of `path`, found by seeking
+    backwards from EOF in chunks (never reads the whole file -- the point of this whole
+    exercise). Returns a line boundary: 0 (keep everything, fewer lines than asked), or the
+    offset just after a newline.
+
+    Trailing-newline handling: to keep K lines we must find the newline that TERMINATES the line
+    just BEFORE the block, and cut right after it. The file's own final newline terminates the
+    last kept line, not a boundary between kept lines, so when the file ends in '\\n' we look for
+    K+1 newlines rather than K. A file with no final newline (a partial last record still being
+    appended) needs exactly K, and the partial line is correctly kept as the newest record."""
+    size = path.stat().st_size
+    if size == 0:
+        return 0
+    with open(path, "rb") as f:
+        f.seek(size - 1)
+        target = keep_lines + (1 if f.read(1) == b"\n" else 0)
+        pos = size
+        newlines = 0
+        while pos > 0:
+            step = min(_TAIL_CHUNK_BYTES, pos)
+            pos -= step
+            f.seek(pos)
+            chunk = f.read(step)
+            idx = len(chunk)
+            while True:
+                nl = chunk.rfind(b"\n", 0, idx)
+                if nl == -1:
+                    break
+                newlines += 1
+                idx = nl
+                if newlines == target:
+                    return pos + nl + 1  # first byte after this newline = start of kept block
+    return 0  # walked to the start without hitting `target` newlines -> keep everything
+
+
+def compact_live_to_tail(label: str, path: Path, ts_keys: tuple[str, ...],
+                         keep_lines: int) -> dict | None:
+    """Shrinks a giant live JSONL log to just its last `keep_lines` records, WITHOUT losing any
+    history: every complete not-yet-archived line is flushed into immutable .jsonl.gz chunks
+    first (via split_source), so the full audit trail survives in data/archive/<label>/ (the
+    git-carried record). Only then is the live file rewritten to its tail.
+
+    The manifest's bytes_archived offset is adjusted so a later split_all() neither re-archives
+    the retained tail nor skips the un-archived remainder inside it:
+
+        old file bytes [0 .. S), archived up to offset A (A = last complete-line boundary)
+        keep the tail [C .. S)  -> new file is those (S - C) bytes
+        of the new file, bytes [0 .. A-C) were already archived; [A-C .. end) were not
+        so new bytes_archived = max(0, A - C)
+
+    Because split_source archives every complete line, A is always at/after the complete-line
+    boundary C, so A - C >= 0 and no double-archiving can occur. Returns a small summary dict
+    (or None if nothing to do)."""
+    if not path.exists():
+        return None
+    size_before = path.stat().st_size
+    split_source(label, path, ts_keys)  # flush full history to chunks first -- never lose data
+    manifest = _load_manifest(label, path)
+    archived = manifest["bytes_archived"]
+    cut = _tail_cut_offset(path, keep_lines)
+    if cut <= 0:
+        return None  # file already <= keep_lines lines; nothing to trim
+    size = path.stat().st_size
+    tmp = path.with_suffix(path.suffix + ".compact-tmp")
+    kept = 0
+    with open(path, "rb") as src, open(tmp, "wb") as out:
+        src.seek(cut)
+        while True:
+            block = src.read(_TAIL_CHUNK_BYTES)
+            if not block:
+                break
+            out.write(block)
+            kept += len(block)
+    os.replace(tmp, path)
+    manifest["bytes_archived"] = max(0, archived - cut)
+    _save_manifest(label, manifest)
+    return {"label": label, "bytes_before": size_before, "bytes_after": kept,
+            "lines_kept": keep_lines, "reclaimed": size - kept}
+
+
 def split_all() -> None:
     total = 0
     for label, path, ts_keys in sources():

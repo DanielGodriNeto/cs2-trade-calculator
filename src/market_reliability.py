@@ -82,6 +82,15 @@ RECHECK_POLL_INTERVAL_SECONDS = 30 * 60  # run_periodic_recheck re-derives EVERY
 VALID_STATES = ("healthy", "suspicious", "excluded")
 MAX_LOG_KEPT = 2000
 
+# Startup compaction (see compact_log): the live audit log is APPEND-ONLY and unbounded, and
+# had grown to ~3.8 GB in normal use. Its full history is preserved in git-carried .jsonl.gz
+# chunks by split_archive.py; the live file only ever needs its recent tail (list_log caps at
+# MAX_LOG_KEPT, run_periodic_recheck only appends). So on startup, if the live file exceeds
+# COMPACT_THRESHOLD_BYTES, we archive everything and trim it to the last COMPACT_KEEP_LINES
+# records. Threshold is generous so a healthy day-to-day file is never rewritten.
+COMPACT_THRESHOLD_BYTES = 256 * 1024 * 1024  # 256 MB
+COMPACT_KEEP_LINES = 20000  # ~10x MAX_LOG_KEPT so the dashboard listing keeps full depth
+
 _write_lock = threading.Lock()
 _override_lock = threading.Lock()
 _override_store: dict | None = None  # lazy in-process cache, same shape as mispriced_skins._store
@@ -385,22 +394,44 @@ def _append_log(transition: dict) -> None:
 
 
 def list_log(limit: int = MAX_LOG_KEPT) -> list[dict]:
-    """Most recent transitions first. Skips corrupt trailing lines rather than raising, same
-    convention as price_history.get_history."""
+    """Most recent transitions first. Skips corrupt lines rather than raising, same convention
+    as price_history.get_history.
+
+    Reads only the last `limit` lines by seeking backwards from EOF (simulate._tail_lines)
+    instead of scanning the whole file front-to-back -- the live log can be hundreds of MB even
+    after compaction, and this function used to load every byte of it on every dashboard poll."""
     if not LOG_FILE.exists():
         return []
+    from .simulate import _tail_lines  # local import: simulate imports steam_prices which
+    # imports us transitively at module load in some paths; keep this edge lazy.
+    raw_lines, _ = _tail_lines(LOG_FILE, limit)
     out = []
-    with open(LOG_FILE, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    out.reverse()
+    for raw in raw_lines:
+        try:
+            out.append(json.loads(raw))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+    out.reverse()  # _tail_lines returns oldest-first; the dashboard wants newest-first
     return out[:limit]
+
+
+def compact_log(threshold_bytes: int = COMPACT_THRESHOLD_BYTES,
+                keep_lines: int = COMPACT_KEEP_LINES) -> dict | None:
+    """One-shot: if the live audit log has grown past `threshold_bytes`, archive its full
+    history into git-carried .jsonl.gz chunks and trim the live file to its last `keep_lines`
+    records. Safe to call at startup on every boot -- it's a cheap size stat when the file is
+    already small, and split_archive.compact_live_to_tail never loses or double-archives data.
+    Returns a summary dict when it trimmed, else None. Best-effort: any error is swallowed so a
+    disk hiccup here can never stop the server from starting."""
+    try:
+        if not LOG_FILE.exists() or LOG_FILE.stat().st_size < threshold_bytes:
+            return None
+        from . import split_archive as split_archive_mod
+        with _write_lock:  # block concurrent _append_log during the rewrite
+            return split_archive_mod.compact_live_to_tail(
+                "market_reliability_log", LOG_FILE, ("at",), keep_lines)
+    except Exception:
+        return None
 
 
 def _record_state(rs: ReliabilityState) -> bool:

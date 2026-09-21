@@ -1,0 +1,27 @@
+{
+  "name": "cs2-trade-calculator-frontend",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "React + Vite dashboard for the CS2 Trade-Up & Anomaly Scanner. Built output (dist/) is served by the project's stdlib Python server (web/server.py).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.59.0",
+    "chart.js": "^4.4.4",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.8"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}
