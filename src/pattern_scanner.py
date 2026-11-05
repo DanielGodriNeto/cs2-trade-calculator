@@ -762,8 +762,20 @@ def _base_price(name: str, metrics: dict) -> tuple[float | None, str]:
     from . import bulk_prices  # lazy, matches this codebase's keep-startup-light convention
     steam_entry = bulk_prices.get_steam_entry(name, 1)
     if steam_entry and steam_entry.get("median_price"):
-        return steam_entry["median_price"], "steam"
+        window = steam_entry["source"].rpartition(":")[2]  # "csgotrader:last_90d" -> "last_90d"
+        if window in ("last_24h", "last_7d"):
+            return steam_entry["median_price"], "steam"
+        return steam_entry["median_price"], f"steam_{window}"  # != "steam": confidence demoted
     return metrics["consensus_price"], "consensus"
+
+
+def _base_basis_text(base_source: str) -> str:
+    if base_source == "steam":
+        return "Steam median-sale price"
+    if base_source.startswith("steam_"):
+        window = base_source.removeprefix("steam_")
+        return f"Steam median-sale price ({window} window, confidence demoted)"
+    return "cross-market consensus price (no Steam sale evidence -- confidence demoted)"
 
 
 def _opportunity_from_item(item: dict, ask: float, entry: dict, name: str, *, marketplace: str,
@@ -814,7 +826,7 @@ def _opportunity_from_item(item: dict, ask: float, entry: dict, name: str, *, ma
         "explanation": (f"{entry.get('label')} -- documented collector pattern "
                         f"({'seed ' + str(item.get('paint_seed')) if entry.get('type') == 'paint_seed' else 'paint index ' + str(item.get('paint_index')) if entry.get('type') == 'paint_index' else 'sticker craft'}). "
                         f"Ordinary {name} "
-                        f"{'Steam median-sale price' if base_source == 'steam' else 'cross-market consensus price (no Steam sale evidence -- confidence demoted)'} "
+                        f"{_base_basis_text(base_source)} "
                         f"is {base:.2f}; this pattern's documented premium "
                         f"(~{entry.get('premium_multiplier')}x, conservative) values it near "
                         f"{collector_value:.2f}, "

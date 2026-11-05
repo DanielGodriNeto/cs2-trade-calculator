@@ -415,7 +415,8 @@ def get_price(market_hash_name: str, currency: int = 1, abort_check=None) -> dic
             # outage, not information about this item, and it must not masquerade as
             # "confirmed no price" for a day (same reasoning as _live_steam_fetch's own
             # transient-error paths).
-            if bulk_prices.get_stats()["steam_feed"]["n_items"]:
+            # FX-down also yields None here; that is not "no listings", so don't cache it.
+            if bulk_prices.get_stats()["steam_feed"]["n_items"] and bulk_prices.fx_available(currency):
                 _cache[key] = {"_fetched_at": time.time(), "data": None}
                 _save_cache()
             else:

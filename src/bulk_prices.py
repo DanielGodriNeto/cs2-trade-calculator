@@ -222,14 +222,21 @@ def _persist_feed(feed: str, entry: dict) -> None:
 
 def rate_for(currency: int) -> float:
     """Public alias for _rate_for -- user_overrides.py converts user-entered override prices
-    between currencies through the same rates feed every bulk price conversion here uses."""
-    return _rate_for(currency)
+    between currencies through the same rates feed every bulk price conversion here uses.
+    Still 1.0 when the feed is down: user_overrides._convert divides by it and cannot take None
+    (follow-up in user_overrides.py)."""
+    rate = _rate_for(currency)
+    return 1.0 if rate is None else rate
 
 
-def _rate_for(currency: int) -> float:
-    """USD -> the given Steam currency code (steam_prices.CURRENCIES). Unknown code or a
-    missing/unloadable rates feed falls back to 1.0 (i.e. prices stay USD) rather than
-    failing the whole price lookup over a conversion nicety."""
+def fx_available(currency: int) -> bool:
+    return _rate_for(currency) is not None
+
+
+def _rate_for(currency: int) -> float | None:
+    """USD -> the given Steam currency code (steam_prices.CURRENCIES). None when the rates feed
+    is missing/unloadable or has no rate: a USD number must never be passed off as another
+    currency, so callers skip the price instead."""
     if currency == 1:
         return 1.0
     from . import steam_prices  # lazy: steam_prices lazily imports this module right back,
@@ -237,7 +244,7 @@ def _rate_for(currency: int) -> float:
     iso = steam_prices.CURRENCIES.get(currency, ("USD",))[0]
     rates = _load_feed("rates") or {}
     rate = rates.get(iso)
-    return float(rate) if rate else 1.0
+    return float(rate) if rate else None
 
 
 # Preference order across steam.json's averaging windows: the shortest window with data is
@@ -262,13 +269,16 @@ def get_steam_entry(market_hash_name: str, currency: int = 1) -> dict | None:
     data = _load_feed("steam")
     if not data:
         return None
+    rate = _rate_for(currency)
+    if rate is None:
+        return None
     entry = data.get(market_hash_name)
     if not isinstance(entry, dict):
         return None
     for window in _STEAM_WINDOWS:
         price = entry.get(window)
         if price is not None:
-            converted = round(float(price) * _rate_for(currency), 2)
+            converted = round(float(price) * rate, 2)
             return {"lowest_price": converted, "median_price": converted, "volume": None,
                     "source": f"csgotrader:{window}"}
     return None
@@ -300,12 +310,14 @@ def _listing_map(feed: str, currency: int, extract) -> dict:
     data = _load_feed(feed)
     if not data:
         return {}
+    rate = _rate_for(currency)
+    if rate is None:
+        return {}  # not cached: the next call retries once the rates feed is back
     with _lock:
         fetched_at = _feeds[feed]["_fetched_at"]
         cached = _converted_maps.get((feed, currency))
         if cached and cached["_from_fetch"] == fetched_at:
             return cached["map"]
-    rate = _rate_for(currency)
     converted = {}
     for name, entry in data.items():
         price = extract(entry)

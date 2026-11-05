@@ -336,11 +336,14 @@ def has_overrides() -> bool:
         return bool(_overrides)
 
 
-def _convert(price: float, from_currency: int, to_currency: int) -> float:
+def _convert(price: float, from_currency: int, to_currency: int) -> float | None:
     if from_currency == to_currency:
         return price
     from . import bulk_prices  # lazy -- exchange rates come from the same mirror feed the
-    # bulk price conversion already uses; falls back to 1.0 per unknown rate, same policy
+    # bulk price conversion already uses. None when the rate is unknown: a 1.0 fallback would
+    # silently store a EUR/BRL number as USD
+    if not (bulk_prices.fx_available(from_currency) and bulk_prices.fx_available(to_currency)):
+        return None
     return price / bulk_prices.rate_for(from_currency) * bulk_prices.rate_for(to_currency)
 
 
@@ -352,7 +355,8 @@ def get_override_price(market_hash_name: str, currency: int = 1) -> float | None
         entry = _overrides.get(market_hash_name)
     if entry is None:
         return None
-    return round(_convert(entry["price"], entry.get("currency", 1), currency), 2)
+    converted = _convert(entry["price"], entry.get("currency", 1), currency)
+    return None if converted is None else round(converted, 2)
 
 
 def get_override_entry(market_hash_name: str, currency: int = 1) -> dict | None:
