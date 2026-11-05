@@ -30,6 +30,8 @@ clears the mark immediately (record_from_rows both marks and clears). One shared
 (a market fact, not per-son data), same as invalid_skins.py.
 """
 import json
+import os
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -58,48 +60,87 @@ def _key(name: str, currency: int) -> str:
     return f"{currency}:{name}"
 
 
+def _quarantine_corrupt() -> None:
+    """Move an unparseable registry file aside so the next save can't overwrite it."""
+    stamp = int(time.time())
+    dest = MISPRICED_FILE.with_name(f"{MISPRICED_FILE.name}.corrupt-{stamp}")
+    n = 1
+    while dest.exists():  # never clobber an earlier quarantine copy from the same second
+        dest = MISPRICED_FILE.with_name(f"{MISPRICED_FILE.name}.corrupt-{stamp}-{n}")
+        n += 1
+    os.replace(MISPRICED_FILE, dest)
+
+
+def _read_store() -> dict:
+    if not MISPRICED_FILE.exists():
+        return {"skins": {}}
+    try:
+        data = json.loads(MISPRICED_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except ValueError:  # JSONDecodeError and UnicodeDecodeError both subclass ValueError
+        pass
+    _quarantine_corrupt()
+    return {"skins": {}}
+
+
 def _ensure_loaded() -> None:
     global _store
     if _store is not None:
         return
-    if MISPRICED_FILE.exists():
-        try:
-            _store = json.loads(MISPRICED_FILE.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            _store = {"skins": {}}
-    else:
-        _store = {"skins": {}}
+    _store = _read_store()
     _store.setdefault("skins", {})
 
 
 def _save_locked() -> None:
+    """Atomic write: temp file in the same directory, then os.replace over the target."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    MISPRICED_FILE.write_text(json.dumps(_store), encoding="utf-8")
+    fd, tmp = tempfile.mkstemp(dir=DATA_DIR, prefix=f"{MISPRICED_FILE.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(_store))
+        os.replace(tmp, MISPRICED_FILE)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _apply_mark_locked(skin_name: str, wear: str, stattrak: bool, currency: int, gap_pct: float,
+                       cheapest_source: str, steam_price: float | None,
+                       cheapest_price: float | None) -> None:
+    """In-memory part of mark(); caller holds _lock, has loaded, and saves."""
+    name = steam_prices_mod.market_hash_name(skin_name, wear, stattrak)
+    now = time.time()
+    entry = _store["skins"].get(_key(name, currency)) or {
+        "skin": skin_name, "wear": wear, "stattrak": stattrak, "currency": currency,
+        "market_hash_name": name, "first_seen": now}
+    entry.update({"gap_pct": gap_pct,
+                  "direction": "overvalued" if gap_pct >= 0 else "undervalued",
+                  "cheapest_source": cheapest_source, "steam_price": steam_price,
+                  "cheapest_price": cheapest_price, "marked_at": now})
+    _store["skins"][_key(name, currency)] = entry
+
+
+def _clear_locked(name: str, currency: int) -> bool:
+    """In-memory part of clear_name(); caller holds _lock, has loaded, and saves."""
+    return _store["skins"].pop(_key(name, currency), None) is not None
 
 
 def mark(skin_name: str, wear: str, stattrak: bool, currency: int, gap_pct: float,
          cheapest_source: str, steam_price: float | None, cheapest_price: float | None) -> None:
     """Record (or refresh) a verified Steam-vs-market gap for one skin+wear+StatTrak.
     direction is derived from the sign: positive gap = Steam above the market (overvalued)."""
-    name = steam_prices_mod.market_hash_name(skin_name, wear, stattrak)
-    now = time.time()
     with _lock:
         _ensure_loaded()
-        entry = _store["skins"].get(_key(name, currency)) or {
-            "skin": skin_name, "wear": wear, "stattrak": stattrak, "currency": currency,
-            "market_hash_name": name, "first_seen": now}
-        entry.update({"gap_pct": gap_pct,
-                      "direction": "overvalued" if gap_pct >= 0 else "undervalued",
-                      "cheapest_source": cheapest_source, "steam_price": steam_price,
-                      "cheapest_price": cheapest_price, "marked_at": now})
-        _store["skins"][_key(name, currency)] = entry
+        _apply_mark_locked(skin_name, wear, stattrak, currency, gap_pct, cheapest_source,
+                           steam_price, cheapest_price)
         _save_locked()
 
 
 def clear_name(name: str, currency: int) -> bool:
     with _lock:
         _ensure_loaded()
-        if _store["skins"].pop(_key(name, currency), None) is not None:
+        if _clear_locked(name, currency):
             _save_locked()
             return True
         return False
@@ -125,21 +166,25 @@ def record_from_rows(rows: list, currency: int) -> dict:
     Verify button, the Verify-top-50 sweep) feed the same loop. Returns
     {"marked": n, "cleared": n} for logging/UI."""
     marked = cleared = 0
-    for r in rows:
-        gap = getattr(r, "steam_vs_cheapest_pct", None)
-        if gap is None:
-            continue
-        # cheapest_source == "steam" means no third-party source undercut Steam; a NEGATIVE
-        # gap can't exist then, and a zero gap says nothing -- only flag when an independent
-        # source actually disagrees.
-        if abs(gap) >= GAP_THRESHOLD_PCT and getattr(r, "cheapest_source", None) not in (None, "steam"):
-            mark(r.skin, r.wear, r.stattrak, currency, gap, r.cheapest_source,
-                 getattr(r, "steam_price", None), getattr(r, "cheapest_price", None))
-            marked += 1
-        else:
-            name = steam_prices_mod.market_hash_name(r.skin, r.wear, r.stattrak)
-            if clear_name(name, currency):
-                cleared += 1
+    with _lock:  # one lock hold and one save per batch instead of one rewrite per row
+        _ensure_loaded()
+        for r in rows:
+            gap = getattr(r, "steam_vs_cheapest_pct", None)
+            if gap is None:
+                continue
+            # cheapest_source == "steam" means no third-party source undercut Steam; a NEGATIVE
+            # gap can't exist then, and a zero gap says nothing -- only flag when an independent
+            # source actually disagrees.
+            if abs(gap) >= GAP_THRESHOLD_PCT and getattr(r, "cheapest_source", None) not in (None, "steam"):
+                _apply_mark_locked(r.skin, r.wear, r.stattrak, currency, gap, r.cheapest_source,
+                                   getattr(r, "steam_price", None), getattr(r, "cheapest_price", None))
+                marked += 1
+            else:
+                name = steam_prices_mod.market_hash_name(r.skin, r.wear, r.stattrak)
+                if _clear_locked(name, currency):
+                    cleared += 1
+        if marked or cleared:
+            _save_locked()
     return {"marked": marked, "cleared": cleared}
 
 
