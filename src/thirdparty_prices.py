@@ -48,6 +48,8 @@ CSFLOAT_TTL_SECONDS = 3600  # 1h -- unlike Skinport/Buff163 (one bulk-mirror fet
 # reprice within the hour), not aggregated multi-day sale statistics.
 _csfloat_cache: dict = {}  # (market_hash_name, round(min_float,4), round(max_float,4)) -> (price|None, fetched_at)
 _csfloat_cache_lock = threading.Lock()
+CSFLOAT_FAILURE_COOLDOWN_SECONDS = 60  # after any CSFloat failure (network, timeout, bad JSON, HTTP
+# incl. 429) skip live lookups this long, so one dead endpoint isn't re-hit with a 15s timeout per skin
 
 # Diagnostics: without this, a fetch that's silently failing (e.g. blocked by Skinport's
 # Cloudflare bot-protection, which returns a 403 challenge page instead of JSON) looks
@@ -78,6 +80,13 @@ def _record_failure(source: str, reason: str):
     with _stats_lock:
         _stats[source]["last_error"] = reason
         _stats[source]["consecutive_failures"] += 1
+        _stats[source]["last_failure_at"] = time.time()
+
+
+def _csfloat_in_cooldown() -> bool:
+    with _stats_lock:
+        last_failure = _stats["csfloat"].get("last_failure_at")
+    return last_failure is not None and (time.time() - last_failure) < CSFLOAT_FAILURE_COOLDOWN_SECONDS
 
 
 def get_stats() -> dict:
@@ -132,10 +141,12 @@ CSFLOAT_CATEGORY_STATTRAK = 2
 
 def _get_csfloat_price(market_hash_name: str, stattrak: bool, abort_check=None,
                         min_float: float | None = None, max_float: float | None = None) -> float | None:
-    """Cheapest current CSFloat *buy-now* listing price for this exact market_hash_name, or
+    """Cheapest current CSFloat *buy-now* listing price in USD for this exact market_hash_name, or
     None if CSFLOAT_API_KEY isn't configured, the lookup fails, or there's no matching listing.
     Not attempted (and not counted as a failure) when no key is configured -- get_stats()'s
     csfloat.configured field is what distinguishes "never tried" from "tried and failed".
+    During the post-failure cooldown the live request is skipped and None returned, again
+    without counting a failure or caching anything.
 
     min_float/max_float (both optional) narrow the search to listings within that float
     sub-range instead of any listing matching the wear-bracket name -- useful when verifying a
@@ -151,6 +162,8 @@ def _get_csfloat_price(market_hash_name: str, stattrak: bool, abort_check=None,
         cached = _csfloat_cache.get(cache_key)
         if cached and (time.time() - cached[1]) < CSFLOAT_TTL_SECONDS:
             return cached[0]
+    if _csfloat_in_cooldown():
+        return None
     params = {
         "market_hash_name": market_hash_name,
         "sort_by": "lowest_price",
@@ -223,9 +236,26 @@ def get_thirdparty_price(skin_name: str, wear: str, stattrak: bool, currency: in
             bracket = next((b for b in oddsmath.WEAR_BREAKPOINTS if b[0] == wear), None)
             if bracket:
                 min_float, max_float = bracket[1], bracket[2]
-        out["csfloat"] = _get_csfloat_price(full_name, stattrak, abort_check, min_float, max_float)
+        out["csfloat"] = _usd_to_currency(
+            _get_csfloat_price(full_name, stattrak, abort_check, min_float, max_float), currency)
 
     return out
+
+
+def _usd_to_currency(usd_price: float | None, currency: int) -> float | None:
+    """Converts a USD price into the Steam currency code the sibling Skinport/Buff163 prices use.
+    bulk_prices.rate_for() silently falls back to 1.0 when the rates feed lacks the currency, so
+    a 1.0 rate for a non-USD code means "unavailable" -- return None rather than a USD number
+    presented as the caller's currency."""
+    if usd_price is None:
+        return None
+    if currency == 1:
+        return usd_price
+    from . import bulk_prices  # lazy: matches this module's original import-light shape
+    rate = bulk_prices.rate_for(currency)
+    if rate == 1.0:
+        return None
+    return round(usd_price * rate, 2)
 
 
 def drought_flag(steam_price: float, thirdparty_prices: dict, threshold_pct: float = 15.0) -> dict | None:
