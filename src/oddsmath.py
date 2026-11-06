@@ -20,6 +20,10 @@ values, only wear-condition buckets -- so "the input's float" here means the mid
 matched wear bracket (float_mix.WEAR_MIDPOINT), not a real per-listing float. Treat results
 as a shortlist to verify with a float-checking site before buying, not exact numbers.
 """
+import functools
+from bisect import bisect_left, bisect_right
+import random as _random_mod
+
 WEAR_BREAKPOINTS = [
     ("Factory New", 0.00, 0.07),
     ("Minimal Wear", 0.07, 0.15),
@@ -35,7 +39,11 @@ def normalized_float(skin: dict, wear: str) -> float:
     """This skin's approximate float at `wear` (its wear-bracket midpoint), normalized into
     the skin's own [min_float, max_float] range -- 0.0 at its own cleanest possible float,
     1.0 at its own worst."""
-    lo, hi = skin.get("min_float", 0.0), skin.get("max_float", 1.0)
+    return _normalized_at(skin.get("min_float", 0.0), skin.get("max_float", 1.0), wear)
+
+
+@functools.lru_cache(maxsize=4096)  # pure function of three scalars; hot in the mixed-float search
+def _normalized_at(lo: float, hi: float, wear: str) -> float:
     raw = WEAR_MIDPOINT.get(wear, 0.5)
     raw = min(max(raw, lo), hi)  # clamp: a narrow range can exclude a wear's nominal midpoint
     if hi <= lo:
@@ -64,19 +72,20 @@ def wear_from_float(value: float) -> str:
     return WEAR_BREAKPOINTS[-1][0]  # >= the last breakpoint's lower bound -> Battle-Scarred
 
 
+_WEAR_UPPER_EDGES = [hi for _, _, hi in WEAR_BREAKPOINTS]  # bisect table, same brackets as the loop form
+
+
 def remap_float_to_wear(output_skin: dict, avg_normalized: float) -> str:
     """Maps a count-weighted average normalized float (0=cleanest, 1=worst) back into
     output_skin's own [min_float, max_float] range, then returns whichever standard wear
     bracket that landed float actually falls into."""
     lo, hi = output_skin.get("min_float", 0.0), output_skin.get("max_float", 1.0)
     target_float = lo + avg_normalized * (hi - lo)
-    for name, blo, bhi in WEAR_BREAKPOINTS:
-        if blo <= target_float < bhi:
-            return name
-    return WEAR_BREAKPOINTS[-1][0]  # >= the last breakpoint's lower bound -> Battle-Scarred
+    if target_float < 0:  # below every bracket: falls through to the last one (original behaviour)
+        return WEAR_BREAKPOINTS[-1][0]
+    idx = bisect_right(_WEAR_UPPER_EDGES, target_float)
+    return WEAR_BREAKPOINTS[min(idx, len(WEAR_BREAKPOINTS) - 1)][0]
 
-
-import random as _random_mod
 
 WEAR_PROB_SAMPLES = 600  # Monte-Carlo draws behind output_wear_probabilities() -- plenty for
 # 5 display buckets rounded to whole percents, small enough to stay negligible next to the
@@ -96,6 +105,7 @@ def sample_avg_normalized_floats(inputs: list[tuple[dict, str, int]],
     Computed ONCE per contract and reused for every output skin -- the input side of the
     math doesn't depend on which output you land."""
     rng = _random_mod.Random(seed)
+    draw = rng.random  # rng.uniform(a, b) is exactly a + (b - a) * random(); inlined for speed
     bracket = {name: (lo, hi) for name, lo, hi in WEAR_BREAKPOINTS}
     total = sum(c for _, _, c in inputs)
     if not total:
@@ -109,13 +119,13 @@ def sample_avg_normalized_floats(inputs: list[tuple[dict, str, int]],
         if hi < lo:
             lo = hi = min(max((blo + bhi) / 2, slo), shi)  # bracket outside skin range: clamp
         norm_span = (shi - slo) or 1.0
-        units.append((lo, hi, slo, norm_span, count))
+        units.append((lo, hi - lo, slo, norm_span, count))
     out = []
     for _ in range(n):
         acc = 0.0
-        for lo, hi, slo, norm_span, count in units:
+        for lo, span, slo, norm_span, count in units:
             for _i in range(count):
-                raw = rng.uniform(lo, hi)
+                raw = lo + span * draw()
                 acc += (raw - slo) / norm_span
         out.append(acc / total)
     return out
@@ -129,12 +139,19 @@ def wear_probabilities_for_output(output_skin: dict, avg_norm_samples: list[floa
     Field-Tested or Minimal Wear, and this says how often each."""
     if not avg_norm_samples:
         return {}
+    # Same bucketing as wear_from_float() (clamp to [0, 1], half-open brackets, 1.0 -> last),
+    # but on the sorted landed floats: each bracket is then two bisects instead of a per-sample loop.
     lo, hi = output_skin.get("min_float", 0.0), output_skin.get("max_float", 1.0)
+    span = hi - lo
+    targets = sorted(lo + avg * span for avg in avg_norm_samples)
+    n = len(targets)
+    last = len(WEAR_BREAKPOINTS) - 1
     counts: dict = {}
-    for avg in avg_norm_samples:
-        target = lo + avg * (hi - lo)
-        counts[wear_from_float(target)] = counts.get(wear_from_float(target), 0) + 1
-    n = len(avg_norm_samples)
+    for i, (name, blo, bhi) in enumerate(WEAR_BREAKPOINTS):
+        start = 0 if i == 0 else bisect_left(targets, blo)  # first bracket also takes clamped negatives
+        end = n if i == last else bisect_left(targets, bhi)  # last bracket also takes clamped >= 1.0
+        if end > start:
+            counts[name] = end - start
     return {name: round(counts[name] / n * 100, 1) for name in WEAR_ORDER if name in counts}
 
 

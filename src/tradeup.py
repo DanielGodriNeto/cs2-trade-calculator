@@ -171,6 +171,14 @@ def _price_and_volume_at_matched_wear(skin: dict, matched_wear: str, stattrak: b
     return price_val, actual_wear, price.get("volume")
 
 
+def _attach_wear_probs(drops: list, outputs: list, cheapest_skin: dict, matched_wear: str) -> None:
+    """Fills PossibleDrop.wear_probs in place. drops[i] must belong to outputs[i]. One sampling
+    pass for the contract's input side, reused for every output."""
+    samples = oddsmath_mod.sample_avg_normalized_floats([(cheapest_skin, matched_wear, _N)])
+    for skin, drop in zip(outputs, drops):
+        drop.wear_probs = oddsmath_mod.wear_probabilities_for_output(skin, samples)
+
+
 def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, currency: int = 1,
                      abort_check=None, fast_mode: bool = False, float_strategy: bool = False,
                      min_roi: float = float("-inf"), mixed_strategy: bool = False,
@@ -252,9 +260,6 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
             continue
         cost = cheapest[0] * _N
         matched_wear = cheapest[2]  # all N inputs are this same skin+wear, so this is the output's expected wear too
-        # Where each output's float could ACTUALLY land (inputs drawn across the full wear
-        # bracket, not pinned to its midpoint) -- one sampling pass reused for every drop.
-        avg_norm_samples = oddsmath_mod.sample_avg_normalized_floats([(cheapest_skin, matched_wear, _N)])
 
         revenues = []
         priced = 0
@@ -270,8 +275,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
             drop_max_input_price = (price_val * (1 - STEAM_SELL_FEE) / _N) if price_val is not None else None
             drops.append(PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=price_val,
                                        profit_after_fee=drop_profit, max_input_price=drop_max_input_price,
-                                       image=skin.get("image", ""), wear=actual_wear, volume=volume,
-                                       wear_probs=oddsmath_mod.wear_probabilities_for_output(skin, avg_norm_samples)))
+                                       image=skin.get("image", ""), wear=actual_wear, volume=volume))
             if price_val is not None:
                 revenues.append(price_val)
                 priced += 1
@@ -293,8 +297,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
             drop_max_input_price = price_val * (1 - STEAM_SELL_FEE) / _N
             drops[i] = PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=price_val,
                                      profit_after_fee=drop_profit, max_input_price=drop_max_input_price,
-                                     image=skin.get("image", ""), wear=actual_wear, volume=volume,
-                                     wear_probs=oddsmath_mod.wear_probabilities_for_output(skin, avg_norm_samples))
+                                     image=skin.get("image", ""), wear=actual_wear, volume=volume)
             revenues.append(price_val)
             priced += 1
 
@@ -329,12 +332,16 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
         # See oddsmath's unpriced-outputs section.
         if not revenues or priced < len(outputs):
             continue
-        drops.sort(key=lambda d: (d.price is None, -(d.price or 0)))
         expected_revenue = sum(revenues) / len(outputs)
         after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
         profit = after_fee - cost
         roi = (profit / cost * 100) if cost else 0.0
         max_input_price = after_fee / _N  # breakeven price per unit -- pay more and the expected case is a loss
+        # wear_probs is display-only and the sampling pass is not free, so it is attached only to
+        # rows the caller keeps (roi >= min_roi); the rest are dropped by the caller's own cut.
+        if roi >= min_roi:
+            _attach_wear_probs(drops, outputs, cheapest_skin, matched_wear)
+        drops.sort(key=lambda d: (d.price is None, -(d.price or 0)))
 
         from_name = dict(data_mod.RARITY_CHAIN)[from_id]
         to_name = dict(data_mod.RARITY_CHAIN)[to_id]
