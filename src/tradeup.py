@@ -27,8 +27,10 @@ from . import rules_engine as rules_engine_mod
 from . import tradability as tradability_mod
 from . import user_overrides as user_overrides_mod
 from . import wear_anomaly as wear_anomaly_mod
-from .steam_prices import get_price, market_hash_name
+from .steam_prices import get_cached_price, get_price, market_hash_name
 
+EARLY_EXIT = True  # skip a rarity tier when its ROI upper bound (cached Steam prices only) is below min_roi
+ROI_BOUND_EPSILON = 1e-9  # float slack so rounding can never flip a borderline skip
 STEAM_SELL_FEE = 0.13  # Steam Market cut on a sale; commonly cited as 13-15%, varies by price tier
 # Cash-market sell fees for the honest revenue rule. Checked 2026-11 -- fees change, re-verify
 # before trusting the numbers.
@@ -327,6 +329,50 @@ def _build_drops(outputs: list, quotes: list, wear_probs_list: list, cost: float
     return drops
 
 
+def _cached_steam_price(skin: dict, wear: str, stattrak: bool, currency: int) -> float | None:
+    """The Steam price _honest_market_quote would use at this wear, read from cache only (no
+    network). None when it isn't a fresh cached price -- then no sound bound exists."""
+    actual_wear = _closest_available_wear(skin["wears"], wear)
+    name = market_hash_name(skin["name"], actual_wear, stattrak)
+    if wear_anomaly_mod.is_flagged(name, currency):
+        return None
+    data, freshness = get_cached_price(name, currency)
+    if freshness != "fresh" or not data or data.get("source") == LONG_WINDOW_SOURCE:
+        return None
+    return data["median_price"] or data["lowest_price"] or None
+
+
+def _revenue_upper_bound(outputs: list, wear_probs_list: list, matched_wear: str, stattrak: bool,
+                         currency: int) -> float | None:
+    """Upper bound on scan_collection's after_fee (mean over outputs of the probability-weighted
+    proceeds). Each output's honest proceeds are the MIN over Steam/Skinport/Buff163 and Steam is
+    one of them, so proceeds <= Steam * (1 - STEAM_SELL_FEE) at every landing wear. None if any
+    landing wear has no cached Steam price."""
+    total = 0.0
+    for skin, wear_probs in zip(outputs, wear_probs_list):
+        weights = {wear: pct for wear, pct in wear_probs.items() if pct > 0} or {matched_wear: 100.0}
+        weight_sum = sum(weights.values())
+        skin_bound = 0.0
+        for wear, pct in weights.items():
+            steam_price = _cached_steam_price(skin, wear, stattrak, currency)
+            if steam_price is None:
+                return None
+            skin_bound += pct * steam_price * (1 - STEAM_SELL_FEE)
+        total += skin_bound / weight_sum
+    return total / len(outputs)
+
+
+def _below_min_roi_bound(outputs: list, wear_probs_list: list, matched_wear: str, cost: float,
+                         min_roi: float, stattrak: bool, currency: int) -> bool:
+    """True only when the ROI upper bound is provably below min_roi (see _revenue_upper_bound)."""
+    if not EARLY_EXIT or not cost or min_roi == float("-inf"):
+        return False
+    bound = _revenue_upper_bound(outputs, wear_probs_list, matched_wear, stattrak, currency)
+    if bound is None:
+        return False
+    return (bound - cost) / cost * 100 < min_roi - ROI_BOUND_EPSILON
+
+
 def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, currency: int = 1,
                      abort_check=None, fast_mode: bool = False, float_strategy: bool = False,
                      min_roi: float = float("-inf"), mixed_strategy: bool = False,
@@ -416,8 +462,14 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
 
         # Honest revenue (see _honest_output_quote): every output is quoted at each wear it can
         # land in, weighted by wear_probs; any unpriced landing wear leaves the output unpriced.
-        cash_maps = _cash_market_maps(currency)
         wear_probs_list = _output_wear_probs(outputs, cheapest_skin, matched_wear)
+        # Early exit: even the best case (cached Steam prices only) is below min_roi, so every
+        # caller's min_roi filter drops this tier -- skip its pricing and strategies. strategy_any_roi
+        # keeps every tier, so the early exit is off then.
+        if not strategy_any_roi and _below_min_roi_bound(outputs, wear_probs_list, matched_wear, cost,
+                                                         min_roi, stattrak, currency):
+            continue
+        cash_maps = _cash_market_maps(currency)
         quotes = _quote_outputs(outputs, wear_probs_list, matched_wear, stattrak, currency, cash_maps, abort_check)
         # All-or-nothing on the output side: this contract can land on any of `outputs`, so one
         # unpriced output means the honest expected revenue is unknown -- not "the average of

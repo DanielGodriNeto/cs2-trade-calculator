@@ -103,6 +103,7 @@ def digest_rows(results):
 
 
 def check_scan_wear_probs(idx):
+    tu.EARLY_EXIT = False  # this check needs every row regardless of min_roi; early exit is covered by test_early_exit.py
     full = tu.scan_all(idx, fast_mode=True, min_roi=float("-inf"))
     # Changed 2026-11: the honest revenue rule leaves few rows at roi>=0, so the kept split uses the
     # median ROI of the full scan (a real kept/dropped split) instead of a hard-coded 0.
