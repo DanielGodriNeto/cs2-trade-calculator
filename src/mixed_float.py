@@ -26,6 +26,7 @@ from .tradeup import _cheapest_wear_price, _price_at_matched_wear, STEAM_SELL_FE
 MAX_FILLER_CANDIDATES = 6  # cap how many other collections get priced -- each one costs requests
 MAX_N_FILLER = 4  # today's default filler-slot ceiling (1..4 of the 10); a caller may raise
 # this for deeper coverage, same idea as float_mix.py's max_distinct_wears
+_USE_PRICE_MEMO = True  # per-call memo of output price lookups inside find_best_mixed_float_strategy
 
 
 @dataclass
@@ -110,6 +111,17 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
             stattrak=stattrak, cost_paid=cost, predicted_roi_pct=roi, filler_input=filler_input)
 
     best = None
+    price_memo: dict = {}
+
+    def _matched_price(skin: dict, landed_wear: str) -> float | None:
+        # Every candidate mix re-prices the same (output skin, landed wear) pairs. The lookup is
+        # deterministic for this call, so cache it for this call only (no cross-call state).
+        if not _USE_PRICE_MEMO:
+            return _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+        key = (skin["name"], tuple(skin["wears"]), landed_wear, stattrak, currency)
+        if key not in price_memo:
+            price_memo[key] = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+        return price_memo[key]
 
     def _consider(primary_mix, filler_collection, filler_skin, filler_name, filler_price, filler_wear,
                   n_filler, f_outputs):
@@ -131,12 +143,12 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
         revenues_weighted = []
         for skin in primary_outputs:
             landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-            price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+            price_val = _matched_price(skin, landed_wear)
             if price_val is not None:
                 revenues_weighted.append((price_val, primary_odds))
         for skin in f_outputs:
             landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-            price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+            price_val = _matched_price(skin, landed_wear)
             if price_val is not None:
                 revenues_weighted.append((price_val, filler_odds))
         # Full odds mass of every output, priced or not -- see mixed_tradeup.py's copy of this
