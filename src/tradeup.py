@@ -507,7 +507,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
         else:
             if float_strategy and strategy_gate and not (abort_check and abort_check()):
                 float_strategies = float_mix_mod.evaluate_float_strategies(
-                    cheapest_skin, outputs, stattrak, currency, abort_check, fee=STEAM_SELL_FEE,
+                    cheapest_skin, outputs, stattrak, currency, abort_check,
                     max_distinct_wears=max_distinct_wears, use_ml=use_ml, collection=collection,
                     from_rarity=from_name)
             if mixed_strategy and full_idx and strategy_gate and not (abort_check and abort_check()):

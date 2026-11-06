@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from . import oddsmath
 from . import marketplaces as marketplaces_mod
 from . import user_overrides as user_overrides_mod
-from .float_mix import _candidate_mixes, _price_per_wear
-from .tradeup import _cheapest_wear_price, _price_at_matched_wear, STEAM_SELL_FEE
+from .float_mix import _candidate_mixes, buyable_prices_per_wear, cheapest_buyable_input
+from .tradeup import _cash_market_maps, _honest_market_quote
 
 MAX_FILLER_CANDIDATES = 6  # cap how many other collections get priced -- each one costs requests
 MAX_N_FILLER = 4  # today's default filler-slot ceiling (1..4 of the 10); a caller may raise
@@ -109,19 +109,12 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
         if not primary_inputs or not primary_outputs:
             return None
 
-    primary_cheapest = None
-    primary_skin = None
-    for skin in primary_inputs:
-        if abort_check and abort_check():
-            return None
-        found = _cheapest_wear_price(skin, stattrak, currency, abort_check, fast_mode)
-        if found and (primary_cheapest is None or found[0] < primary_cheapest[0]):
-            primary_cheapest = found
-            primary_skin = skin
-    if primary_cheapest is None:
+    found_primary = cheapest_buyable_input(primary_inputs, stattrak, currency, abort_check, fast_mode)
+    if found_primary is None:
         return None
+    primary_skin = found_primary[0]
 
-    primary_prices = _price_per_wear(primary_skin, stattrak, currency, "lowest_price", abort_check)
+    primary_prices = buyable_prices_per_wear(primary_skin, stattrak, currency, abort_check)
     if not primary_prices:
         return None
     primary_norm = {w: oddsmath.normalized_float(primary_skin, w) for w in primary_prices}
@@ -145,6 +138,7 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
 
     best = None
     price_memo: dict = {}
+    cash_maps = _cash_market_maps(currency)
     primary_keyed = [(s, _skin_key(s)) for s in primary_outputs]
     mixes_by_n: dict[int, list[dict]] = {}  # the same primary's mixes for each n_primary, built once per call
 
@@ -153,16 +147,20 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
             mixes_by_n[n] = _candidate_mixes(primary_skin, primary_prices, n, max_distinct_wears)
         return mixes_by_n[n]
 
-    def _output_price(skin: dict, key: tuple, avg_norm: float) -> float | None:
-        # Every candidate mix re-prices the same (output skin, landed wear) pairs. The lookup is
-        # deterministic for this call (stattrak and currency are fixed), so cache it for this call
-        # only (no cross-call state). `key` is _skin_key(skin): the lookup depends only on it.
+    def _quote_at(skin: dict, landed_wear: str) -> tuple[float, float] | None:
+        quote = _honest_market_quote(skin, landed_wear, stattrak, currency, cash_maps, abort_check)
+        return None if quote is None else (quote.gross, quote.proceeds)
+
+    def _output_quote(skin: dict, key: tuple, avg_norm: float) -> tuple[float, float] | None:
+        # Every candidate mix re-prices the same (output skin, landed wear) pairs. The honest quote
+        # is deterministic for this call (stattrak, currency and cash maps are fixed), so memoize its
+        # (gross, proceeds) for this call only (no cross-call state). `key` is _skin_key(skin).
         landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
         if not _USE_PRICE_MEMO:
-            return _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+            return _quote_at(skin, landed_wear)
         memo_key = (key, landed_wear)
         if memo_key not in price_memo:
-            price_memo[memo_key] = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+            price_memo[memo_key] = _quote_at(skin, landed_wear)
         return price_memo[memo_key]
 
     def _consider(primary_mix: dict, slot: _FillerSlot) -> None:
@@ -175,26 +173,24 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
             terms.append((slot.norm, n_filler))
         avg_norm = _avg_norm(terms)
 
-        revenues_weighted = []
+        priced = []  # (gross, proceeds, odds) per output that has a quote
         for skin, key in primary_keyed:
-            price_val = _output_price(skin, key, avg_norm)
-            if price_val is not None:
-                revenues_weighted.append((price_val, slot.primary_odds))
+            quote = _output_quote(skin, key, avg_norm)
+            if quote is not None:
+                priced.append((quote[0], quote[1], slot.primary_odds))
         for skin, key in slot.outputs:
-            price_val = _output_price(skin, key, avg_norm)
-            if price_val is not None:
-                revenues_weighted.append((price_val, slot.filler_odds))
-        # Full odds mass of every output, priced or not -- see mixed_tradeup.py's copy of this
-        # comment and oddsmath's unpriced-outputs section. This search combines wear-mixing with
-        # filler dilution, so it stacks BOTH ways of accidentally dropping outputs out of the
-        # average: a filler collection's thin outputs, and outputs with no listing at the wear
-        # the mix steers them into.
+            quote = _output_quote(skin, key, avg_norm)
+            if quote is not None:
+                priced.append((quote[0], quote[1], slot.filler_odds))
+        # Full odds mass of every output, priced or not -- see oddsmath.honest_expectation. This
+        # search combines wear-mixing with filler dilution, so it stacks BOTH ways of accidentally
+        # dropping outputs out of the average: a filler collection's thin outputs, and outputs with
+        # no listing at the wear the mix steers them into.
         total_prob = slot.primary_odds * len(primary_outputs) + slot.filler_odds * len(slot.outputs)
-        priced_prob = oddsmath.priced_odds_pct(revenues_weighted)
-        if total_prob <= 0 or not oddsmath.fully_priced(priced_prob, total_prob):
+        expected = oddsmath.honest_expectation(priced, total_prob)
+        if expected is None:
             return
-        expected_revenue = oddsmath.expected_revenue_full_odds(revenues_weighted, total_prob)
-        after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
+        expected_revenue, after_fee = expected
         profit = after_fee - cost
         roi = (profit / cost * 100) if cost else 0.0
 
@@ -268,16 +264,11 @@ def find_best_mixed_float_strategy(primary_collection: str, primary_baseline_roi
     for coll, f_inputs, f_outputs in candidates:
         if abort_check and abort_check():
             break
-        filler_cheapest = None
-        filler_skin = None
-        for skin in f_inputs:
-            found = _cheapest_wear_price(skin, stattrak, currency, abort_check, fast_mode)
-            if found and (filler_cheapest is None or found[0] < filler_cheapest[0]):
-                filler_cheapest = found
-                filler_skin = skin
-        if filler_cheapest is None:
+        found_filler = cheapest_buyable_input(f_inputs, stattrak, currency, abort_check, fast_mode)
+        if found_filler is None:
             continue
-        filler_price, filler_name, filler_wear = filler_cheapest[:3]  # 4th element (volume) unused here
+        filler_skin, filler_found = found_filler
+        filler_price, filler_name, filler_wear = filler_found[:3]  # 4th element (volume) unused here
         filler_norm = oddsmath.normalized_float(filler_skin, filler_wear)
         f_keyed = [(s, _skin_key(s)) for s in f_outputs]
 

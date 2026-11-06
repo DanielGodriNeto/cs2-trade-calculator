@@ -11,10 +11,11 @@ from dataclasses import dataclass, field
 
 from . import float_mix as float_mix_mod
 from . import marketplaces as marketplaces_mod
+from . import oddsmath
 from . import rules_engine as rules_engine_mod
 from . import user_overrides as user_overrides_mod
-from .tradeup import PossibleDrop, STEAM_SELL_FEE, _cheapest_wear_price, _price_and_volume_at_matched_wear
-from . import wear_anomaly as wear_anomaly_mod
+from .float_mix import cheapest_buyable_input
+from .tradeup import PossibleDrop, _cash_market_maps, _quote_outputs, _reject_wear_anomalies
 
 COVERT_INPUT_COUNT = rules_engine_mod.COVERT_INPUT_COUNT  # alias, see rules_engine.py
 
@@ -40,6 +41,18 @@ class CovertTradeUpResult:
     # computed instead of the two above when both are requested together (see scan_case)
     cheapest_input_image: str = ""  # direct Steam CDN thumbnail URL for cheapest_input's skin
     cheapest_input_volume: int | None = None  # Steam's own recent-sales count for cheapest_input
+
+
+def _covert_drops(outputs: list, quotes: list, wear_probs_list: list, cost: float) -> list[PossibleDrop]:
+    """Possible-drops table for a 5-input covert contract (tradeup._build_drops is tied to 10 inputs)."""
+    probability_pct = 100.0 / len(outputs)  # each knife/glove equally likely within the case pool
+    drops = [PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=q.gross,
+                          profit_after_fee=q.proceeds - cost, max_input_price=q.proceeds / COVERT_INPUT_COUNT,
+                          image=skin.get("image", ""), wear=q.primary.wear, volume=q.primary.volume,
+                          wear_probs=probs)
+             for skin, q, probs in zip(outputs, quotes, wear_probs_list)]
+    drops.sort(key=lambda d: -d.price)
+    return drops
 
 
 def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
@@ -69,84 +82,32 @@ def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
     if not inputs or not outputs:
         return None
 
-    cheapest = None
-    cheapest_skin = None
-    for skin in inputs:
-        if abort_check and abort_check():
-            break
-        found = _cheapest_wear_price(skin, stattrak, currency, abort_check, fast_mode)
-        if found and (cheapest is None or found[0] < cheapest[0]):
-            cheapest = found
-            cheapest_skin = skin
-    if cheapest is None:
+    found_cheapest = cheapest_buyable_input(inputs, stattrak, currency, abort_check, fast_mode)
+    if found_cheapest is None:
         return None
+    cheapest_skin, cheapest = found_cheapest
     cost = cheapest[0] * COVERT_INPUT_COUNT
     matched_wear = cheapest[2]  # same same-bracket approximation as the regular scan (see tradeup.py)
 
-    revenues = []
-    priced = 0
-    drops = []
-    probability_pct = 100.0 / len(outputs)
-    for skin in outputs:
-        if abort_check and abort_check():
-            break
-        found_price = _price_and_volume_at_matched_wear(skin, matched_wear, stattrak, currency, abort_check)
-        price_val, actual_wear, volume = found_price if found_price else (None, "", None)
-        drop_profit = price_val * (1 - STEAM_SELL_FEE) - cost if price_val is not None else None
-        drop_max_input_price = (price_val * (1 - STEAM_SELL_FEE) / COVERT_INPUT_COUNT) if price_val is not None else None
-        drops.append(PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=price_val,
-                                   profit_after_fee=drop_profit, max_input_price=drop_max_input_price,
-                                   image=skin.get("image", ""), wear=actual_wear, volume=volume))
-        if price_val is not None:
-            revenues.append(price_val)
-            priced += 1
-
-    # Retry any unpriced output once, same reasoning as the regular scan: a miss might just
-    # be a transient rate limit/connection hiccup, not "genuinely no listings".
-    for i, skin in enumerate(outputs):
-        if drops[i].price is not None or (abort_check and abort_check()):
-            continue
-        found_price = _price_and_volume_at_matched_wear(skin, matched_wear, stattrak, currency, abort_check)
-        if found_price is None:
-            continue
-        price_val, actual_wear, volume = found_price
-        drop_profit = price_val * (1 - STEAM_SELL_FEE) - cost
-        drop_max_input_price = price_val * (1 - STEAM_SELL_FEE) / COVERT_INPUT_COUNT
-        drops[i] = PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=price_val,
-                                 profit_after_fee=drop_profit, max_input_price=drop_max_input_price,
-                                 image=skin.get("image", ""), wear=actual_wear, volume=volume)
-        revenues.append(price_val)
-        priced += 1
-
-    # Same positive-ROI wear-order sanity check as the regular scan (see tradeup.py /
-    # wear_anomaly.py): a priced output whose own better condition is cheaper is a bad data
-    # point, not revenue -- drop it before this result can look profitable off it.
-    if revenues and cost and (sum(revenues) / len(outputs)) * (1 - STEAM_SELL_FEE) >= cost:
-        for out_skin, drop in zip(outputs, drops):
-            if drop.price is None or (abort_check and abort_check()):
-                continue
-            anomaly = wear_anomaly_mod.check_output_price(
-                out_skin, drop.wear, drop.price, stattrak, currency, abort_check)
-            if anomaly:
-                drop.wear_anomaly = anomaly
-                drop.price = None
-                drop.profit_after_fee = None
-                drop.max_input_price = None
-        revenues = [d.price for d in drops if d.price is not None]
-        priced = len(revenues)
-
-    # Same all-or-nothing output rule as the regular scan (see tradeup.py's own comment and
-    # oddsmath's unpriced-outputs section) -- and it bites hardest here: a knife/glove pool
-    # where only the headline knife prices would otherwise report that knife's price as the
-    # expected outcome of every single contract.
-    if not revenues or priced < len(outputs):
+    # Honest revenue, same rule as tradeup.scan_collection: each output is worth the lowest
+    # after-fee proceeds across Steam/Skinport/Buff163 at the wears it can land in. The float
+    # distribution is sampled for COVERT_INPUT_COUNT inputs, not tradeup's 10.
+    input_samples = oddsmath.sample_avg_normalized_floats([(cheapest_skin, matched_wear, COVERT_INPUT_COUNT)])
+    wear_probs_list = [oddsmath.wear_probabilities_for_output(skin, input_samples) for skin in outputs]
+    quotes = _quote_outputs(outputs, wear_probs_list, matched_wear, stattrak, currency,
+                            _cash_market_maps(currency), abort_check)
+    # All-or-nothing: one unpriced output means the contract's outcome is unknown (see oddsmath).
+    if any(q is None for q in quotes):
         return None
-    drops.sort(key=lambda d: (d.price is None, -(d.price or 0)))
-    expected_revenue = sum(revenues) / len(outputs)
-    after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
+    quotes = _reject_wear_anomalies(outputs, quotes, cost, stattrak, currency, abort_check)
+    if any(q is None for q in quotes):
+        return None
+    expected_revenue = sum(q.gross for q in quotes) / len(outputs)
+    after_fee = sum(q.proceeds for q in quotes) / len(outputs)
     profit = after_fee - cost
     roi = (profit / cost * 100) if cost else 0.0
     max_input_price = after_fee / COVERT_INPUT_COUNT
+    drops = _covert_drops(outputs, quotes, wear_probs_list, cost)
 
     buy_links = marketplaces_mod.build_links(cheapest_skin["name"], matched_wear, stattrak) if roi >= 0 else {}
 
@@ -163,8 +124,7 @@ def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
     else:
         if float_strategy and strategy_gate and not (abort_check and abort_check()):
             float_strategies = float_mix_mod.evaluate_float_strategies(
-                cheapest_skin, outputs, stattrak, currency, abort_check, fee=STEAM_SELL_FEE,
-                n=COVERT_INPUT_COUNT)
+                cheapest_skin, outputs, stattrak, currency, abort_check, n=COVERT_INPUT_COUNT)
         if mixed_strategy and full_cases_idx and strategy_gate and not (abort_check and abort_check()):
             from . import mixed_covert as mixed_covert_mod
             mixed_result = mixed_covert_mod.find_best_filler_mix(
@@ -174,7 +134,7 @@ def scan_case(case: str, case_data: dict, stattrak: bool, currency: int = 1,
         case=case, stattrak=stattrak, cost=cost, cheapest_input=cheapest[1],
         expected_revenue=expected_revenue, expected_revenue_after_fee=after_fee,
         profit=profit, roi_pct=roi, n_output_variants=len(outputs),
-        priced_output_variants=priced, max_input_price=max_input_price,
+        priced_output_variants=len(outputs), max_input_price=max_input_price,
         possible_drops=drops, buy_links=buy_links,
         float_strategies=float_strategies, mixed_strategy=mixed_result,
         mixed_float_strategy=mixed_float_result,

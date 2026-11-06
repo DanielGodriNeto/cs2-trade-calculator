@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from . import oddsmath
 from . import marketplaces as marketplaces_mod
 from . import user_overrides as user_overrides_mod
-from .tradeup import _cheapest_wear_price, _price_at_matched_wear, STEAM_SELL_FEE
+from .float_mix import cheapest_buyable_input, landed_quotes
+from .tradeup import _cash_market_maps
 
 MAX_FILLER_CANDIDATES = 6  # cap how many other collections get priced -- each one costs requests
 
@@ -55,18 +56,12 @@ def find_best_filler_mix(primary_collection: str, primary_baseline_roi: float, i
         if not primary_inputs or not primary_outputs:
             return None
 
-    primary_cheapest = None
-    primary_skin = None
-    for skin in primary_inputs:
-        if abort_check and abort_check():
-            return None
-        found = _cheapest_wear_price(skin, stattrak, currency, abort_check, fast_mode)
-        if found and (primary_cheapest is None or found[0] < primary_cheapest[0]):
-            primary_cheapest = found
-            primary_skin = skin
-    if primary_cheapest is None:
+    found_primary = cheapest_buyable_input(primary_inputs, stattrak, currency, abort_check, fast_mode)
+    if found_primary is None:
         return None
-    primary_price, primary_name, primary_wear = primary_cheapest[:3]  # 4th element (volume) unused here
+    primary_skin, primary_found = found_primary
+    primary_price, primary_name, primary_wear = primary_found[:3]  # 4th element (volume) unused here
+    cash_maps = _cash_market_maps(currency)
 
     blacklisted = user_overrides_mod.blacklisted_skins()
     candidates = []
@@ -95,16 +90,11 @@ def find_best_filler_mix(primary_collection: str, primary_baseline_roi: float, i
     for coll, f_inputs, f_outputs in candidates:
         if abort_check and abort_check():
             break
-        filler_cheapest = None
-        filler_skin = None
-        for skin in f_inputs:
-            found = _cheapest_wear_price(skin, stattrak, currency, abort_check, fast_mode)
-            if found and (filler_cheapest is None or found[0] < filler_cheapest[0]):
-                filler_cheapest = found
-                filler_skin = skin
-        if filler_cheapest is None:
+        found_filler = cheapest_buyable_input(f_inputs, stattrak, currency, abort_check, fast_mode)
+        if found_filler is None:
             continue
-        filler_price, filler_name, filler_wear = filler_cheapest[:3]  # 4th element (volume) unused here
+        filler_skin, filler_found = found_filler
+        filler_price, filler_name, filler_wear = filler_found[:3]  # 4th element (volume) unused here
 
         for n_filler in (1, 2, 3, 4):
             if abort_check and abort_check():
@@ -116,17 +106,10 @@ def find_best_filler_mix(primary_collection: str, primary_baseline_roi: float, i
             avg_norm = oddsmath.average_normalized_float([
                 (primary_skin, primary_wear, n_primary), (filler_skin, filler_wear, n_filler)])
 
-            revenues_weighted = []
-            for skin in primary_outputs:
-                landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-                price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
-                if price_val is not None:
-                    revenues_weighted.append((price_val, primary_odds))
-            for skin in f_outputs:
-                landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-                price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
-                if price_val is not None:
-                    revenues_weighted.append((price_val, filler_odds))
+            # (gross, proceeds, odds) per output priced at its landed wear (honest cash-market rule).
+            priced = landed_quotes(primary_outputs, avg_norm, primary_odds, stattrak, currency, cash_maps,
+                                   abort_check) + landed_quotes(f_outputs, avg_norm, filler_odds, stattrak,
+                                                                currency, cash_maps, abort_check)
             # Full odds mass of both groups' outputs, priced or not -- an unpriced output is
             # still an outcome this contract can land on, so it must stay in the denominator
             # rather than have its probability handed to the priced ones. Filler mixes are
@@ -134,11 +117,10 @@ def find_best_filler_mix(primary_collection: str, primary_baseline_roi: float, i
             # outputs are correspondingly the thin, often-unpriced ones. See oddsmath's
             # unpriced-outputs section.
             total_prob = primary_odds * len(primary_outputs) + filler_odds * len(f_outputs)
-            priced_prob = oddsmath.priced_odds_pct(revenues_weighted)
-            if total_prob <= 0 or not oddsmath.fully_priced(priced_prob, total_prob):
+            expected = oddsmath.honest_expectation(priced, total_prob)
+            if expected is None:
                 continue
-            expected_revenue = oddsmath.expected_revenue_full_odds(revenues_weighted, total_prob)
-            after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
+            expected_revenue, after_fee = expected
             profit = after_fee - cost
             roi = (profit / cost * 100) if cost else 0.0
             if best is None or roi > best.roi_pct:

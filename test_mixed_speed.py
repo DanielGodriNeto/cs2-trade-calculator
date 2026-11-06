@@ -79,14 +79,14 @@ def check_covert_mixes_built_once_per_n(cases_idx: dict) -> None:
 
 
 def check_covert_prices_memoized(cases_idx: dict) -> None:
-    original = covert_mod._price_at_matched_wear
+    original = covert_mod._honest_market_quote
     seen: list = []
 
     def recording(*args, **kwargs):
         seen.append((args[0]["name"], args[1]))
         return original(*args, **kwargs)
 
-    covert_mod._price_at_matched_wear = recording
+    covert_mod._honest_market_quote = recording
     try:
         for case in list(cases_idx)[:N_COLLECTIONS]:
             seen.clear()
@@ -94,7 +94,7 @@ def check_covert_prices_memoized(cases_idx: dict) -> None:
                                                       require_positive_baseline=False)
             assert len(seen) == len(set(seen)), f"{case}: {len(seen) - len(set(seen))} repeated price lookups"
     finally:
-        covert_mod._price_at_matched_wear = original
+        covert_mod._honest_market_quote = original
 
 
 def main() -> None:

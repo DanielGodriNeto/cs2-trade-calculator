@@ -24,9 +24,13 @@ before buying.
 import itertools
 from dataclasses import dataclass, field
 
+from . import bulk_prices as bulk_prices_mod
 from . import oddsmath
 from .oddsmath import WEAR_BREAKPOINTS, WEAR_MIDPOINT  # re-exported: tradeup.py reads these off this module
 from .steam_prices import get_price, market_hash_name
+
+# tradeup.py imports this module at load time, so tradeup names are imported lazily inside the
+# functions below (same pattern as learning.py in this file).
 
 
 @dataclass
@@ -45,21 +49,73 @@ class FloatMixResult:
     ml_roi_range: list | None = None  # [lo, hi] 80% interval from the model's own held-out residuals, or None
 
 
-def _price_per_wear(skin: dict, stattrak: bool, currency: int, price_field: str,
-                     abort_check=None) -> dict:
-    """{wear_name: price}, using price_field ('lowest_price' for buying, 'median_price'
-    for selling), skipping wears with no listing data."""
+def input_floor(currency: int) -> float:
+    """Junk-price floor for candidate inputs in this currency (tradeup.MIN_INPUT_PRICE)."""
+    from .tradeup import MIN_INPUT_PRICE
+    return MIN_INPUT_PRICE * bulk_prices_mod.rate_for(currency)
+
+
+def buyable_prices_per_wear(skin: dict, stattrak: bool, currency: int, abort_check=None) -> dict:
+    """{wear_name: lowest listed price} for the wears this input can be bought at inside a mix.
+    Skips wears with no listing, wears priced only from the 90-day window, and wears below
+    input_floor(): a junk-priced input never enters a candidate mix."""
+    from .tradeup import LONG_WINDOW_SOURCE
+    floor = input_floor(currency)
     out = {}
     for wear in skin["wears"]:
         if abort_check and abort_check():
             break
-        name = market_hash_name(skin["name"], wear, stattrak)
-        price = get_price(name, currency, abort_check)
-        if not price:
+        price = get_price(market_hash_name(skin["name"], wear, stattrak), currency, abort_check)
+        if not price or price.get("source") == LONG_WINDOW_SOURCE:
             continue
-        val = price.get(price_field) or price.get("lowest_price")
-        if val is not None:
+        val = price.get("lowest_price")
+        if val is not None and val >= floor:
             out[wear] = val
+    return out
+
+
+def cheapest_buyable_input(inputs: list, stattrak: bool, currency: int, abort_check=None,
+                           fast_mode: bool = False) -> tuple[dict, tuple] | None:
+    """(skin, _cheapest_wear_price result) for the cheapest input whose cheapest wear clears
+    input_floor(currency), or None. Same rule as tradeup.scan_collection's input loop."""
+    from .tradeup import _cheapest_wear_price
+    floor = input_floor(currency)
+    best = None
+    for skin in inputs:
+        if abort_check and abort_check():
+            return None
+        found = _cheapest_wear_price(skin, stattrak, currency, abort_check, fast_mode)
+        if found and found[0] >= floor and (best is None or found[0] < best[1][0]):
+            best = (skin, found)
+    return best
+
+
+def _honest_output_map(skin: dict, stattrak: bool, currency: int, cash_maps: tuple,
+                       abort_check=None) -> dict:
+    """{wear: (gross, after-fee proceeds)} for every listed wear of one output skin that has a quote."""
+    from .tradeup import _honest_market_quote
+    out = {}
+    for wear in skin["wears"]:
+        if abort_check and abort_check():
+            break
+        quote = _honest_market_quote(skin, wear, stattrak, currency, cash_maps, abort_check)
+        if quote is not None:
+            out[wear] = (quote.gross, quote.proceeds)
+    return out
+
+
+def landed_quotes(outputs: list, avg_norm: float, odds: float, stattrak: bool, currency: int,
+                  cash_maps: tuple, abort_check=None) -> list[tuple[float, float, float]]:
+    """[(gross, after-fee proceeds, odds)] for each output priced at the wear this average
+    normalized float lands it in. Unpriced outputs are left out; oddsmath.honest_expectation then
+    refuses the contract, so nothing is averaged over the priced subset alone."""
+    from .tradeup import _honest_market_quote
+    out = []
+    for skin in outputs:
+        wear = oddsmath.remap_float_to_wear(skin, avg_norm)
+        quote = _honest_market_quote(skin, wear, stattrak, currency, cash_maps, abort_check)
+        if quote is not None:
+            out.append((quote.gross, quote.proceeds, odds))
     return out
 
 
@@ -102,7 +158,7 @@ def _candidate_mixes(input_skin: dict, wear_prices: dict, n: int = 10,
 
 
 def evaluate_float_strategies(input_skin: dict, outputs: list, stattrak: bool, currency: int,
-                               abort_check=None, fee: float = 0.13, n: int = 10,
+                               abort_check=None, n: int = 10,
                                max_distinct_wears: int = 2, use_ml: bool = False,
                                collection: str | None = None, from_rarity: str | None = None) -> list[FloatMixResult]:
     """For the given input skin and the pool of possible output skins, finds the cheapest
@@ -113,13 +169,16 @@ def evaluate_float_strategies(input_skin: dict, outputs: list, stattrak: bool, c
     candidate mix may combine (see _candidate_mixes). use_ml: also consult learning.py's
     trained ROI model as a tiebreaker when two candidates land the same wear bracket with
     near-identical formula ROI (never overrides a clear formula-ROI winner) -- no-op (and
-    cheap: a single JSON status read, not a model load) when no model is trained yet."""
-    input_prices = _price_per_wear(input_skin, stattrak, currency, "lowest_price", abort_check)
+    cheap: a single JSON status read, not a model load) when no model is trained yet.
+    Output revenue is the honest rule (tradeup._honest_market_quote)."""
+    from .tradeup import _cash_market_maps
+    input_prices = buyable_prices_per_wear(input_skin, stattrak, currency, abort_check)
     if not input_prices:
         return []
 
-    output_price_maps = [_price_per_wear(skin, stattrak, currency, "median_price", abort_check)
-                          for skin in outputs]
+    cash_maps = _cash_market_maps(currency)
+    output_quote_maps = [_honest_output_map(skin, stattrak, currency, cash_maps, abort_check)
+                         for skin in outputs]
 
     use_ml = use_ml and collection is not None
     if use_ml:
@@ -140,12 +199,12 @@ def evaluate_float_strategies(input_skin: dict, outputs: list, stattrak: bool, c
         cost = sum(input_prices[w] * c for w, c in mix.items())
         avg_norm = oddsmath.average_normalized_float([(input_skin, w, c) for w, c in mix.items()])
 
-        revenues = []
+        revenues = []  # (gross, after-fee proceeds) per output
         landed_counts: dict[str, int] = {}
         unpriced = False
-        for skin, price_map in zip(outputs, output_price_maps):
+        for skin, quote_map in zip(outputs, output_quote_maps):
             landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-            if landed_wear not in price_map:
+            if landed_wear not in quote_map:
                 # This output has no listing at the wear this mix would land it in. Skipping it
                 # and averaging the rest is what made float-mixing look like free ROI: steering
                 # the landed wear into a bracket where the cheap outputs happen to have no
@@ -153,13 +212,13 @@ def evaluate_float_strategies(input_skin: dict, outputs: list, stattrak: bool, c
                 # from the average. See oddsmath's unpriced-outputs section.
                 unpriced = True
                 break
-            revenues.append(price_map[landed_wear])
+            revenues.append(quote_map[landed_wear])
             landed_counts[landed_wear] = landed_counts.get(landed_wear, 0) + 1
         if unpriced or not revenues:
             continue
 
-        expected_revenue = sum(revenues) / len(outputs)
-        after_fee = expected_revenue * (1 - fee)
+        expected_revenue = sum(gross for gross, _ in revenues) / len(outputs)
+        after_fee = sum(proceeds for _, proceeds in revenues) / len(outputs)
         profit = after_fee - cost
         roi = (profit / cost * 100) if cost else 0.0
         dominant_wear = max(landed_counts, key=landed_counts.get)

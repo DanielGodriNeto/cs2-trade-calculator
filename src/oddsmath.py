@@ -21,6 +21,7 @@ matched wear bracket (float_mix.WEAR_MIDPOINT), not a real per-listing float. Tr
 as a shortlist to verify with a float-checking site before buying, not exact numbers.
 """
 import functools
+import math
 from bisect import bisect_left, bisect_right
 import random as _random_mod
 
@@ -75,16 +76,21 @@ def wear_from_float(value: float) -> str:
 _WEAR_UPPER_EDGES = [hi for _, _, hi in WEAR_BREAKPOINTS]  # bisect table, same brackets as the loop form
 
 
-def remap_float_to_wear(output_skin: dict, avg_normalized: float) -> str:
-    """Maps a count-weighted average normalized float (0=cleanest, 1=worst) back into
-    output_skin's own [min_float, max_float] range, then returns whichever standard wear
-    bracket that landed float actually falls into."""
-    lo, hi = output_skin.get("min_float", 0.0), output_skin.get("max_float", 1.0)
-    target_float = lo + avg_normalized * (hi - lo)
+def _bracket_for_target(target_float: float) -> str:
+    """Wear bracket of a landed raw float (the reference form of remap_float_to_wear)."""
     if target_float < 0:  # below every bracket: falls through to the last one (original behaviour)
         return WEAR_BREAKPOINTS[-1][0]
     idx = bisect_right(_WEAR_UPPER_EDGES, target_float)
     return WEAR_BREAKPOINTS[min(idx, len(WEAR_BREAKPOINTS) - 1)][0]
+
+
+def remap_float_to_wear(output_skin: dict, avg_normalized: float) -> str:
+    """Maps a count-weighted average normalized float (0=cleanest, 1=worst) back into
+    output_skin's own [min_float, max_float] range, then returns whichever standard wear
+    bracket that landed float actually falls into. Bit-identical to the original loop: the
+    landed float is computed exactly as before, only the bracket lookup is a bisect."""
+    lo, hi = output_skin.get("min_float", 0.0), output_skin.get("max_float", 1.0)
+    return _bracket_for_target(lo + avg_normalized * (hi - lo))
 
 
 WEAR_PROB_SAMPLES = 600  # Monte-Carlo draws behind output_wear_probabilities() -- plenty for
@@ -232,3 +238,17 @@ def fully_priced(priced_odds: float, total_odds_pct: float) -> bool:
     if total_odds_pct <= 0:
         return False
     return priced_odds >= total_odds_pct - PRICED_ODDS_EPSILON_PP
+
+
+def honest_expectation(priced: list[tuple[float, float, float]], total_odds_pct: float) -> tuple[float, float] | None:
+    """(expected gross, expected after-fee proceeds) over the contract's FULL odds mass.
+
+    priced: [(gross, proceeds, odds_pct), ...] for the outputs that have a quote. Returns None
+    unless every output is priced (fully_priced gate), so a contract with an unknown outcome is
+    never reported. Proceeds are the honest cash-out value (see tradeup._honest_market_quote)."""
+    gross_pairs = [(gross, odds) for gross, _, odds in priced]
+    proceeds_pairs = [(proceeds, odds) for _, proceeds, odds in priced]
+    if total_odds_pct <= 0 or not fully_priced(priced_odds_pct(gross_pairs), total_odds_pct):
+        return None
+    return (expected_revenue_full_odds(gross_pairs, total_odds_pct),
+            expected_revenue_full_odds(proceeds_pairs, total_odds_pct))
