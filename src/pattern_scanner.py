@@ -219,6 +219,7 @@ _stats = {"matches": 0, "opportunities_live": 0, "last_attempt_at": None,
           "resolved_via_api": 0,     # legacy M/A/D links sent to a configured fallback service
           "legacy_links_skipped": 0, # legacy links seen with no fallback configured
           "cache_hits": 0,           # already known from a previous cycle/run (disk-backed)
+          "unverified_mismatch": 0,  # decoded float/seed disagreed with Steam's props -- skipped
           "skipped_price_ceiling": 0}  # too expensive to ever be a deal -- never even decoded
 
 _inspect_cache: dict = {}  # inspect link -> resolved item dict (see _resolve_item)
@@ -590,6 +591,21 @@ def _cache_put(inspect_link: str, item: dict) -> None:
             _inspect_cache_dirty = True
 
 
+FLOAT_VERIFY_TOLERANCE = 1e-6  # abs diff on the 0-1 float scale; decode and Steam match exactly live
+
+
+def _disagrees_with_listing(core: dict, prop_paint_seed: int | None,
+                            prop_float: float | None) -> bool:
+    """True only when BOTH sources hold a value and they differ (seed exact, float within
+    FLOAT_VERIFY_TOLERANCE). A missing value on either side is no verdict, not a mismatch."""
+    seed = core.get("paint_seed")
+    if prop_paint_seed is not None and isinstance(seed, int) and seed != prop_paint_seed:
+        return True
+    fv = core.get("float_value")
+    return (prop_float is not None and isinstance(fv, (int, float))
+            and abs(fv - prop_float) > FLOAT_VERIFY_TOLERANCE)
+
+
 def _resolve_item(inspect_link: str, *, market_hash_name: str, sticker_names: list,
                    allow_api: bool, prop_paint_seed: int | None = None,
                    prop_float: float | None = None) -> dict | None:
@@ -644,6 +660,15 @@ def _resolve_item(inspect_link: str, *, market_hash_name: str, sticker_names: li
                 _stats["resolved_via_api"] += 1
                 _stats["inspects_resolved"] += 1
             _cache_put(inspect_link, core)
+    if _disagrees_with_listing(core, prop_paint_seed, prop_float):
+        # Two independent sources for the same listing disagree: the item is not verified, so it
+        # must never reach _match_entry (a mis-decoded float/seed could fake a rare pattern).
+        with _stats_lock:
+            _stats["unverified_mismatch"] += 1
+            _stats["inspect_last_error"] = (
+                "decoded float/paint seed disagrees with Steam's listing properties -- "
+                "listing skipped as unverified")
+        return None
     fv = core.get("float_value")
     return {
         "float_value": fv,
