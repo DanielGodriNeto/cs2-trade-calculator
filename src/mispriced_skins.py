@@ -24,10 +24,11 @@ How the agents "learn to avoid" a flagged skin (the user-facing promise):
      originating best-list entry, so ranking.py's reliability dampening immediately demotes
      an entry whose headline ROI rested on the mispriced skin.
 
-Like the neighbors, this is TEMPORARY and self-healing, never a permanent blacklist: entries
-expire after RECHECK_SECONDS, and any later verification showing the gap back under threshold
-clears the mark immediately (record_from_rows both marks and clears). One shared registry
-(a market fact, not per-son data), same as invalid_skins.py.
+A mark older than RECHECK_SECONDS is flagged stale (due for re-verify) but still applied, because
+a 24 h expiry re-trusted a number that was proven wrong (phantom ROI). It lapses for good only
+after HARD_EXPIRY_SECONDS, since nothing re-verifies a skin the dead-skin score keeps out of
+candidates. A later verification clears it (record_from_rows) or refreshes it. One shared registry (a market fact, not per-person data), same as
+invalid_skins.py.
 """
 import json
 import os
@@ -45,7 +46,10 @@ GAP_THRESHOLD_PCT = 20.0  # |Steam vs cheapest verified| must reach this to flag
 # looser than dead_skin.LARGE_PRICE_GAP_PCT (25) is strict, deliberately between
 # thirdparty_prices.drought_flag's 15 and that 25: this mark is backed by a live verification,
 # not a passive bulk-feed glance, so it can afford to be a bit more sensitive.
-RECHECK_SECONDS = 24 * 3600  # same self-healing cadence as invalid_skins.INVALID_RECHECK_SECONDS
+RECHECK_SECONDS = 24 * 3600  # refresh target for the verify queue: after this a mark is stale
+# (still applied, see active_gap) and should be re-verified; it lapses at HARD_EXPIRY_SECONDS.
+HARD_EXPIRY_SECONDS = 14 * 24 * 3600  # ponytail: no heal path re-verifies stale marks yet; add one
+# (re-price stale marks into record_from_rows) and this cap can go.
 MISPRICED_DEAD_SKIN_POINTS = 40.0  # what a currently-active mark contributes to a unit's
 # dead-skin score in simulate.py -- deliberately equal to dead_skin.DEAD_SKIN_THRESHOLD so a
 # verified mispricing ALONE excludes the skin from training/leaderboards, no second signal
@@ -147,13 +151,13 @@ def clear_name(name: str, currency: int) -> bool:
 
 
 def active_gap(name: str, currency: int) -> "float | None":
-    """The verified gap %, or None if this market_hash_name isn't currently marked (or the
-    mark has aged past RECHECK_SECONDS -- expired marks read as clean so the skin gets a
-    fresh chance). Cheap in-memory lookup, safe for simulate.py's per-unit hot loop."""
+    """The verified gap %, or None if this market_hash_name isn't marked or the mark is past
+    HARD_EXPIRY_SECONDS. Stale marks (older than RECHECK_SECONDS) still return their gap.
+    Cheap in-memory lookup, safe for simulate.py's per-unit hot loop."""
     with _lock:
         _ensure_loaded()
         entry = _store["skins"].get(_key(name, currency))
-        if entry is None or (time.time() - entry["marked_at"]) >= RECHECK_SECONDS:
+        if entry is None or (time.time() - entry["marked_at"]) >= HARD_EXPIRY_SECONDS:
             return None
         return entry["gap_pct"]
 
@@ -189,15 +193,17 @@ def record_from_rows(rows: list, currency: int) -> dict:
 
 
 def list_mispriced(currency: int | None = None) -> list:
-    """Every currently-registered mark (most recent first), tagged active/expired -- for the
-    dashboard's Market Intelligence panel and the CLI."""
+    """Every registered mark (most recent first). `active` is False only past HARD_EXPIRY_SECONDS
+    (simulate.py filters on it); `stale` marks it past RECHECK_SECONDS."""
     now = time.time()
     with _lock:
         _ensure_loaded()
         rows = [dict(e) for e in _store["skins"].values()
                 if currency is None or e.get("currency") == currency]
     for r in rows:
-        r["active"] = (now - r.get("marked_at", 0)) < RECHECK_SECONDS
+        age = now - r.get("marked_at", 0)
+        r["active"] = age < HARD_EXPIRY_SECONDS
+        r["stale"] = age >= RECHECK_SECONDS
     rows.sort(key=lambda e: e.get("marked_at", 0), reverse=True)
     return rows
 

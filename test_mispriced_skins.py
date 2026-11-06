@@ -86,4 +86,43 @@ assert result == {"marked": 2, "cleared": 1}, result
 assert len(save_calls) == 1, save_calls
 assert {e["skin"] for e in m.list_mispriced(1)} == {"AK-47 | Redline", "M4A4 | Howl"}
 
+# Expiry: a mark past RECHECK_SECONDS must NOT silently re-trust the skin (phantom ROI came back).
+# It stays applied and is flagged stale until a verification clears or confirms it. Time is faked.
+m.forget_all()
+m.clear_all()
+t0 = 1_000_000.0
+DAY = 24 * 3600
+with mock.patch.object(m.time, "time", return_value=t0):
+    m.mark("AK-47 | Redline", "Field-Tested", False, 1, 30.0, "skinport", 130.0, 100.0)
+    m.mark("AWP | Asiimov", "Field-Tested", False, 1, -25.0, "buff163", 45.0, 60.0)
+with mock.patch.object(m.time, "time", return_value=t0 + 3600):
+    rows = {e["skin"]: e for e in m.list_mispriced(1)}
+    assert rows["AK-47 | Redline"]["active"] and not rows["AK-47 | Redline"]["stale"]
+with mock.patch.object(m.time, "time", return_value=t0 + DAY + 1):
+    assert m.active_gap("AK-47 | Redline (Field-Tested)", 1) == 30.0, "expired overvalued mark must still apply"
+    assert m.active_gap("AWP | Asiimov (Field-Tested)", 1) == -25.0, "expired undervalued mark must still apply"
+    rows = {e["skin"]: e for e in m.list_mispriced(1)}
+    assert rows["AK-47 | Redline"]["active"] and rows["AK-47 | Redline"]["stale"]
+    assert rows["AWP | Asiimov"]["active"] and rows["AWP | Asiimov"]["stale"]
+    assert m.active_gap("Glock-18 | Fade (Factory New)", 1) is None  # never marked: still clean
+# A fresh verification confirming the gap refreshes marked_at and clears the stale flag.
+with mock.patch.object(m.time, "time", return_value=t0 + DAY + 2):
+    m.mark("AK-47 | Redline", "Field-Tested", False, 1, 31.0, "skinport", 131.0, 100.0)
+    rows = {e["skin"]: e for e in m.list_mispriced(1)}
+    assert rows["AK-47 | Redline"]["active"] and not rows["AK-47 | Redline"]["stale"]
+    assert m.active_gap("AK-47 | Redline (Field-Tested)", 1) == 31.0
+# A verification showing the gap back under threshold clears the stale mark for good.
+with mock.patch.object(m.time, "time", return_value=t0 + 3 * DAY):
+    assert m.active_gap("AWP | Asiimov (Field-Tested)", 1) == -25.0
+    res = m.record_from_rows([SimpleNamespace(skin="AWP | Asiimov", wear="Field-Tested", stattrak=False,
+                                              steam_vs_cheapest_pct=1.0, cheapest_source="buff163",
+                                              steam_price=61.0, cheapest_price=60.0)], 1)
+    assert res == {"marked": 0, "cleared": 1}, res
+    assert m.active_gap("AWP | Asiimov (Field-Tested)", 1) is None
+    assert m.list_mispriced(1)[0]["skin"] == "AK-47 | Redline"
+# Nothing heals a never-reverified mark, so it lapses for good at HARD_EXPIRY_SECONDS.
+with mock.patch.object(m.time, "time", return_value=t0 + DAY + 2 + m.HARD_EXPIRY_SECONDS + 1):
+    assert m.active_gap("AK-47 | Redline (Field-Tested)", 1) is None
+    assert not m.list_mispriced(1)[0]["active"]
+
 print("ok")
