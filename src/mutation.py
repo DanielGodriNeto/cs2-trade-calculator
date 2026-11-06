@@ -48,19 +48,26 @@ def _adjacent_rarity_pairs() -> list:
     return list(zip(ids, ids[1:]))
 
 
-def candidate_from_best_entry(entry: dict, idx: dict) -> "random_trade_mod.Candidate | None":
+def candidate_from_best_entry(entry: dict, idx: dict,
+                              skins_by_name: dict | None = None) -> "random_trade_mod.Candidate | None":
     """Rebuilds a full random_trade.Candidate from one of sim_loop.py's checkpoint `best`
     entries -- those only store display-friendly names/summaries (skin NAME strings,
     rarity NAMES), not the live skin dicts / rarity ids the mutation operators below need
     to actually inspect and change. Returns None if any referenced skin/rarity/wear can no
     longer be resolved against the current skin database (e.g. an upstream data refresh
     renamed or dropped something) -- callers should just skip mutating that entry rather
-    than crash."""
+    than crash.
+
+    skins_by_name (optional): a {skin name: skin dict} map built from data.load_skins().
+    When None (the default) it is built here, one full skin-JSON load per call. Batch
+    callers (mutate_batch) pass a map they built once, so the JSON is not re-parsed for
+    every candidate."""
     from_id = _rarity_id_for_name(entry["from_rarity"])
     to_id = _rarity_id_for_name(entry["to_rarity"])
     if from_id is None or to_id is None:
         return None
-    skins_by_name = {s["name"]: s for s in data_mod.load_skins()}
+    if skins_by_name is None:
+        skins_by_name = {s["name"]: s for s in data_mod.load_skins()}
 
     legs_by_collection: dict = {}
     for row in entry["input_mix"]:
@@ -384,12 +391,13 @@ def mutate_batch(best_entries: list, idx: dict, rng: random_mod.Random, n: int,
     round, so identity keys never outlive their objects."""
     if not best_entries:
         return []
+    skins_by_name = {s["name"]: s for s in data_mod.load_skins()}
     out = []
     attempts = 0
     while len(out) < n and attempts < n * 5:
         attempts += 1
         entry = rng.choice(best_entries)
-        base = candidate_from_best_entry(entry, idx)
+        base = candidate_from_best_entry(entry, idx, skins_by_name=skins_by_name)
         if base is None:
             continue
         mutated = mutate(base, idx, rng)
