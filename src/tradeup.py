@@ -15,8 +15,10 @@ see float_mix.py) to do better than this default; treat results as a shortlist t
 verify manually (e.g. on a float-checking site) before committing money, not as
 guaranteed numbers.
 """
+import functools
 from dataclasses import dataclass, field
 
+from . import bulk_prices as bulk_prices_mod
 from . import data as data_mod
 from . import float_mix as float_mix_mod
 from . import marketplaces as marketplaces_mod
@@ -28,6 +30,16 @@ from . import wear_anomaly as wear_anomaly_mod
 from .steam_prices import get_price, market_hash_name
 
 STEAM_SELL_FEE = 0.13  # Steam Market cut on a sale; commonly cited as 13-15%, varies by price tier
+# Cash-market sell fees for the honest revenue rule. Checked 2026-11 -- fees change, re-verify
+# before trusting the numbers.
+SKINPORT_SELL_FEE = 0.08
+BUFF_SELL_FEE = 0.025
+# Output revenue = the LOWEST after-fee proceeds across Steam (anchor, required) and the cash
+# markets Skinport/Buff163 when they have a price. Steam wallet prices overstate what a cash-out
+# returns. False = Steam-only revenue at STEAM_SELL_FEE (the old, optimistic rule).
+CASH_MARKET_REVENUE = True
+MIN_INPUT_PRICE = 0.50  # USD; candidate inputs cheaper than this are skipped (junk-price contracts)
+LONG_WINDOW_SOURCE = "csgotrader:last_90d"  # bulk_prices tag when only the 90-day window had data
 _N = rules_engine_mod.STANDARD_INPUT_COUNT  # single source of truth, see rules_engine.py
 
 _WEAR_ORDER = [name for name, _, _ in float_mix_mod.WEAR_BREAKPOINTS]  # Factory New .. Battle-Scarred
@@ -37,8 +49,9 @@ _WEAR_ORDER = [name for name, _, _ in float_mix_mod.WEAR_BREAKPOINTS]  # Factory
 class PossibleDrop:
     name: str
     probability_pct: float
-    price: float | None  # None if no price data was found for the matched wear of this skin
-    profit_after_fee: float | None  # this specific drop's price (after Steam fee) minus the contract's cost
+    price: float | None  # probability-weighted gross price of the binding (lowest after-fee) market
+    # across the wears this output can land in; None if no price data was found
+    profit_after_fee: float | None  # this drop's probability-weighted after-fee proceeds minus the contract's cost
     max_input_price: float | None  # breakeven price *per input unit* if this is the drop you get
     thirdparty_check: dict | None = None  # thirdparty_prices.drought_flag() result, or None if not requested/available
     image: str = ""  # direct Steam CDN thumbnail URL, "" if the upstream feed doesn't have one for this skin
@@ -126,7 +139,7 @@ def _cheapest_wear_price(skin: dict, stattrak: bool, currency: int, abort_check=
             break
         name = market_hash_name(skin["name"], wear, stattrak)
         price = get_price(name, currency, abort_check)
-        if price and price["lowest_price"]:
+        if price and price["lowest_price"] and price.get("source") != LONG_WINDOW_SOURCE:
             if best is None or price["lowest_price"] < best[0]:
                 best = (price["lowest_price"], name, wear, price.get("volume"))
     return best
@@ -171,12 +184,147 @@ def _price_and_volume_at_matched_wear(skin: dict, matched_wear: str, stattrak: b
     return price_val, actual_wear, price.get("volume")
 
 
-def _attach_wear_probs(drops: list, outputs: list, cheapest_skin: dict, matched_wear: str) -> None:
-    """Fills PossibleDrop.wear_probs in place. drops[i] must belong to outputs[i]. One sampling
-    pass for the contract's input side, reused for every output."""
-    samples = oddsmath_mod.sample_avg_normalized_floats([(cheapest_skin, matched_wear, _N)])
-    for skin, drop in zip(outputs, drops):
-        drop.wear_probs = oddsmath_mod.wear_probabilities_for_output(skin, samples)
+@dataclass(frozen=True)
+class _MarketQuote:
+    """One output skin at one wear, priced across every market that has a price."""
+    gross: float  # listed price of the binding market (the one with the lowest proceeds)
+    proceeds: float  # what that binding market nets after its own sell fee
+    steam_price: float | None  # Steam's price for this wear (None if absent or 90d-only)
+    wear: str  # wear actually priced (see _closest_available_wear)
+    volume: int | None  # Steam's recent-sales count for steam_price
+
+
+@dataclass(frozen=True)
+class _OutputQuote:
+    """One output skin, averaged over the wears it can land in (weighted by wear_probs)."""
+    gross: float  # probability-weighted gross price
+    proceeds: float  # probability-weighted after-fee proceeds
+    primary: _MarketQuote  # quote at the single most likely landing wear (display, anomaly check)
+
+
+@functools.lru_cache(maxsize=512)
+def _input_wear_samples(min_float: float, max_float: float, wear: str) -> list:
+    """oddsmath sampling for the contract's input side. Depends only on the input skin's float
+    range and wear, so the many contracts sharing a range reuse one sampling pass. Callers must
+    not mutate the result."""
+    return oddsmath_mod.sample_avg_normalized_floats([({"min_float": min_float, "max_float": max_float}, wear, _N)])
+
+
+def _output_wear_probs(outputs: list, cheapest_skin: dict, matched_wear: str) -> list[dict]:
+    """{wear: %} per output skin: where each output's float can actually land given the inputs."""
+    samples = _input_wear_samples(cheapest_skin.get("min_float", 0.0), cheapest_skin.get("max_float", 1.0),
+                                  matched_wear)
+    return [oddsmath_mod.wear_probabilities_for_output(skin, samples) for skin in outputs]
+
+
+def _cash_market_maps(currency: int) -> tuple[dict, dict]:
+    """(skinport, buff163) price maps from the bulk mirror already in memory, fetched once per
+    tier. Empty maps when CASH_MARKET_REVENUE is off, so only Steam prices the output."""
+    if not CASH_MARKET_REVENUE:
+        return {}, {}
+    return bulk_prices_mod.get_skinport_map(currency), bulk_prices_mod.get_buff163_map(currency)
+
+
+def _honest_market_quote(skin: dict, wear: str, stattrak: bool, currency: int,
+                         cash_maps: tuple[dict, dict], abort_check=None) -> _MarketQuote | None:
+    """The lowest after-fee proceeds across Steam, Skinport and Buff163 for this skin at this wear.
+    Steam is the anchor: without a Steam price there is no quote (a lone cash-market listing can be
+    an outlier that would RAISE revenue, e.g. one Buff163 ask 5x Steam's median). Cash markets only
+    ever lower the Steam-based revenue. A cash market with no price for this exact name is ignored."""
+    actual_wear = _closest_available_wear(skin["wears"], wear)
+    name = market_hash_name(skin["name"], actual_wear, stattrak)
+    if wear_anomaly_mod.is_flagged(name, currency):  # known-bad price, see _price_at_matched_wear
+        return None
+    steam = get_price(name, currency, abort_check)
+    steam_price = None
+    if steam and steam.get("source") != LONG_WINDOW_SOURCE:
+        steam_price = steam["median_price"] or steam["lowest_price"]
+    if not steam_price:
+        return None
+    skinport_map, buff_map = cash_maps
+    markets = [(steam_price, STEAM_SELL_FEE), (skinport_map.get(name), SKINPORT_SELL_FEE),
+               (buff_map.get(name), BUFF_SELL_FEE)]
+    proceeds_by_market = [(price * (1 - fee), price) for price, fee in markets if price]
+    proceeds, gross = min(proceeds_by_market)
+    return _MarketQuote(gross=gross, proceeds=proceeds, steam_price=steam_price, wear=actual_wear,
+                        volume=steam.get("volume") if steam_price is not None else None)
+
+
+def _honest_output_quote(skin: dict, wear_probs: dict, matched_wear: str, stattrak: bool, currency: int,
+                         cash_maps: tuple[dict, dict], abort_check=None) -> _OutputQuote | None:
+    """Probability-weighted quote for one output. Every wear it can land in must be priced: a
+    wear with no price makes the whole output unpriced (same all-or-nothing rule as the contract)."""
+    weights = {wear: pct for wear, pct in wear_probs.items() if pct > 0} or {matched_wear: 100.0}
+    total = sum(weights.values())
+    gross_sum = 0.0
+    proceeds_sum = 0.0
+    primary = None
+    primary_pct = -1.0
+    for wear, pct in weights.items():
+        quote = _honest_market_quote(skin, wear, stattrak, currency, cash_maps, abort_check)
+        if quote is None:
+            return None
+        gross_sum += pct * quote.gross
+        proceeds_sum += pct * quote.proceeds
+        if pct > primary_pct:
+            primary, primary_pct = quote, pct
+    return _OutputQuote(gross=gross_sum / total, proceeds=proceeds_sum / total, primary=primary)
+
+
+def _quote_outputs(outputs: list, wear_probs_list: list, matched_wear: str, stattrak: bool, currency: int,
+                   cash_maps: tuple[dict, dict], abort_check=None) -> list[_OutputQuote | None]:
+    quotes: list = [None] * len(outputs)
+    for i, skin in enumerate(outputs):
+        if abort_check and abort_check():
+            break
+        quotes[i] = _honest_output_quote(skin, wear_probs_list[i], matched_wear, stattrak, currency,
+                                         cash_maps, abort_check)
+    # Retry any output skin that came back with no price data -- a transient failure
+    # (rate limit, dropped connection, bad edge node) might resolve on a second attempt
+    # after some time has passed scanning the rest of the collection. This runs even if
+    # nothing at all got priced the first time, so a whole tier isn't given up on early.
+    for i, skin in enumerate(outputs):
+        if quotes[i] is not None:
+            continue
+        if abort_check and abort_check():
+            break
+        quotes[i] = _honest_output_quote(skin, wear_probs_list[i], matched_wear, stattrak, currency,
+                                         cash_maps, abort_check)
+    return quotes
+
+
+def _reject_wear_anomalies(outputs: list, quotes: list, cost: float, stattrak: bool, currency: int,
+                           abort_check=None) -> list:
+    """Wear-order sanity check, only when the contract would come out positive (a losing result
+    never gets recommended, so it isn't worth even the cheap check): each output's Steam price at
+    its primary wear is verified against its own BETTER conditions. A Field-Tested copy "worth" more
+    than its own Factory New is a bad data point (souvenir conflation, a troll listing -- see
+    wear_anomaly.py); that output becomes unpriced so the contract is dropped, and the registry keeps
+    it excluded everywhere for the next 24h. Prices come from the bulk mirror, so no extra requests."""
+    if not cost or sum(q.proceeds for q in quotes) / len(outputs) < cost:
+        return quotes
+    kept = list(quotes)
+    for i, (skin, quote) in enumerate(zip(outputs, quotes)):
+        if abort_check and abort_check():
+            continue
+        if quote.primary.steam_price is None:
+            continue
+        anomaly = wear_anomaly_mod.check_output_price(
+            skin, quote.primary.wear, quote.primary.steam_price, stattrak, currency, abort_check)
+        if anomaly:
+            kept[i] = None
+    return kept
+
+
+def _build_drops(outputs: list, quotes: list, wear_probs_list: list, cost: float) -> list[PossibleDrop]:
+    probability_pct = 100.0 / len(outputs)  # single-collection trade-up: each output skin equally likely
+    drops = [PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=q.gross,
+                          profit_after_fee=q.proceeds - cost, max_input_price=q.proceeds / _N,
+                          image=skin.get("image", ""), wear=q.primary.wear, volume=q.primary.volume,
+                          wear_probs=probs)
+             for skin, q, probs in zip(outputs, quotes, wear_probs_list)]
+    drops.sort(key=lambda d: -d.price)
+    return drops
 
 
 def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, currency: int = 1,
@@ -216,8 +364,11 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
     float_strategy/mixed_strategy are on, pass it through so their own candidate searches can
     use it too. max_distinct_wears/max_n_filler: forwarded to the float-mix/mixed-float search
     to widen how many wear brackets / filler slots a candidate may combine -- a caller may raise
-    these for deeper coverage; the default (2 wears, 4 filler slots) matches today's behavior."""
+    these for deeper coverage; the default (2 wears, 4 filler slots) matches today's behavior.
+    Revenue is the honest cash-market rule (see CASH_MARKET_REVENUE): each output is worth the
+    lowest after-fee proceeds across Steam/Skinport/Buff163, weighted by the wears it can land in."""
     results = []
+    min_input_price = MIN_INPUT_PRICE * bulk_prices_mod.rate_for(currency)
     for from_id, to_id in zip([r for r, _ in data_mod.RARITY_CHAIN], [r for r, _ in data_mod.RARITY_CHAIN][1:]):
         if abort_check and abort_check():
             break
@@ -253,7 +404,9 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
             if abort_check and abort_check():
                 break
             found = _cheapest_wear_price(skin, stattrak, currency, abort_check, fast_mode)
-            if found and (cheapest is None or found[0] < cheapest[0]):
+            if not found or found[0] < min_input_price:
+                continue
+            if cheapest is None or found[0] < cheapest[0]:
                 cheapest = found
                 cheapest_skin = skin
         if cheapest is None:
@@ -261,68 +414,11 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
         cost = cheapest[0] * _N
         matched_wear = cheapest[2]  # all N inputs are this same skin+wear, so this is the output's expected wear too
 
-        revenues = []
-        priced = 0
-        drops = []
-        probability_pct = 100.0 / len(outputs)  # single-collection trade-up: each output skin equally likely
-        for skin in outputs:
-            if abort_check and abort_check():
-                break
-            found_price = _price_and_volume_at_matched_wear(skin, matched_wear, stattrak, currency, abort_check)
-            price_val, actual_wear, volume = found_price if found_price else (None, "", None)
-            drop_profit = price_val * (1 - STEAM_SELL_FEE) - cost if price_val is not None else None
-            # breakeven price per input unit if this specific skin is the one you get
-            drop_max_input_price = (price_val * (1 - STEAM_SELL_FEE) / _N) if price_val is not None else None
-            drops.append(PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=price_val,
-                                       profit_after_fee=drop_profit, max_input_price=drop_max_input_price,
-                                       image=skin.get("image", ""), wear=actual_wear, volume=volume))
-            if price_val is not None:
-                revenues.append(price_val)
-                priced += 1
-
-        # Retry any output skin that came back with no price data -- a transient failure
-        # (rate limit, dropped connection, bad edge node) might resolve on a second attempt
-        # after some time has passed scanning the rest of the collection. This runs even if
-        # nothing at all got priced the first time, so a whole tier isn't given up on early.
-        for i, skin in enumerate(outputs):
-            if drops[i].price is not None:
-                continue
-            if abort_check and abort_check():
-                break
-            found_price = _price_and_volume_at_matched_wear(skin, matched_wear, stattrak, currency, abort_check)
-            if found_price is None:
-                continue
-            price_val, actual_wear, volume = found_price
-            drop_profit = price_val * (1 - STEAM_SELL_FEE) - cost
-            drop_max_input_price = price_val * (1 - STEAM_SELL_FEE) / _N
-            drops[i] = PossibleDrop(name=skin["name"], probability_pct=probability_pct, price=price_val,
-                                     profit_after_fee=drop_profit, max_input_price=drop_max_input_price,
-                                     image=skin.get("image", ""), wear=actual_wear, volume=volume)
-            revenues.append(price_val)
-            priced += 1
-
-        # Wear-order sanity check, only when this result would come out positive (a losing
-        # result never gets recommended, so it isn't worth even the cheap check): verify each
-        # priced output against its own BETTER conditions. A Field-Tested copy "worth" more
-        # than its own Factory New is a bad data point (souvenir conflation, a troll listing
-        # -- see wear_anomaly.py), not real revenue; drop it from the revenue average so a
-        # fake ROI dies here instead of reaching the results list, and let the registry keep
-        # it excluded everywhere (including the strategy searches below) for the next 24h.
-        # Prices come from the bulk mirror already in memory, so this costs no extra requests.
-        if revenues and cost and (sum(revenues) / len(outputs)) * (1 - STEAM_SELL_FEE) >= cost:
-            for out_skin, drop in zip(outputs, drops):
-                if drop.price is None or (abort_check and abort_check()):
-                    continue
-                anomaly = wear_anomaly_mod.check_output_price(
-                    out_skin, drop.wear, drop.price, stattrak, currency, abort_check)
-                if anomaly:
-                    drop.wear_anomaly = anomaly
-                    drop.price = None
-                    drop.profit_after_fee = None
-                    drop.max_input_price = None
-            revenues = [d.price for d in drops if d.price is not None]
-            priced = len(revenues)
-
+        # Honest revenue (see _honest_output_quote): every output is quoted at each wear it can
+        # land in, weighted by wear_probs; any unpriced landing wear leaves the output unpriced.
+        cash_maps = _cash_market_maps(currency)
+        wear_probs_list = _output_wear_probs(outputs, cheapest_skin, matched_wear)
+        quotes = _quote_outputs(outputs, wear_probs_list, matched_wear, stattrak, currency, cash_maps, abort_check)
         # All-or-nothing on the output side: this contract can land on any of `outputs`, so one
         # unpriced output means the honest expected revenue is unknown -- not "the average of
         # the ones that worked". Averaging the priced subset silently hands the unpriced
@@ -330,18 +426,17 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
         # disproportionately the illiquid cheap ones, so what survives is the expensive tail:
         # the ROI comes out inflated in exactly the cases where it's least trustworthy.
         # See oddsmath's unpriced-outputs section.
-        if not revenues or priced < len(outputs):
+        if any(q is None for q in quotes):
             continue
-        expected_revenue = sum(revenues) / len(outputs)
-        after_fee = expected_revenue * (1 - STEAM_SELL_FEE)
+        quotes = _reject_wear_anomalies(outputs, quotes, cost, stattrak, currency, abort_check)
+        if any(q is None for q in quotes):
+            continue
+        expected_revenue = sum(q.gross for q in quotes) / len(outputs)
+        after_fee = sum(q.proceeds for q in quotes) / len(outputs)
         profit = after_fee - cost
         roi = (profit / cost * 100) if cost else 0.0
         max_input_price = after_fee / _N  # breakeven price per unit -- pay more and the expected case is a loss
-        # wear_probs is display-only and the sampling pass is not free, so it is attached only to
-        # rows the caller keeps (roi >= min_roi); the rest are dropped by the caller's own cut.
-        if roi >= min_roi:
-            _attach_wear_probs(drops, outputs, cheapest_skin, matched_wear)
-        drops.sort(key=lambda d: (d.price is None, -(d.price or 0)))
+        drops = _build_drops(outputs, quotes, wear_probs_list, cost)
 
         from_name = dict(data_mod.RARITY_CHAIN)[from_id]
         to_name = dict(data_mod.RARITY_CHAIN)[to_id]
@@ -411,7 +506,7 @@ def scan_collection(collection: str, skins_by_rarity: dict, stattrak: bool, curr
             profit=profit,
             roi_pct=roi,
             n_output_variants=len(outputs),
-            priced_output_variants=priced,
+            priced_output_variants=len(outputs),  # the gate above guarantees every output is priced
             max_input_price=max_input_price,
             possible_drops=drops,
             float_strategies=float_strategies,

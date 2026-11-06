@@ -104,7 +104,10 @@ def digest_rows(results):
 
 def check_scan_wear_probs(idx):
     full = tu.scan_all(idx, fast_mode=True, min_roi=float("-inf"))
-    kept = tu.scan_all(idx, fast_mode=True, min_roi=0.0)
+    # Changed 2026-11: the honest revenue rule leaves few rows at roi>=0, so the kept split uses the
+    # median ROI of the full scan (a real kept/dropped split) instead of a hard-coded 0.
+    threshold = sorted(r.roi_pct for r in full)[len(full) // 2]
+    kept = tu.scan_all(idx, fast_mode=True, min_roi=threshold)
     full_by_key = {(r.collection, r.from_rarity, r.to_rarity): r for r in full}
     kept_keys = {(r.collection, r.from_rarity, r.to_rarity) for r in kept}
     assert kept_keys == set(full_by_key), "min_roi must not change which rows scan_all returns"
@@ -115,16 +118,16 @@ def check_scan_wear_probs(idx):
         for d in r.possible_drops:
             out_skin = next(s for s in idx[r.collection][id_by_name[r.to_rarity]] if s["name"] == d.name)
             assert d.wear_probs == ref_wear_probs(out_skin, samples), (r.collection, d.name)
+    # wear_probs now drive the honest revenue (tradeup._honest_output_quote), so they are attached to
+    # every row, not only roi >= min_roi as before. The kept rows must still match the full scan exactly.
     n_kept = 0
     for r in kept:
         ref = full_by_key[(r.collection, r.from_rarity, r.to_rarity)]
-        if r.roi_pct >= 0.0:
+        if r.roi_pct >= threshold:
             n_kept += 1
             assert digest_rows([r]) == digest_rows([ref]), (r.collection, r.from_rarity)
-        else:
-            assert all(d.wear_probs == {} for d in r.possible_drops), "below min_roi: wear_probs skipped"
     assert n_kept, "no kept rows: the wear_probs check would be vacuous"
-    print(f"ok scan wear_probs: {len(full)} rows verified against reference, {n_kept} rows at roi>=0 identical")
+    print(f"ok scan wear_probs: {len(full)} rows verified against reference, {n_kept} rows at roi>={threshold:.2f} identical")
 
 
 def main():
