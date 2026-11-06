@@ -386,6 +386,16 @@ def collection_roi_lookup(sims_file: Path) -> dict:
     return _collection_roi_lookup(sims_file)
 
 
+_train_locks: dict[str, threading.Lock] = {}
+_train_locks_guard = threading.Lock()
+
+
+def _train_lock_for(model_dir: Path) -> threading.Lock:
+    """One lock per model_dir: serializes retrains of the same model across callers."""
+    with _train_locks_guard:
+        return _train_locks.setdefault(str(model_dir), threading.Lock())
+
+
 def train(model_dir: Path, sims_file: Path) -> TrainResult:
     """Fits a fresh model on every currently-logged simulation (for ONE son -- model_dir/
     sims_file are that son's own paths) and overwrites its persisted model + metadata. Refuses
@@ -417,7 +427,10 @@ def train(model_dir: Path, sims_file: Path) -> TrainResult:
     # the fit left that majority running 6-wide, which is the exact thrash TRAIN_MAX_CONCURRENCY
     # exists to prevent. Waiting is still timed as its own phase so a son that queued behind two
     # siblings can never be mistaken for a son whose own work was slow.
-    with _train_slots:
+    # Per-model_dir lock first (same order everywhere), so one model is never retrained by two
+    # callers at once -- a son's own round and the dashboard/CLI retrain entry points can both
+    # target it. Different models still share the _train_slots cap below.
+    with _train_lock_for(model_dir), _train_slots:
         # Measured from t_start: nothing happens between entering train() and reaching here, so
         # this is the whole of the queue wait and elapsed_seconds stays exactly accounted for.
         t = _mark("await_train_slot", t_start)
@@ -598,9 +611,19 @@ def get_model_status(model_dir: Path) -> dict:
     return {"trained": True, "min_samples_required": MIN_TRAINING_SAMPLES, **meta}
 
 
+def _warm_price(market_hash_name: str, cur: int, price_memo: dict) -> dict | None:
+    """get_cached_price's data for one unit. price_memo (shared by a caller's whole scoring pass,
+    during which the price cache does not change) turns repeat skin+wear lookups into dict hits."""
+    key = (market_hash_name, cur)
+    if key not in price_memo:
+        price_memo[key] = steam_prices_mod.get_cached_price(market_hash_name, cur)[0]
+    return price_memo[key]
+
+
 def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
                           collection_roi_lookup: dict | None = None,
-                          with_std: bool = False) -> "float | tuple[float, float] | None":
+                          with_std: bool = False,
+                          price_memo: dict | None = None) -> "float | tuple[float, float] | None":
     """Scores a not-yet-simulated random_trade.Candidate for random_trade.generate_batch's
     guided sampling -- estimated from the candidate's structure alone (no pricing needed), so
     it's cheap enough to call on every random draw before deciding which ones are even worth
@@ -651,11 +674,12 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
     # cache only (no network -- get_cached_price never fetches). A cold lookup contributes None;
     # _price_ratio yields nan when a whole side is cold, matching _featurize_record's contract.
     cur = 1  # this codebase runs currency=1 throughout (see run_round's currency default)
+    memo = {} if price_memo is None else price_memo
     input_prices = []
     for leg in candidate.legs:
         for u in leg.units:
             mhn = steam_prices_mod.market_hash_name(u["skin"]["name"], u["wear"], candidate.stattrak)
-            pdata, _ = steam_prices_mod.get_cached_price(mhn, cur)
+            pdata = _warm_price(mhn, cur, memo)
             input_prices.append((pdata.get("lowest_price") or pdata.get("median_price")) if pdata else None)
     # serve numerator = each output skin's mean WARM-wear price (train uses its single LANDED-wear
     # price -- the accepted "cheap proxy" latitude of finding M6; don't compute the landed wear
@@ -668,7 +692,7 @@ def predict_expected_roi(candidate, model_dir: Path, sims_file: Path,
             skin_warm = []
             for w in skin["wears"]:
                 mhn = steam_prices_mod.market_hash_name(skin["name"], w, candidate.stattrak)
-                pdata, _ = steam_prices_mod.get_cached_price(mhn, cur)
+                pdata = _warm_price(mhn, cur, memo)
                 if pdata:
                     p = pdata.get("median_price") or pdata.get("lowest_price")
                     if p is not None:

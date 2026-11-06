@@ -1002,6 +1002,26 @@ def reset_all(population: list) -> None:
         full_reset(son)
 
 
+class _FirstPassScores:
+    """ML mean predictions made while scoring one round's candidate pool (run_round's score_fn),
+    so the logged record reuses them instead of predicting again after simulate() has already
+    refreshed the price cache. Keyed by id() but holding the candidate itself, so an id can't be
+    recycled to a different object within the round. Lives for one run_round call; never persisted."""
+
+    def __init__(self) -> None:
+        self._by_id: dict[int, tuple[object, float | None]] = {}
+
+    def store(self, candidate, mean: float | None) -> None:
+        self._by_id[id(candidate)] = (candidate, mean)
+
+    def has(self, candidate) -> bool:
+        hit = self._by_id.get(id(candidate))
+        return hit is not None and hit[0] is candidate
+
+    def get(self, candidate) -> float | None:
+        return self._by_id[id(candidate)][1]
+
+
 def run_round(state: SimulationLoopState, currency: int = 1) -> None:
     """Runs one batch of candidates for this son, then advances/retrains/updates its progress
     bookkeeping. Pausing/stopping mid-batch just stops early -- every candidate is drawn
@@ -1061,12 +1081,18 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
         return (exploration * novelty_multiplier
                 * adaptive_mod.novelty_bonus(c, coverage, coverage_total, ucb_pp=novelty_ucb_pp))
 
+    # Round-local: the ML mean for every pool candidate (reused for the record below) and a price
+    # memo shared across this scoring pass only -- the price cache can't change while the pool is
+    # being scored (no simulate() yet), so memo hits are exact here.
+    first_pass = _FirstPassScores()
+    price_memo: dict = {}
     if model_status["trained"]:
         acq_beta = agents_mod.acquisition_beta_for(live["exploration_rate"])
         def score_fn(c):
             pred = sim_learning_mod.predict_expected_roi(c, state.model_dir, state.sims_file,
                                                           collection_roi_lookup=collection_roi_lookup,
-                                                          with_std=True)
+                                                          with_std=True, price_memo=price_memo)
+            first_pass.store(c, pred[0] if pred is not None else None)
             mean, std = pred if pred is not None else (0.0, 0.0)
             return (mean + _novelty(c), std)
     else:
@@ -1165,10 +1191,14 @@ def run_round(state: SimulationLoopState, currency: int = 1) -> None:
                 # records this son's own pre-simulation guess for the exact candidate that was
                 # just simulated, so ranking.py can later compare it against the real
                 # expected_roi_pct as an agreement-based trust signal (see ranking.
-                # _ml_agreement_bonus). Cheap: reuses the already-loaded model, no extra I/O.
-                record.ml_predicted_roi_pct = sim_learning_mod.predict_expected_roi(
-                    candidate, state.model_dir, state.sims_file,
-                    collection_roi_lookup=collection_roi_lookup)
+                # _ml_agreement_bonus). Reuses the score from the scoring pass above; only a
+                # candidate that was never scored (a mutant) is predicted here.
+                if first_pass.has(candidate):
+                    record.ml_predicted_roi_pct = first_pass.get(candidate)
+                else:
+                    record.ml_predicted_roi_pct = sim_learning_mod.predict_expected_roi(
+                        candidate, state.model_dir, state.sims_file,
+                        collection_roi_lookup=collection_roi_lookup)
             simulate_mod.log_simulation(record, state.sims_file)
             n_logged += 1
             round_floats.append(record.avg_input_float)
