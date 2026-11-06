@@ -686,6 +686,9 @@ def _effective_temperature(base_temperature: float, cp: dict) -> float:
     return base_temperature * (NUDGE_KICK_FACTOR if boosted else 1.0)
 
 
+_live_states: dict = {}  # son_id -> the SimulationLoopState this process runs (see live_state)
+
+
 class SimulationLoopState:
     """One son. Thread-control wrapper (pause/stop/wake events, checkpoint lock), scoped
     to this son's own directory/temperature/RNG."""
@@ -703,6 +706,7 @@ class SimulationLoopState:
         self.status = "idle"  # idle | running | paused | stopped
         self.progress = {"current": 0, "total": 0}
         self.checkpoint = load_checkpoint(self.checkpoint_file)
+        _live_states[son_id] = self
         self.rng = random.Random()
         self.error = None  # last run_round() exception message, if the most recent attempt
         # failed (see sim_loop()) -- cleared on the next successful round. Surfaced on the
@@ -768,6 +772,12 @@ class SimulationLoopState:
                 "updated_at": cp["updated_at"],
                 "sim_model_status": sim_learning_mod.get_model_status(self.model_dir),
             }
+
+
+def live_state(son_id: int) -> "SimulationLoopState | None":
+    """The in-process loop state for this son, if one was created here (verify_queue's writeback
+    locks it instead of racing the loop's own checkpoint saves)."""
+    return _live_states.get(son_id)
 
 
 def create_population() -> list:

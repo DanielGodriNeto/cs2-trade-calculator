@@ -1431,7 +1431,10 @@ def make_handler(state: ScanState, retrain_state: retrain_loop_mod.RetrainLoopSt
                 # caller actually identifies which entry this is (id + son) -- optional so an
                 # older/simpler caller that just wants the display-only rows still works.
                 if "id" in body and "son" in body:
-                    entry = {"id": body["id"], "input_mix": body["input_mix"]}
+                    entry = {"id": body["id"], "input_mix": body["input_mix"],
+                             "output_distribution": body["output_distribution"],
+                             "from_rarity": body["from_rarity"], "to_rarity": body["to_rarity"],
+                             "stattrak": body["stattrak"]}
                     verified_roi_pct, price_confidence = verify_queue_mod.summarize_and_writeback(
                         int(body["son"]), entry, rows, currency=body.get("currency", 1))
                 return self._send_json({"ok": True, "rows": [asdict(r) for r in rows],

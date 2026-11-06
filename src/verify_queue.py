@@ -21,7 +21,9 @@ pausable from the dashboard (same Start/Pause pattern as every other background 
 if it ever proves disruptive.
 """
 import json
+import os
 import queue
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -138,6 +140,22 @@ def _worst_confidence(rows: list) -> str:
     return max((r.price_confidence for r in rows), key=lambda c: _CONFIDENCE_RANK.get(c, 0))
 
 
+def _outputs_fully_priced(entry: dict, output_rows: list) -> bool:
+    """A verified ROI is only honest when every output of the distribution has a price AND the
+    priced rows carry >= 99% of the distribution's probability mass. Unpriced outputs are
+    dropped from output_rows, so without this check they would silently inflate the ROI.
+    An entry with NO output_distribution key (web caller that omits it) has nothing to check
+    coverage against, so the rows are taken as they are."""
+    if entry.get("output_distribution") is None:
+        return True
+    outputs = entry["output_distribution"]
+    if any(u.get("price") is None for u in outputs):
+        return False
+    total = sum(u.get("prob_pct") or 0.0 for u in outputs)
+    covered = sum(r.probability_pct or 0.0 for r in output_rows if r.consensus_price is not None)
+    return total > 0 and covered >= 0.99 * total
+
+
 def _summarize(entry: dict, rows: list) -> tuple[float | None, str]:
     """Recomputes an approximate VERIFIED ROI from the verify_simulation_record() rows --
     same probability-weighted, fee-adjusted math simulate.py itself uses, but using each
@@ -150,12 +168,22 @@ def _summarize(entry: dict, rows: list) -> tuple[float | None, str]:
     partial/misleading ROI)."""
     input_rows = [r for r in rows if r.role == "input"]
     output_rows = [r for r in rows if r.role == "output"]
-    counts = {(u["skin"], u["wear"]): u["count"] for u in entry.get("input_mix") or []}
+    counts: dict = {}  # duplicate (skin, wear) input_mix entries sum their units
+    for u in entry.get("input_mix") or []:
+        key = (u["skin"], u["wear"])
+        counts[key] = counts.get(key, 0) + u["count"]
     cost = 0.0
+    priced_inputs: set = set()  # one input row per input_mix item -> price each key once
     for r in input_rows:
         if r.consensus_price is None:
             return None, _worst_confidence(rows)
-        cost += r.consensus_price * counts.get((r.skin, r.wear), 1)
+        key = (r.skin, r.wear)
+        if key in priced_inputs:
+            continue
+        priced_inputs.add(key)
+        cost += r.consensus_price * counts.get(key, 1)
+    if not _outputs_fully_priced(entry, output_rows):
+        return None, _worst_confidence(rows)
     revenue_weighted = [(r.consensus_price, r.probability_pct or 0.0)
                          for r in output_rows if r.consensus_price is not None]
     total_prob = sum(p for _, p in revenue_weighted)
@@ -198,30 +226,81 @@ def _writeback(son_id: int, entry_id: str, verified_roi_pct: float | None, price
     module to enqueue; this module needs sim_loop's checkpoint helpers to write back) --
     same lazy-import-to-break-a-cycle pattern steam_prices.py already uses for price_history.py."""
     from . import sim_loop as sim_loop_mod
-    cp_path = sim_loop_mod.son_checkpoint_file(son_id)
-    cp = sim_loop_mod.load_checkpoint(cp_path)
+    state = sim_loop_mod.live_state(son_id)
+    if state is None:  # CLI process with no sim loop running: the file is the only copy
+        # ponytail: read-modify-write without a cross-process lock; a concurrent simulate-population process can overwrite this stamp.
+        cp_path = sim_loop_mod.son_checkpoint_file(son_id)
+        cp = sim_loop_mod.load_checkpoint(cp_path)
+        if not _stamp_best(cp, entry_id, verified_roi_pct, price_confidence):
+            return False
+        sim_loop_mod.save_checkpoint(cp_path, cp)
+        return True
+    # The live sim loop re-saves its in-memory checkpoint every round, so stamp THAT copy under
+    # the same lock sim_loop uses -- stamping the file alone is clobbered on the next save.
+    with state.lock:
+        if not _stamp_best(state.checkpoint, entry_id, verified_roi_pct, price_confidence):
+            return False
+        sim_loop_mod.save_checkpoint(state.checkpoint_file, state.checkpoint)
+        return True
+
+
+def _stamp_best(cp: dict, entry_id: str, verified_roi_pct: float | None, price_confidence: str) -> bool:
     for e in cp["best"]:
         if e["id"] == entry_id:
+            if verified_roi_pct is None and e.get("verified_roi_pct") is not None:
+                return False  # keep the earlier valid verification over an inconclusive one
             e["verified_roi_pct"] = verified_roi_pct
             e["price_confidence"] = price_confidence
             e["verified_at"] = time.time()
-            sim_loop_mod.save_checkpoint(cp_path, cp)
             return True
     return False
+
+
+def _quarantine_corrupt() -> None:
+    """Move an unparseable log aside so the next write can't overwrite it (same policy as
+    mispriced_skins.py)."""
+    stamp = int(time.time())
+    dest = LOG_FILE.with_name(f"{LOG_FILE.name}.corrupt-{stamp}")
+    n = 1
+    while dest.exists():  # never clobber an earlier quarantine copy from the same second
+        dest = LOG_FILE.with_name(f"{LOG_FILE.name}.corrupt-{stamp}-{n}")
+        n += 1
+    os.replace(LOG_FILE, dest)
+
+
+def _read_log() -> list:
+    """OSError propagates (a transient read failure must never be treated as an empty log)."""
+    if not LOG_FILE.exists():
+        return []
+    try:
+        data = json.loads(LOG_FILE.read_text(encoding="utf-8"))
+    except ValueError:  # JSONDecodeError and UnicodeDecodeError both subclass ValueError
+        data = None
+    if isinstance(data, list):
+        return data
+    _quarantine_corrupt()
+    return []
+
+
+def _write_log_atomic(entries: list) -> None:
+    """Temp file in the same directory, then os.replace over the target."""
+    fd, tmp = tempfile.mkstemp(dir=LOG_FILE.parent, prefix=f"{LOG_FILE.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(entries))
+        os.replace(tmp, LOG_FILE)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def _append_log(result: dict) -> None:
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with _write_lock:
-        existing = []
-        if LOG_FILE.exists():
-            try:
-                existing = json.loads(LOG_FILE.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                existing = []
+        existing = _read_log()
         existing.insert(0, result)
         del existing[MAX_LOG_KEPT:]
-        LOG_FILE.write_text(json.dumps(existing), encoding="utf-8")
+        _write_log_atomic(existing)
 
 
 class VerifyQueueState:
@@ -312,7 +391,10 @@ def consumer_loop(state: VerifyQueueState, currency: int = 1,
             state.n_verified_today += 1
             state.recent.insert(0, result)
             del state.recent[MAX_LOG_KEPT:]
-        _append_log(result)
+        try:
+            _append_log(result)
+        except OSError as e:  # disk hiccup on the history file must not kill the consumer thread
+            print(f"verify_queue: could not append to {LOG_FILE}: {e}")
 
 
 def run_foreground(currency: int = 1) -> None:
