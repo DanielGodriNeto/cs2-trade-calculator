@@ -34,6 +34,10 @@ PRICE_TTL_SECONDS = 86400  # 24h -- long enough that a skin/wear looked up once 
 # past this age an entry is purged outright (see _purge_expired), not just treated as stale, so
 # a lookup that's actually needed again goes back to a real live fetch instead of quietly
 # reusing day-old-plus data forever
+MIRROR_MISS_TTL_SECONDS = 2 * 3600  # a name absent from the bulk mirror is only "no price" for
+# this long: a brand-new listing or a partial feed must not hide for a whole day. Only cached
+# while the mirror itself is fresh (see get_price); an expired miss reads as "missing", never
+# "stale", so simulate.py does not treat it as confirmed.
 MIN_REQUEST_INTERVAL = 3.5  # floor: seconds between live requests when things are going well.
 # Steam's anonymous budget was ~20/min (3s) even before the endpoint effectively closed to
 # anonymous callers -- the old 1.5s floor ran at double that and guaranteed 429 storms.
@@ -253,17 +257,23 @@ SAVE_EVERY_N_WRITES = 200  # batch disk writes -- serializing/writing the whole 
 # re-answerable from the mirror in microseconds -- flush_cache() still covers clean stops.
 
 
+def _entry_ttl(entry: dict) -> float:
+    """How long one cache entry stays usable: a mirror miss gets the short window, everything
+    else (real prices, live "no listings") the full PRICE_TTL_SECONDS."""
+    return MIRROR_MISS_TTL_SECONDS if entry.get("_mirror_miss") else PRICE_TTL_SECONDS
+
+
 def _purge_expired():
-    """Removes every cache entry older than PRICE_TTL_SECONDS outright, in-memory and (via the
-    next disk write) on disk too -- a skin/wear's price is kept for 24h so nothing re-fetches it
-    over and over in that window, but past that age it's actually deleted rather than lingering
+    """Removes every cache entry past its own TTL (see _entry_ttl) outright, in-memory and (via
+    the next disk write) on disk too -- a skin/wear's price is kept for 24h so nothing re-fetches
+    it over and over in that window, but past that age it's actually deleted rather than lingering
     forever as stale data. A later lookup for that same skin/wear is just a normal cache miss at
     that point, which naturally goes back to a real live fetch (get_price) -- see the module
     docstring. Cheap enough (one dict comprehension) to run on every disk write rather than on
     some separate schedule."""
     global _cache
     now = time.time()
-    _cache = {k: v for k, v in _cache.items() if now - v.get("_fetched_at", 0) < PRICE_TTL_SECONDS}
+    _cache = {k: v for k, v in _cache.items() if now - v.get("_fetched_at", 0) < _entry_ttl(v)}
 
 
 def _write_cache_to_disk():
@@ -377,7 +387,7 @@ def get_price(market_hash_name: str, currency: int = 1, abort_check=None) -> dic
 
     key = f"{currency}:{market_hash_name}"
     cached = _cache.get(key)
-    if cached and (time.time() - cached.get("_fetched_at", 0)) < PRICE_TTL_SECONDS:
+    if cached and (time.time() - cached.get("_fetched_at", 0)) < _entry_ttl(cached):
         _record(increment="cache_hits")
         return cached["data"]
 
@@ -392,7 +402,7 @@ def get_price(market_hash_name: str, currency: int = 1, abort_check=None) -> dic
         # us may have just fetched this SAME key while we were waiting, in which case reuse its
         # result instead of spending a second live request on it.
         cached = _cache.get(key)
-        if cached and (time.time() - cached.get("_fetched_at", 0)) < PRICE_TTL_SECONDS:
+        if cached and (time.time() - cached.get("_fetched_at", 0)) < _entry_ttl(cached):
             _record(increment="cache_hits")
             return cached["data"]
 
@@ -407,17 +417,17 @@ def get_price(market_hash_name: str, currency: int = 1, abort_check=None) -> dic
             _cache[key] = {"_fetched_at": time.time(), "data": data}
             _save_cache()
         elif not STEAM_LIVE_FALLBACK:
-            # Mirror is loaded but doesn't carry this name -> treat exactly like Steam's own
-            # "success": false (genuinely no listings): cache the None so get_cached_price()
-            # answers "fresh, no price" for the next 24h instead of every simulate round
-            # re-triggering this same fallback for the same unpriceable item. BUT if the
-            # mirror itself is unreachable (never fetched), cache nothing -- that's an
-            # outage, not information about this item, and it must not masquerade as
-            # "confirmed no price" for a day (same reasoning as _live_steam_fetch's own
-            # transient-error paths).
-            # FX-down also yields None here; that is not "no listings", so don't cache it.
-            if bulk_prices.get_stats()["steam_feed"]["n_items"] and bulk_prices.fx_available(currency):
-                _cache[key] = {"_fetched_at": time.time(), "data": None}
+            # Mirror is loaded but doesn't carry this name. Cache the None ONLY while the mirror
+            # itself is fresh: a brand-new listing or a partial/old feed must not hide the item
+            # for a day, so the miss is short-lived (MIRROR_MISS_TTL_SECONDS, flagged so
+            # _entry_ttl applies it). A stale mirror (past its refresh window, e.g. during an
+            # outage) caches nothing -- that's not information about this item.
+            # FX-down also yields None here; that is not "no listings", so don't cache it either.
+            steam_feed = bulk_prices.get_stats()["steam_feed"]
+            mirror_fresh = (steam_feed["age_seconds"] is not None
+                            and steam_feed["age_seconds"] < bulk_prices.FEED_TTL_SECONDS)
+            if steam_feed["n_items"] and mirror_fresh and bulk_prices.fx_available(currency):
+                _cache[key] = {"_fetched_at": time.time(), "data": None, "_mirror_miss": True}
                 _save_cache()
             else:
                 _record(increment="requests_error")
@@ -576,8 +586,13 @@ def get_cached_price(market_hash_name: str, currency: int = 1) -> tuple[dict | N
     if not cached:
         _record(increment="cache_reads_missing")
         return None, "missing"
+    if cached.get("_mirror_miss"):
+        # A mirror miss is never proof of "no price" (new item / partial feed): report it as
+        # missing so simulate.py doesn't confirm it into invalid_skins' 24h blacklist.
+        _record(increment="cache_reads_missing")
+        return None, "missing"
     age = time.time() - cached.get("_fetched_at", 0)
-    if age < PRICE_TTL_SECONDS:
+    if age < _entry_ttl(cached):
         _record(increment="cache_reads_fresh")
         return cached["data"], "fresh"
     _record(increment="cache_reads_stale")
