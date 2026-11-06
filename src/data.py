@@ -60,9 +60,32 @@ def load_raw_crates(force_refresh: bool = False) -> list:
     return json.loads(CRATES_CACHE.read_text(encoding="utf-8"))
 
 
+_skins_cache: dict = {"mtime": None, "skins": None}
+
+
+def _cached_skins_still_valid() -> bool:
+    # Hit only while the file is still within TTL (so the weekly re-download still fires) and
+    # its mtime is the one we parsed. Callers must treat the returned list as read-only.
+    if not _fresh_enough(SKINS_CACHE):
+        return False
+    return _skins_cache["mtime"] == SKINS_CACHE.stat().st_mtime
+
+
 def load_skins(force_refresh: bool = False) -> list[dict]:
-    """Returns a flat, normalized list of tradeable weapon skins eligible for trade-up."""
-    raw = load_raw_skins(force_refresh)
+    """Returns a flat, normalized list of tradeable weapon skins eligible for trade-up.
+
+    Cached per SKINS_CACHE mtime: while the file is unchanged every call returns the SAME list
+    object (and the same skin dicts), so callers must not mutate either. force_refresh bypasses
+    the cache and re-downloads per load_raw_skins."""
+    if not force_refresh and _cached_skins_still_valid():
+        return _skins_cache["skins"]
+    out = _normalize_skins(load_raw_skins(force_refresh))
+    _skins_cache["skins"] = out  # store skins before mtime so a racing reader never pairs new mtime with old skins
+    _skins_cache["mtime"] = SKINS_CACHE.stat().st_mtime
+    return out
+
+
+def _normalize_skins(raw: list) -> list[dict]:
     out = []
     for item in raw:
         rarity = item.get("rarity") or {}
