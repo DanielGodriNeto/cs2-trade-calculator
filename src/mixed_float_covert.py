@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from . import oddsmath
 from . import marketplaces as marketplaces_mod
 from .float_mix import _candidate_mixes, _price_per_wear
+from .mixed_float import _avg_norm, _FillerSlot, _skin_key
 from .tradeup import _cheapest_wear_price, _price_at_matched_wear, STEAM_SELL_FEE
 from .covert import COVERT_INPUT_COUNT
 
@@ -75,40 +76,49 @@ def find_best_mixed_float_strategy(primary_case: str, primary_baseline_roi: floa
     primary_prices = _price_per_wear(primary_skin, stattrak, currency, "lowest_price", abort_check)
     if not primary_prices:
         return None
+    primary_norm = {w: oddsmath.normalized_float(primary_skin, w) for w in primary_prices}
 
     best = None
+    price_memo: dict = {}
+    primary_keyed = [(s, _skin_key(s)) for s in primary_outputs]
+    mixes_by_n: dict[int, list[dict]] = {}  # the same primary's mixes for each n_primary, built once per call
 
-    def _consider(primary_mix, filler_case, filler_skin, filler_name, filler_price, filler_wear,
-                  n_filler, f_outputs):
+    def _mixes(n: int) -> list[dict]:
+        if n not in mixes_by_n:
+            mixes_by_n[n] = _candidate_mixes(primary_skin, primary_prices, n)
+        return mixes_by_n[n]
+
+    def _output_price(skin: dict, key: tuple, avg_norm: float) -> float | None:
+        # Same per-call memo as mixed_float.py: stattrak and currency are fixed for the call, and
+        # the lookup depends only on the skin's key and the landed wear.
+        landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
+        memo_key = (key, landed_wear)
+        if memo_key not in price_memo:
+            price_memo[memo_key] = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+        return price_memo[memo_key]
+
+    def _consider(primary_mix: dict, slot: _FillerSlot) -> None:
         nonlocal best
-        n_primary = COVERT_INPUT_COUNT - n_filler
+        n_filler = slot.n_filler
         primary_cost = sum(primary_prices[w] * c for w, c in primary_mix.items())
-        cost = primary_cost + filler_price * n_filler
-        inputs = [(primary_skin, w, c) for w, c in primary_mix.items()]
+        cost = primary_cost + slot.price * n_filler
+        terms = [(primary_norm[w], c) for w, c in primary_mix.items()]
         if n_filler:
-            inputs.append((filler_skin, filler_wear, n_filler))
-        avg_norm = oddsmath.average_normalized_float(inputs)
-
-        if n_filler:
-            primary_odds, filler_odds = oddsmath.group_odds(
-                [(n_primary, len(primary_outputs)), (n_filler, len(f_outputs))])
-        else:
-            primary_odds, filler_odds = 100.0 / len(primary_outputs), 0.0
+            terms.append((slot.norm, n_filler))
+        avg_norm = _avg_norm(terms)
 
         revenues_weighted = []
-        for skin in primary_outputs:
-            landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-            price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+        for skin, key in primary_keyed:
+            price_val = _output_price(skin, key, avg_norm)
             if price_val is not None:
-                revenues_weighted.append((price_val, primary_odds))
-        for skin in f_outputs:
-            landed_wear = oddsmath.remap_float_to_wear(skin, avg_norm)
-            price_val = _price_at_matched_wear(skin, landed_wear, stattrak, currency, abort_check)
+                revenues_weighted.append((price_val, slot.primary_odds))
+        for skin, key in slot.outputs:
+            price_val = _output_price(skin, key, avg_norm)
             if price_val is not None:
-                revenues_weighted.append((price_val, filler_odds))
+                revenues_weighted.append((price_val, slot.filler_odds))
         # Full odds mass of every output, priced or not -- see mixed_tradeup.py's copy of this
         # comment and oddsmath's unpriced-outputs section.
-        total_prob = primary_odds * len(primary_outputs) + filler_odds * len(f_outputs)
+        total_prob = slot.primary_odds * len(primary_outputs) + slot.filler_odds * len(slot.outputs)
         priced_prob = oddsmath.priced_odds_pct(revenues_weighted)
         if total_prob <= 0 or not oddsmath.fully_priced(priced_prob, total_prob):
             return
@@ -122,27 +132,29 @@ def find_best_mixed_float_strategy(primary_case: str, primary_baseline_roi: floa
         if roi >= 0:
             buy_links = {
                 "primary": {w: marketplaces_mod.build_links(primary_skin["name"], w, stattrak) for w in primary_mix},
-                "filler": marketplaces_mod.build_links(filler_skin["name"], filler_wear, stattrak) if n_filler else {},
+                "filler": marketplaces_mod.build_links(slot.skin["name"], slot.wear, stattrak) if n_filler else {},
             }
         best = MixedFloatCovertResult(
-            primary_case=primary_case, filler_case=filler_case if n_filler else "",
+            primary_case=primary_case, filler_case=slot.collection if n_filler else "",
             primary_mix=[{"wear": w, "count": c, "unit_price": primary_prices[w]} for w, c in primary_mix.items()],
-            filler_count=n_filler, filler_input=filler_name if n_filler else "",
-            filler_unit_price=filler_price if n_filler else 0.0,
+            filler_count=n_filler, filler_input=slot.name if n_filler else "",
+            filler_unit_price=slot.price if n_filler else 0.0,
             cost=cost, expected_revenue=expected_revenue, expected_revenue_after_fee=after_fee,
             profit=profit, roi_pct=roi, roi_improvement_pct=roi - primary_baseline_roi,
             buy_links=buy_links,
             primary_skin_image=primary_skin.get("image", ""),
-            filler_skin_image=filler_skin.get("image", "") if n_filler else "",
+            filler_skin_image=slot.skin.get("image", "") if n_filler else "",
         )
 
     # Zero-filler candidates first -- pure wear-mixing within the primary case alone. Without
     # this, a case whose best play genuinely is "just float-manipulate, don't dilute" would be
     # missed entirely (see mixed_float.py's docstring for why this matters).
-    for primary_mix in _candidate_mixes(primary_skin, primary_prices, COVERT_INPUT_COUNT):
+    zero_slot = _FillerSlot(collection="", skin=None, name="", price=0.0, wear="", norm=0.0, n_filler=0,
+                            outputs=[], primary_odds=100.0 / len(primary_outputs), filler_odds=0.0)
+    for primary_mix in _mixes(COVERT_INPUT_COUNT):
         if abort_check and abort_check():
             break
-        _consider(primary_mix, "", None, "", 0.0, "", 0, [])
+        _consider(primary_mix, zero_slot)
 
     candidates = []
     for case, case_data in cases_idx.items():
@@ -171,16 +183,22 @@ def find_best_mixed_float_strategy(primary_case: str, primary_baseline_roi: floa
         if filler_cheapest is None:
             continue
         filler_price, filler_name, filler_wear = filler_cheapest[:3]  # 4th element (volume) unused here
+        filler_norm = oddsmath.normalized_float(filler_skin, filler_wear)
+        f_keyed = [(s, _skin_key(s)) for s in f_outputs]
 
         for n_filler in range(1, COVERT_INPUT_COUNT):
             if abort_check and abort_check():
                 break
             n_primary = COVERT_INPUT_COUNT - n_filler
-            for primary_mix in _candidate_mixes(primary_skin, primary_prices, n_primary):
+            primary_odds, filler_odds = oddsmath.group_odds(
+                [(n_primary, len(primary_outputs)), (n_filler, len(f_outputs))])
+            slot = _FillerSlot(collection=case, skin=filler_skin, name=filler_name, price=filler_price,
+                               wear=filler_wear, norm=filler_norm, n_filler=n_filler, outputs=f_keyed,
+                               primary_odds=primary_odds, filler_odds=filler_odds)
+            for primary_mix in _mixes(n_primary):
                 if abort_check and abort_check():
                     break
-                _consider(primary_mix, case, filler_skin, filler_name, filler_price, filler_wear,
-                          n_filler, f_outputs)
+                _consider(primary_mix, slot)
 
     if best and best.roi_pct > primary_baseline_roi:
         return best
