@@ -87,8 +87,8 @@ def _cheapest_thirdparty(tp: dict) -> float | None:
 def _price(skin_name: str, wear: str, stattrak: bool, currency: int, abort_check,
            live_fetch: bool, allow_thirdparty: bool = True) -> tuple[dict | None, str]:
     """Prices one skin+wear+StatTrak, trying every source in turn before giving up:
-    get_cached_price() first; on a genuine miss ("missing", never "stale" -- a stale price is
-    still usable), a real live get_price() call (which also writes back into the same cache, so
+    get_cached_price() first (a "stale" entry is returned as-is; simulate() decides whether an
+    input may use it -- see _usable_input_data); on a genuine miss ("missing"), a real live get_price() call (which also writes back into the same cache, so
     it's a one-time cost per skin/wear); and finally, if Steam still has nothing, a third-party
     fallback (thirdparty_prices.get_thirdparty_price -> Skinport/CSFloat) used as an actual
     price source, not just corroboration -- returned as a synthesized data dict with freshness
@@ -178,23 +178,68 @@ def _price(skin_name: str, wear: str, stattrak: bool, currency: int, abort_check
     return None, "missing"
 
 
-def _apply_mispriced_mark(skin_name: str, wear: str, stattrak: bool, currency: int,
-                           score: float, reasons: list) -> tuple[float, list]:
+def _active_mark(skin_name: str, wear: str, stattrak: bool, currency: int) -> dict | None:
+    """The currently-active verified-mispricing entry (gap_pct, cheapest_price, ...) for this
+    skin+wear, or None. The registry is only read here, never written. ponytail: linear scan
+    over list_mispriced() (copies every mark per call); fine at today's mark counts, add a keyed
+    lookup in mispriced_skins.py if marks ever number in the thousands."""
+    name = market_hash_name(skin_name, wear, stattrak)
+    return next((e for e in mispriced_skins_mod.list_mispriced(currency)
+                 if e["market_hash_name"] == name and e["active"]), None)
+
+
+def _apply_mispriced_mark(mark: dict | None, score: float, reasons: list) -> tuple[float, list]:
     """Folds a currently-active verified-mispricing mark (mispriced_skins.py -- written by the
     Stage-2 verification queue / the Verify buttons) into a unit's dead-skin score: a flagged
     skin gets MISPRICED_DEAD_SKIN_POINTS, enough to cross dead_skin.DEAD_SKIN_THRESHOLD on its
     own, so trials built on it are excluded from training and strict agents' best lists --
     the "adjust the bots' training to avoid the over/undervalued skin" feedback loop. Cheap
     in-memory lookup; no network."""
-    name = market_hash_name(skin_name, wear, stattrak)
-    gap = mispriced_skins_mod.active_gap(name, currency)
-    if gap is None:
+    if mark is None:
         return score, reasons
-    reason = "verified_overvalued" if gap >= 0 else "verified_undervalued"
+    reason = "verified_overvalued" if mark["gap_pct"] >= 0 else "verified_undervalued"
     if reason not in reasons:
         score = min(score + mispriced_skins_mod.MISPRICED_DEAD_SKIN_POINTS, 100.0)
         reasons = reasons + [reason]
     return score, reasons
+
+
+def _usable_input_data(name: str, currency: int, data: dict | None, freshness: str,
+                       abort_check, live_fetch: bool) -> dict | None:
+    """An input's cost basis may never be a stale cache entry: its age is unbounded, so it can
+    sit far from Steam's current number and inflate ROI. A stale entry is refreshed live
+    (get_price writes back to the cache). Without a live fetch, or if the refresh fails, the
+    unit is unusable -- the candidate then falls out as incomplete_inputs, like a missing unit.
+    Outputs are not covered here."""
+    if freshness != "stale":
+        return data
+    if not live_fetch:
+        return None
+    return get_price(name, currency, abort_check)
+
+
+def _input_cost_price(mark: dict | None, steam_price: float) -> float | None:
+    """An UNDERVALUED input (Steam below the verified market) is never costed below the mark's
+    cheapest_price: cost = max(steam, cheapest). With no cheapest_price the unit is unusable
+    (None) -- the same treatment as a dropped stale input, so the candidate is incomplete_inputs
+    rather than costed at the low Steam number."""
+    if mark is None or mark["gap_pct"] >= 0:
+        return steam_price
+    if mark["cheapest_price"] is None:
+        return None
+    return max(steam_price, mark["cheapest_price"])
+
+
+def _output_revenue_price(mark: dict | None, steam_price: float | None) -> float | None:
+    """An OVERVALUED output's Steam price is inflated, so revenue is capped at the mark's
+    cheapest_price: revenue = min(steam, cheapest), never above the current Steam price. With
+    no cheapest_price the output contributes 0 revenue, a conservative floor flagged by the
+    mark's verified_overvalued reason and its dead-skin points."""
+    if mark is None or mark["gap_pct"] < 0 or steam_price is None:
+        return steam_price
+    if mark["cheapest_price"] is None:
+        return 0.0
+    return min(steam_price, mark["cheapest_price"])
 
 
 @dataclass
@@ -218,9 +263,10 @@ class SimulationRecord:
     # otherwise stay None) when this output's Steam volume already looked thin, see simulate()
     priced_output_variants: int
     n_output_variants: int
-    cost_basis_source: str      # "cache" (every input price was fresh) | "stale" (>=1 input
-    # price had expired past PRICE_TTL_SECONDS but was used anyway -- all 10/5 inputs were
-    # still priced, just not all within the TTL)
+    cost_basis_source: str      # always "cache" now: every counted input price is fresh. A stale
+    # input is refreshed live or leaves the candidate invalid (incomplete_inputs), never costed
+    # at its stale number -- see _usable_input_data. "stale" is no longer produced; kept as a
+    # field for old simulations.jsonl rows (sim_loop.py still checks it for those).
     low_volume_warning: bool = False  # True if any COUNTED input/output's dead_skin.py score
     # (see dead_skin.score_from_signals/refine_with_thirdparty) crosses dead_skin.DEAD_SKIN_
     # THRESHOLD -- the "someone lists it high but nobody's actually buying" case, now a
@@ -331,7 +377,6 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
     float_inputs = []  # (skin, wear, count) per (leg, unit), for average_normalized_float
     input_mix_rows = []
     cost = 0.0
-    any_stale = False
     any_low_volume = False
     n_required_input_units = 0
     n_priced_input_units = 0
@@ -342,7 +387,9 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
         for unit in leg.units:  # possibly several DISTINCT skins within this one collection leg
             n_required_input_units += unit["count"]
             skin, wear, count = unit["skin"], unit["wear"], unit["count"]
+            name = market_hash_name(skin["name"], wear, candidate.stattrak)
             data, freshness = _price(skin["name"], wear, candidate.stattrak, currency, abort_check, live_fetch)
+            data = _usable_input_data(name, currency, data, freshness, abort_check, live_fetch)
             # median_price fallback matches _price()'s own "is this priced at all" gate and the
             # output-pricing loop below -- a thin-market skin with only a median_price (no active
             # lowest_price listing) is still a real, usable price.
@@ -350,8 +397,6 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
             if price is None:
                 continue  # no price on Steam OR any 3rd-party site -- _price already recorded
                 # this skin in invalid_skins.py; this candidate falls into incomplete_inputs below
-            if freshness == "stale":
-                any_stale = True
             volume = data.get("volume")
             tp = data.get("thirdparty") or {}  # non-empty when the price itself came from a
             # third-party fallback (Steam had nothing) -- surfaced on the input row for free
@@ -369,8 +414,11 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
                 # (that made the feature nearly unusable in practice -- see README's Risks note).
                 tp = _thirdparty_prices(skin["name"], wear, candidate.stattrak, currency, abort_check)
                 score, reasons = dead_skin_mod.refine_with_thirdparty(score, reasons, price, tp)
-            score, reasons = _apply_mispriced_mark(skin["name"], wear, candidate.stattrak,
-                                                    currency, score, reasons)
+            mark = _active_mark(skin["name"], wear, candidate.stattrak, currency)
+            score, reasons = _apply_mispriced_mark(mark, score, reasons)
+            price = _input_cost_price(mark, price)
+            if price is None:
+                continue  # undervalued with no verified market price: unusable (see helper)
             if dead_skin_mod.is_dead(score):
                 any_low_volume = True
             cost += price * count
@@ -421,7 +469,9 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
             # price on the market this tool's fee/revenue math assumes. See _price().
             data, _ = _price(skin["name"], landed_wear, candidate.stattrak, currency, abort_check,
                              live_fetch, allow_thirdparty=False)
-            price = (data.get("median_price") or data.get("lowest_price")) if data else None
+            steam_price = (data.get("median_price") or data.get("lowest_price")) if data else None
+            mark = _active_mark(skin["name"], landed_wear, candidate.stattrak, currency)
+            price = _output_revenue_price(mark, steam_price)
             volume = data.get("volume") if data else None
             tp = (data.get("thirdparty") or {}) if data else {}
             score, reasons = dead_skin_mod.score_from_signals(volume) if price is not None else (0.0, [])
@@ -438,8 +488,7 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
                 tp = _thirdparty_prices(skin["name"], landed_wear, candidate.stattrak, currency, abort_check)
                 score, reasons = dead_skin_mod.refine_with_thirdparty(score, reasons, price, tp)
             if price is not None:
-                score, reasons = _apply_mispriced_mark(skin["name"], landed_wear, candidate.stattrak,
-                                                        currency, score, reasons)
+                score, reasons = _apply_mispriced_mark(mark, score, reasons)
             is_dead_output = price is not None and dead_skin_mod.is_dead(score)
             net_profit = (price * (1 - STEAM_SELL_FEE) - cost) if price is not None else None
             output_dist.append({"skin": skin["name"], "wear": landed_wear, "prob_pct": group_prob,
@@ -483,13 +532,12 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
     profit = after_fee - cost
     roi = (profit / cost * 100) if cost else 0.0
 
-    basis = "stale" if any_stale else "cache"
-
     # confidence_score: blends cost-basis freshness with the worst counted unit's dead-skin
     # score -- the NON-verified half of ranking.py's own confidence formula (kept in sync
     # deliberately; see that module's _confidence_score, which prefers this stored value once
-    # present and adds its own verified-Stage-2 bonus on top).
-    basis_score = 100.0 if basis == "cache" else 60.0
+    # present and adds its own verified-Stage-2 bonus on top). Every counted input is fresh
+    # now (see _usable_input_data), so the basis is always full-confidence "cache".
+    basis_score = 100.0
     # Non-volume-only: liquidity.py's own factor already penalizes volume-based dead-skin
     # reasons (no_recent_sales/very_low_listings) directly, so stripping them back out here
     # avoids counting the same underlying volume problem twice under two different names
@@ -507,7 +555,7 @@ def simulate(candidate, currency: int = 1, abort_check=None, live_fetch: bool = 
         expected_profit=profit, expected_roi_pct=roi, avg_input_float=avg_norm,
         output_distribution=output_dist,
         priced_output_variants=priced_variants, n_output_variants=n_variants,
-        cost_basis_source=basis, low_volume_warning=any_low_volume,
+        cost_basis_source="cache", low_volume_warning=any_low_volume,
         confidence_score=confidence_score,
     )
 
